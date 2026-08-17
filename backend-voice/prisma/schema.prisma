@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Tenant {
+  id           String         @id @default(uuid())
+  name         String
+  phoneNumber  String         @unique
+  createdAt    DateTime       @default(now())
+  
+  services     Service[]
+  faqEntries   FaqEntry[]
+  appointments Appointment[]
+  callLogs     CallLog[]
+  subscription Subscription?
+}
+
+model Subscription {
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  planName             String   @default("free")
+  minutesIncluded      Int      @default(100)
+  minutesUsed          Int      @default(0)
+  status               String   @default("active")
+  
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Service {
+  id              String   @id @default(uuid())
+  tenantId        String
+  name            String
+  price           Float
+  durationMinutes Int
+  description     String?
+  
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments    Appointment[]
+}
+
+model FaqEntry {
+  id       String @id @default(uuid())
+  tenantId String
+  question String
+  answer   String
+  category String?
+  
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id            String   @id @default(uuid())
+  tenantId      String
+  serviceId     String
+  customerName  String
+  customerPhone String
+  startTime     DateTime
+  endTime       DateTime
+  status        String   @default("confirmed") // confirmed, cancelled
+  
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service       Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+model CallLog {
+  id              String   @id @default(uuid())
+  tenantId        String
+  callerPhone     String
+  durationSeconds Int
+  status          String
+  transcript      String?  @db.Text
+  createdAt       DateTime @default(now())
+  
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
