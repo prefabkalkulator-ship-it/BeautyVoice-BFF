@@ -1,0 +1,1 @@
+import { prisma } from './prisma'; async function main() { const apps = await prisma.appointment.findMany({ select: { customerName: true, startTime: true, staffId: true, staff: { select: { name: true } } } }); console.log(apps); } main().finally(() => prisma.$disconnect());

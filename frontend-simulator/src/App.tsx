@@ -7,6 +7,7 @@ import Appointments from './components/Appointments';
 import Services from './components/Services';
 import Faq from './components/Faq';
 import Simulator from './components/Simulator';
+import Settings from './components/Settings';
 import Subscription from './pages/Subscription';
 
 import './index.css';
@@ -25,6 +26,7 @@ function App() {
           <Route path="services" element={<Services />} />
           <Route path="faq" element={<Faq />} />
           <Route path="simulator" element={<Simulator />} />
+          <Route path="settings" element={<Settings />} />
           <Route path="subscription" element={<Subscription />} />
         </Route>
         

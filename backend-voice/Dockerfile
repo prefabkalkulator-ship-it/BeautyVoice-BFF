@@ -1,12 +1,12 @@
 # Środowisko produkcyjne (Runner)
-FROM node:22-alpine AS runner
+FROM node:22-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S expressjs -u 1001
+RUN groupadd -g 1001 nodejs
+RUN useradd -m -u 1001 -g nodejs expressjs
 
 COPY package*.json ./
 COPY prisma.config.ts ./

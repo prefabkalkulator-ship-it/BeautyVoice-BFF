@@ -13,7 +13,21 @@ async function main() {
     },
   });
 
-  console.log('Tenant created:', tenant.id);
+  // Dodanie subskrypcji testowej
+  await prisma.subscription.upsert({
+    where: { tenantId: tenant.id },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      planName: 'free',
+      minutesIncluded: 100,
+      minutesUsed: 0,
+      aiGenerationsUsed: 0,
+      status: 'active'
+    }
+  });
+
+  console.log('Tenant i Subskrypcja utworzone:', tenant.id);
 
   // 2. Create services
   // Clear first to avoid duplicates if run multiple times

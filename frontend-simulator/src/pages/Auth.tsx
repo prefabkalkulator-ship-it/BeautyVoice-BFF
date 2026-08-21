@@ -1,14 +1,12 @@
 import { useState } from 'react';
-import { Bot, Mail, Lock, ArrowRight, Loader2, X } from 'lucide-react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Bot, Phone, Building2, ArrowRight, Loader2, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Auth() {
-  const location = useLocation();
   const navigate = useNavigate();
-  const isLogin = location.pathname === '/login';
   
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [salonName, setSalonName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,11 +16,10 @@ export default function Auth() {
     setError('');
 
     try {
-      // TODO: Podłączenie docelowe pod supabase.auth.signUp / signIn
-      // Tymczasowy mock logowania:
+      // Symulacja rejestracji konta i automatycznego logowania
+      // W przyszłości Supabase OTP via SMS
       setTimeout(() => {
         setLoading(false);
-        // Symulacja udanego logowania - przekierowanie do panelu
         navigate('/dashboard');
       }, 1000);
       
@@ -43,16 +40,15 @@ export default function Auth() {
           <div className="w-12 h-12 rounded-2xl bg-gold-100 text-gold-600 flex items-center justify-center group-hover:scale-105 transition-transform">
             <Bot className="w-7 h-7" />
           </div>
-          <span className="font-serif text-3xl text-surface-900">BeautyVoice</span>
+          <span className="font-serif text-3xl text-surface-900 flex items-baseline">
+            E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
+          </span>
         </Link>
         <h2 className="mt-8 text-center text-3xl font-serif text-surface-900 tracking-tight">
-          {isLogin ? 'Zaloguj się do panelu' : 'Stwórz darmowe konto'}
+          Stwórz darmowe konto
         </h2>
         <p className="mt-2 text-center text-sm text-surface-500">
-          {isLogin ? 'Nie masz jeszcze konta? ' : 'Masz już konto? '}
-          <Link to={isLogin ? '/register' : '/login'} className="font-medium text-gold-600 hover:text-gold-500 transition-colors">
-            {isLogin ? 'Zarejestruj się za darmo' : 'Zaloguj się'}
-          </Link>
+          Uzupełnij dwa pola i zacznij testować wirtualną asystentkę od zaraz.
         </p>
       </div>
 
@@ -66,35 +62,35 @@ export default function Auth() {
             )}
             
             <div>
-              <label className="block text-sm font-medium text-surface-700">Adres email</label>
+              <label className="block text-sm font-medium text-surface-700">Nazwa salonu</label>
               <div className="mt-2 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-                  <Mail className="h-5 w-5" />
+                  <Building2 className="h-5 w-5" />
                 </div>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={salonName}
+                  onChange={(e) => setSalonName(e.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
-                  placeholder="twojsalon@email.com"
+                  placeholder="Studio Urody EVA"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-700">Hasło</label>
+              <label className="block text-sm font-medium text-surface-700">Numer telefonu</label>
               <div className="mt-2 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-                  <Lock className="h-5 w-5" />
+                  <Phone className="h-5 w-5" />
                 </div>
                 <input
-                  type="password"
+                  type="tel"
                   required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
                   className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
-                  placeholder="••••••••"
+                  placeholder="+48 111 222 333"
                 />
               </div>
             </div>
@@ -106,18 +102,16 @@ export default function Auth() {
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                 <>
-                  {isLogin ? 'Zaloguj się' : 'Rozpocznij 7-dniowy okres próbny'}
+                  Rozpocznij 7-dniowy okres próbny
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
           
-          {!isLogin && (
-             <p className="mt-6 text-center text-xs text-surface-400">
-               Klikając "Rozpocznij", akceptujesz nasz Regulamin oraz Politykę Prywatności. Do rozpoczęcia okresu próbnego nie wymagamy podpięcia karty kredytowej.
-             </p>
-          )}
+           <p className="mt-6 text-center text-xs text-surface-400">
+             Klikając "Rozpocznij", akceptujesz nasz Regulamin oraz Politykę Prywatności. Do rozpoczęcia okresu próbnego nie wymagamy podpięcia karty kredytowej.
+           </p>
         </div>
       </div>
     </div>

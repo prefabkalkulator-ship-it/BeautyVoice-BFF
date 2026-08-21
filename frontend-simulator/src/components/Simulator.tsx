@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Loader2 } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -9,7 +9,7 @@ interface Message {
 
 export default function Simulator() {
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'assistant', content: 'Dzień dobry! Z tej strony asystent głosowy BeautyVoice. W czym mogę pomóc?' }
+    { id: '1', role: 'assistant', content: 'Dzień dobry! Z tej strony EVA, wirtualna asystentka. W czym mogę pomóc?' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -73,7 +73,7 @@ export default function Simulator() {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Symulator AI</h2>
-          <p className="text-surface-500 mt-1">Przetestuj logikę asystenta bezpośrednio w przeglądarce przed wdrożeniem połączeń głosowych.</p>
+          <p className="text-surface-500 mt-1">Przetestuj logikę asystentki bezpośrednio w przeglądarce przed wdrożeniem połączeń głosowych.</p>
         </div>
       </div>
 
@@ -126,7 +126,7 @@ export default function Simulator() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Napisz do asystenta..."
+              placeholder="Napisz do EVA..."
               disabled={isLoading}
               autoFocus
               className="w-full pl-5 pr-14 py-4 rounded-xl border border-surface-200 focus:outline-none focus:border-gold-300 focus:ring-4 focus:ring-gold-100 transition-all text-sm shadow-sm"

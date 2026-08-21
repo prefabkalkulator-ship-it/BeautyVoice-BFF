@@ -1,0 +1,1 @@
+$envContent = Get-Content -Path .env | Where-Object { $_ -notmatch "^#" -and $_ -match "=" -and $_ -notmatch "^PORT=" }; $envVars = $envContent -join ","; gcloud run deploy beautyvoice-bff --source . --platform managed --region europe-central2 --allow-unauthenticated --project beautyvoice-bff --set-env-vars="$envVars"

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut } from 'lucide-react';
+import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 
 export default function DashboardLayout() {
@@ -12,6 +12,7 @@ export default function DashboardLayout() {
     { id: 'services', path: '/dashboard/services', label: 'Usługi', icon: ClipboardList },
     { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
     { id: 'simulator', path: '/dashboard/simulator', label: 'Symulator', icon: MessageSquare },
+    { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Firmy', icon: Settings },
     { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
   ];
 
@@ -27,7 +28,9 @@ export default function DashboardLayout() {
       <div className="md:hidden bg-white border-b border-surface-200 p-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <Phone className="text-gold-600 w-6 h-6" />
-          <span className="font-serif font-semibold text-lg text-surface-900">BeautyVoice</span>
+          <span className="font-serif font-semibold text-lg text-surface-900 flex items-baseline">
+            E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
+          </span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-surface-600">
           <Menu className="w-6 h-6" />
@@ -44,7 +47,9 @@ export default function DashboardLayout() {
             <Phone className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="font-serif font-semibold text-xl text-surface-900 leading-none">BeautyVoice</h1>
+            <h1 className="font-serif font-semibold text-xl text-surface-900 leading-none flex items-baseline">
+              E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
+            </h1>
             <span className="text-xs text-surface-500 font-medium tracking-wide uppercase">Dashboard</span>
           </div>
         </div>

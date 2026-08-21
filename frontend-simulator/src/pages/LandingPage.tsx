@@ -11,7 +11,9 @@ export default function LandingPage() {
             <div className="w-10 h-10 rounded-xl bg-gold-100 text-gold-600 flex items-center justify-center">
               <Bot className="w-6 h-6" />
             </div>
-            <span className="font-serif text-2xl text-surface-900">BeautyVoice</span>
+            <span className="font-serif text-2xl text-surface-900 flex items-baseline">
+              E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
+            </span>
           </div>
           <div className="flex items-center gap-4">
             <Link to="/login" className="text-sm font-medium text-surface-600 hover:text-surface-900 transition-colors">Zaloguj się</Link>
@@ -27,11 +29,11 @@ export default function LandingPage() {
               <Star className="w-4 h-4" />
               <span>Twój salon otwarty 24/7</span>
             </div>
-            <h1 className="text-4xl md:text-[3.5rem] font-serif text-surface-900 tracking-tight leading-[1.15]">
-              Automatyczny asystent głosowy dla Twojego salonu
+            <h1 className="text-4xl sm:text-6xl font-serif text-surface-900 tracking-tight leading-[1.1]">
+              Twój wirtualny pracownik <span className="text-gold-500 italic block mt-2">odbiera telefony za Ciebie</span>
             </h1>
-            <p className="text-lg md:text-xl text-surface-500 leading-relaxed max-w-2xl mx-auto">
-              Zwolnij czas recepcji. Nasza sztuczna inteligencja odbiera telefony, odpowiada na pytania klientów i samodzielnie umawia wizyty prosto do Twojego kalendarza.
+            <p className="mt-6 text-lg text-surface-600 leading-relaxed max-w-2xl mx-auto">
+              Zatrudnij EVA – wirtualną asystentkę, która umawia wizyty, odpowiada na pytania i zarządza Twoim kalendarzem 24/7.
             </p>
             <div className="flex items-center justify-center gap-4 pt-6">
               <Link to="/register" className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl text-lg font-medium hover:bg-surface-800 hover:text-white transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
@@ -46,13 +48,13 @@ export default function LandingPage() {
             {[
               {
                 icon: <Clock className="w-6 h-6" />,
-                title: 'Odbiera telefony 24/7',
-                desc: 'Nigdy więcej nieodebranych połączeń. Asystent pracuje poza godzinami otwarcia salonu i w weekendy.'
+                title: 'Dostępność 24/7',
+                desc: 'Nigdy więcej nieodebranych połączeń. EVA pracuje poza godzinami otwarcia salonu i w weekendy.'
               },
               {
                 icon: <Calendar className="w-6 h-6" />,
-                title: 'Automatyczne rezerwacje',
-                desc: 'Integracja z kalendarzem na żywo. Asystent widzi wolne terminy i dopisuje do nich nowych klientów.'
+                title: 'Synchronizacja Kalendarza',
+                desc: 'Integracja z kalendarzem na żywo. Wirtualna asystentka widzi wolne terminy i dopisuje do nich nowych klientów.'
               },
               {
                 icon: <ShieldCheck className="w-6 h-6" />,
