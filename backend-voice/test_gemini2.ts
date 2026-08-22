@@ -1,0 +1,1 @@
+import { GoogleGenAI } from '@google/genai'; const ai = new GoogleGenAI({ apiKey: 'mock' }); async function run() { const session = await ai.live.connect({ model: 'models/gemini-2.0-flash-exp' }); console.log(Object.keys(session)); } run().catch(console.error);

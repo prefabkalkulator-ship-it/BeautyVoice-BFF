@@ -1,0 +1,1 @@
+import { alaw, mulaw } from 'alawmulaw'; import { WaveFile } from 'wavefile'; const b = Buffer.from('//79/w==', 'base64'); const pcm = mulaw.decode(b); console.log(pcm.length); let wav = new WaveFile(); wav.fromScratch(1, 8000, '16', pcm); wav.toSampleRate(16000); console.log(wav.getSamples(false, Int16Array).length);

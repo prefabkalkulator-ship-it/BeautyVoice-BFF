@@ -1,0 +1,1 @@
+import * as ort from 'onnxruntime-node'; async function run() { const session = await ort.InferenceSession.create('src/services/voice/silero_vad.onnx'); console.log('Inputs:'); session.inputNames.forEach(n => console.log(n)); console.log('Outputs:'); session.outputNames.forEach(n => console.log(n)); } run();

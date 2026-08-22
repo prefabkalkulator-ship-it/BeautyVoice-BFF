@@ -451,7 +451,17 @@ app.post("/api/twilio-incoming", (req, res) => {
   const host = req.headers.host;
   let callerPhone = req.body.From || 'unknown';
   
-  if (callerPhone.includes('@') || callerPhone.includes('sip:')) {
+  if (callerPhone.includes('sip:')) {
+    const match = callerPhone.match(/sip:(.+)@/);
+    if (match && match[1]) {
+      callerPhone = match[1];
+    } else {
+      callerPhone = 'unknown';
+    }
+  }
+
+  // Jeśli zawiera litery (np. salon_voice), odrzuć jako nieznany
+  if (/[a-zA-Z]/.test(callerPhone)) {
     callerPhone = 'unknown';
   }
   
@@ -459,33 +469,58 @@ app.post("/api/twilio-incoming", (req, res) => {
   res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /></Stream></Connect></Response>`);
 });
 
-app.post("/api/twilio-sms", async (req, res) => {
-  const callerPhone = req.body.From;
-  const bodyText = (req.body.Body || "").trim().toUpperCase();
-
-  res.type("text/xml");
-
-  if (bodyText === "ANULUJ" && callerPhone) {
-    try {
-      const upcoming = await prisma.appointment.findFirst({
-        where: { customerPhone: callerPhone, status: 'confirmed', startTime: { gt: new Date() } },
-        orderBy: { startTime: 'asc' }
-      });
-
-      if (upcoming) {
-        await prisma.appointment.update({
-          where: { id: upcoming.id },
-          data: { status: 'cancelled' }
-        });
-        import('./services/sms/SMSService').then(sms => {
-          sms.SMSService.sendSMS(callerPhone, "Twoja rezerwacja została pomyślnie anulowana. Dziękujemy za informację!").catch(console.error);
-        });
-        return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
-      }
-    } catch (err) {
-      console.error("[Twilio SMS] Błąd:", err);
-    }
+app.get("/api/zadarma-sms", (req, res) => {
+  if (req.query.zd_echo) {
+    return res.send(req.query.zd_echo);
   }
-
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+  res.send("OK");
 });
+
+app.post("/api/zadarma-sms", async (req, res) => {
+    console.log("📨 [Zadarma SMS Webhook] Otrzymano żądanie:", req.body);
+    
+    let callerPhone = "";
+    let rawBody = "";
+
+    try {
+      if (req.body.result && typeof req.body.result === 'string') {
+        const resultObj = JSON.parse(req.body.result);
+        callerPhone = resultObj.caller_id || "";
+        rawBody = resultObj.text || "";
+      } else {
+        callerPhone = req.body.caller_id || req.body.From || "";
+        rawBody = req.body.message || req.body.text || req.body.Body || "";
+      }
+    } catch (e) {
+      console.error("❌ Błąd parsowania payloadu Zadarmy:", e);
+    }
+
+    if (callerPhone && !callerPhone.startsWith('+')) {
+      callerPhone = '+' + callerPhone;
+    }
+
+    const bodyText = rawBody.trim().toUpperCase();
+
+    if (bodyText === "ANULUJ" && callerPhone) {
+      try {
+        const upcoming = await prisma.appointment.findFirst({
+          where: { customerPhone: callerPhone, status: 'confirmed', startTime: { gt: new Date() } },
+          orderBy: { startTime: 'asc' }
+        });
+
+        if (upcoming) {
+          await prisma.appointment.delete({
+            where: { id: upcoming.id }
+          });
+          import('./services/sms/SMSService').then(sms => {
+            sms.SMSService.sendSMS(callerPhone, "Twoja rezerwacja zostala pomyslnie anulowana. Dziekujemy!").catch(console.error);
+          });
+          return res.send("OK");
+        }
+      } catch (err) {
+        console.error("❌ [Zadarma SMS Webhook] Błąd bazy danych:", err);
+      }
+    }
+
+    res.send("OK");
+  });

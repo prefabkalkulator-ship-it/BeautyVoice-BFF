@@ -120,15 +120,19 @@ export class CallOrchestrator {
   }
 
   private executeBargeInMechanism() {
-    console.log('🛑 [Barge-in] Wykryto przerwanie! Zatrzymywanie mowy.');
+    console.log('🗣️ [Barge-in] Wykryto przerwanie! Zatrzymywanie mowy.');
     this.agentSpeaking = false;
+    
+    this.audioPlayheadTimeMs = Date.now();
+    if (this.turnOffSpeakingTimeout) {
+      clearTimeout(this.turnOffSpeakingTimeout);
+      this.turnOffSpeakingTimeout = null;
+    }
     
     this.twilioWs.send(JSON.stringify({
       event: 'clear',
       streamSid: this.streamSid
     }));
-
-    this.egressMulawBuffer = [];
 
     if (this.activeAudioController) {
       this.activeAudioController.abort();
@@ -217,32 +221,38 @@ export class CallOrchestrator {
       }
     });
 
-    const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
-    this.geminiClient.sendRealtimeAudio(pcmBase64);
+    if (!this.agentSpeaking) {
+      const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
+      this.geminiClient.sendRealtimeAudio(pcmBase64);
+    }
   }
 
-  private async streamGeminiAudioToCaller(audioBase64: string) {
+  private audioPlayheadTimeMs: number = Date.now();
+  private turnOffSpeakingTimeout: NodeJS.Timeout | null = null;
+
+  private streamGeminiAudioToCaller(audioBase64: string) {
     try {
       this.agentSpeaking = true;
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
       
-      for (let i = 0; i < outMulawBuffer.length; i++) {
-        this.egressMulawBuffer.push(outMulawBuffer[i]);
-      }
-
-      while (this.egressMulawBuffer.length >= 160) {
-        if (!this.agentSpeaking) break;
-
-        const chunk = this.egressMulawBuffer.splice(0, 160);
-        const outBase64 = Buffer.from(chunk).toString('base64');
-        this.sendMediaMessage(outBase64);
-        
-        await new Promise(r => setTimeout(r, 0));
-      }
+      const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
       
-      if (this.egressMulawBuffer.length === 0) {
-        this.agentSpeaking = false;
+      // Wysyłamy całą paczkę bezpośrednio do Twilio, pozwalając mu na naturalne buforowanie bez jąkania
+      this.sendMediaMessage(Buffer.from(outMulawBuffer).toString('base64'));
+
+      const now = Date.now();
+      if (this.audioPlayheadTimeMs < now) {
+         this.audioPlayheadTimeMs = now + durationMs;
+      } else {
+         this.audioPlayheadTimeMs += durationMs;
       }
+
+      const timeUntilFinished = this.audioPlayheadTimeMs - now;
+      if (this.turnOffSpeakingTimeout) clearTimeout(this.turnOffSpeakingTimeout);
+      this.turnOffSpeakingTimeout = setTimeout(() => {
+          this.agentSpeaking = false;
+      }, timeUntilFinished);
+
     } catch (err) {
       console.error('[Egress] Błąd transformacji audio:', err);
     }

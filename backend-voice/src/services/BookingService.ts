@@ -16,7 +16,7 @@ export class BookingService {
     return [
       {
         name: 'getServicesAndPrices',
-        description: 'Pobiera aktualną listę usług salonu, ich ceny oraz czas trwania.',
+        description: 'Pobiera aktualną listę usług salonu, ich ceny, czas trwania oraz listę imion pracowników salonu.',
         parameters: {
           type: 'OBJECT',
           properties: {},
@@ -96,21 +96,27 @@ export class BookingService {
   /**
    * 1. Pobiera usługi i ceny z bazy danych dla konkretnego najemcy
    */
-  public async getServicesAndPrices(tenantId: string): Promise<ServiceItem[]> {
+  public async getServicesAndPrices(tenantId: string): Promise<{ services: ServiceItem[], staff: string[] }> {
     try {
       const services = await prisma.service.findMany({
         where: { tenantId }
       });
+      const staffList = await prisma.staffMember.findMany({
+        where: { tenantId }
+      });
       
-      return services.map(s => ({
-        id: s.id,
-        name: s.name,
-        price: s.price.toString(),
-        durationMinutes: s.durationMinutes,
-      }));
+      return {
+        services: services.map(s => ({
+          id: s.id,
+          name: s.name,
+          price: s.price.toString(),
+          durationMinutes: s.durationMinutes,
+        })),
+        staff: staffList.map(st => st.name)
+      };
     } catch (error) {
-      console.error('Błąd pobierania cennika z DB:', error);
-      throw new Error('Nie udało się pobrać cennika z bazy danych.');
+      console.error('Błąd pobierania cennika i personelu z DB:', error);
+      throw new Error('Nie udało się pobrać danych z bazy danych.');
     }
   }
 
