@@ -9,6 +9,10 @@ export interface GeminiClientCallbacks {
   voiceName: string;
   businessProfile: string;
   bookingMode: string;
+  tenantId?: string;
+  botName?: string;
+  tenantName?: string;
+  toneOfVoice?: string;
 }
 
 export class GeminiClient {
@@ -50,7 +54,7 @@ export class GeminiClient {
       setup: {
         model: "models/gemini-3.1-flash-live-preview",
         systemInstruction: {
-          parts: [{ text: getSystemPrompt("BeautyVoice Demo Salon", businessProfile, aiVoice, bookingMode) }]
+          parts: [{ text: getSystemPrompt(this.callbacks.tenantName || "BeautyVoice", businessProfile, aiVoice, bookingMode, this.callbacks.botName || "Ewa", this.callbacks.toneOfVoice || "profesjonalny") }]
         },
         tools: [{
           functionDeclarations: BookingService.getToolDefinitions(bookingMode)

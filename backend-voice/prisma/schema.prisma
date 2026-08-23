@@ -12,15 +12,18 @@ datasource db {
 }
 
 model Tenant {
-  id              String         @id @default(uuid())
-  name            String
-  phoneNumber     String         @unique
-  businessProfile String         @default("solo") // solo, team, facility
-  bookingMode     String         @default("hourly") // hourly, daily
-  aiVoice         String         @default("Aoede") // Aoede, Kore, Puck, Charon
-  createdAt       DateTime       @default(now())
+  id                  String         @id @default(uuid())
+  name                String
+  phoneNumber         String         @unique
+  assignedPhoneNumber String?        @unique // Wirtualny numer SIP dla tego salonu
+  businessProfile     String         @default("solo")
+  bookingMode         String         @default("hourly")
+  aiVoice             String         @default("Aoede")
+  botName             String         @default("Ewa")
+  toneOfVoice         String         @default("profesjonalny i przyjazny")
+  createdAt           DateTime       @default(now())
   
-  services        Service[]
+  services            Service[]
   faqEntries      FaqEntry[]
   appointments    Appointment[]
   callLogs        CallLog[]

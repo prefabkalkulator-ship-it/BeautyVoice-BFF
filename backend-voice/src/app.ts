@@ -50,7 +50,9 @@ app.put('/api/tenant', async (req, res) => {
       data: { 
         businessProfile: req.body.businessProfile, 
         aiVoice: req.body.aiVoice ?? undefined,
-        bookingMode: modeToSave 
+        bookingMode: modeToSave,
+        botName: req.body.botName ?? undefined,
+        toneOfVoice: req.body.toneOfVoice ?? undefined 
       }
     });
     res.json(updated);

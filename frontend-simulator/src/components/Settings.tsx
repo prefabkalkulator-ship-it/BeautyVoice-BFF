@@ -20,6 +20,9 @@ export default function Settings() {
   const [businessProfile, setBusinessProfile] = useState('solo');
   const [bookingMode, setBookingMode] = useState('hourly');
   const [aiVoice, setAiVoice] = useState('Aoede');
+  const [botName, setBotName] = useState('Ewa');
+  const [toneOfVoice, setToneOfVoice] = useState('profesjonalny i przyjazny');
+  const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // Zmienne do modala pracownika
@@ -43,6 +46,9 @@ export default function Settings() {
         setBusinessProfile(tData.businessProfile || 'solo');
         setBookingMode(tData.bookingMode || 'hourly');
         setAiVoice(tData.aiVoice || 'Aoede');
+        setBotName(tData.botName || 'Ewa');
+        setToneOfVoice(tData.toneOfVoice || 'profesjonalny i przyjazny');
+        setAssignedPhoneNumber(tData.assignedPhoneNumber || '');
       }
       setStaffList(sData);
       setServices(svcData);
@@ -63,7 +69,7 @@ export default function Settings() {
       await fetch('/api/tenant', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessProfile, aiVoice, bookingMode })
+        body: JSON.stringify({ businessProfile, aiVoice, bookingMode, botName, toneOfVoice })
       });
       alert('Zapisano ustawienia firmy.');
     } catch (err) {
@@ -171,6 +177,45 @@ export default function Settings() {
                 <div className="text-sm text-surface-500 mt-1">{opt.desc}</div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="mt-8 border-t border-surface-200 pt-6 mb-6">
+          <h3 className="text-xl font-serif text-surface-900 mb-6">Personalizacja Bota & Integracja (SaaS)</h3>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-1">Imię Asystenta</label>
+              <input 
+                type="text" 
+                value={botName} 
+                onChange={(e) => setBotName(e.target.value)}
+                className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary"
+              />
+              <div className="text-xs text-surface-500 mt-1">Pod tym imieniem asystent będzie witał klientów.</div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-1">Styl wypowiedzi (Ton głosu)</label>
+              <select 
+                value={toneOfVoice} 
+                onChange={(e) => setToneOfVoice(e.target.value)}
+                className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary"
+              >
+                <option value="profesjonalny i przyjazny">Profesjonalny i przyjazny</option>
+                <option value="luźny, ziomkowski">Luźny, na luzie</option>
+                <option value="bardzo formalny i kulturalny">Formalny, medyczny</option>
+              </select>
+              <div className="text-xs text-surface-500 mt-1">Decyduje o charakterze rozmowy.</div>
+            </div>
+            <div className="md:col-span-2 mt-2">
+              <label className="block text-sm font-medium text-surface-700 mb-1">Twój Wirtualny Numer Telefonu (SIP / SMS)</label>
+              <input 
+                type="text" 
+                value={assignedPhoneNumber || 'Brak przypisanego numeru - Skontaktuj się z obsługą'} 
+                readOnly
+                className="w-full rounded-xl border border-surface-200 p-2.5 bg-surface-50 outline-none text-surface-500 font-mono"
+              />
+              <div className="text-xs text-surface-500 mt-1">Klienci salonu powinni dzwonić pod ten numer. Numery są przypisywane indywidualnie dla każdego najemcy.</div>
+            </div>
           </div>
         </div>
 
