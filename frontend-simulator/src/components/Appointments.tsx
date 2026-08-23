@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import AppointmentsDaily from './AppointmentsDaily';
 import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Scissors } from 'lucide-react';
 
 interface Appointment {
@@ -30,7 +31,9 @@ export default function Appointments() {
   const [services, setServices] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [businessProfile, setBusinessProfile] = useState<string>('solo');
+  const [bookingMode, setBookingMode] = useState<string>('hourly');
   const [loading, setLoading] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<'list' | 'schedule'>('schedule');
   const [currentDate, setCurrentDate] = useState(new Date());
   
@@ -63,6 +66,7 @@ export default function Appointments() {
       setServices(svcData);
       setStaffList(staffData);
       setBusinessProfile(tenantData?.businessProfile || 'solo');
+      setBookingMode(tenantData?.bookingMode || 'hourly');
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -144,11 +148,20 @@ export default function Appointments() {
 
   const isWorkingHour = (col: any, timeStr: string) => {
     if (col.id === 'solo') return true;
-    const workingHours = col.workingHours || '08:00-20:00';
-    const [startStr, endStr] = workingHours.split('-');
-    const [startH, startM] = (startStr || '08:00').split(':').map(Number);
-    const [endH, endM] = (endStr || '20:00').split(':').map(Number);
     
+    const day = currentDate.getDay().toString();
+    
+    // Jeśli schedule to string, musimy go sparsować
+    let scheduleObj = col.schedule;
+    if (typeof scheduleObj === 'string') {
+      try { scheduleObj = JSON.parse(scheduleObj); } catch(e) {}
+    }
+    
+    const schedule = scheduleObj?.[day];
+    if (!schedule || !schedule.isWorking) return false;
+
+    const [startH, startM] = (schedule.start || '09:00').split(':').map(Number);
+    const [endH, endM] = (schedule.end || '17:00').split(':').map(Number);
     const [slotH, slotM] = timeStr.split(':').map(Number);
     
     const startMin = startH * 60 + startM;
@@ -209,15 +222,36 @@ export default function Appointments() {
     return COLOR_CODES[index % COLOR_CODES.length];
   };
 
-  if (loading) {
-    return <div className="p-8 text-surface-500 animate-pulse">Ładowanie rezerwacji...</div>;
-  }
-
   const columns = (businessProfile !== 'solo' && staffList.length > 0) 
     ? staffList 
     : [{ id: 'solo', name: 'Kalendarz Główny' }];
     
+  useEffect(() => {
+    if (loading) return;
+    let firstWorkingIndex = -1;
+    for (let i = 0; i < timeSlots.length; i++) {
+      if (columns.some(col => isWorkingHour(col, timeSlots[i]))) {
+        firstWorkingIndex = i;
+        break;
+      }
+    }
+    if (firstWorkingIndex > 0 && scrollContainerRef.current) {
+      setTimeout(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTo({ top: firstWorkingIndex * 48, behavior: 'smooth' });
+        }
+      }, 50);
+    }
+  }, [currentDate, loading, columns.length]);
+
+  if (loading) {
+    return <div className="p-8 text-surface-500 animate-pulse">Ładowanie rezerwacji...</div>;
+  }
   const dailyApps = getAppointmentsForCurrentDate();
+
+  if (bookingMode === 'daily' && businessProfile === 'facility') {
+    return <AppointmentsDaily appointments={appointments} services={services} staffList={staffList} loadData={loadData} loading={loading} />;
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
@@ -354,7 +388,7 @@ export default function Appointments() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto bg-surface-50/30 relative shadow-inner">
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-surface-50/30 relative shadow-inner">
             <div className="h-full flex flex-col" style={{ minWidth: `max(100%, ${columns.length * 180 + 80}px)` }}>
               
               <div className="flex sticky top-0 z-20 bg-white border-b border-surface-200 shadow-sm">
@@ -379,9 +413,9 @@ export default function Appointments() {
                           <div 
                             key={col.id} 
                             className={`flex-1 border-r border-surface-100 transition-colors group relative ${
-                              isWorking 
-                                ? 'hover:bg-gold-50/20 cursor-pointer bg-transparent' 
-                                : 'bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(0,0,0,0.03)_10px,rgba(0,0,0,0.03)_20px)] cursor-not-allowed'
+                                isWorking 
+                                  ? 'hover:bg-gold-50/20 cursor-pointer bg-transparent' 
+                                  : 'bg-surface-100 cursor-not-allowed'
                             }`}
                             onClick={() => {
                               if (isWorking) openAddModal(time, col.id === 'solo' ? undefined : col.id);

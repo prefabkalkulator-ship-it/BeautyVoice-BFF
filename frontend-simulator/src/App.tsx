@@ -8,6 +8,7 @@ import Services from './components/Services';
 import Faq from './components/Faq';
 import Simulator from './components/Simulator';
 import Settings from './components/Settings';
+import TimeOff from './components/TimeOff';
 import Subscription from './pages/Subscription';
 
 import './index.css';
@@ -27,6 +28,7 @@ function App() {
           <Route path="faq" element={<Faq />} />
           <Route path="simulator" element={<Simulator />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="timeoff" element={<TimeOff />} />
           <Route path="subscription" element={<Subscription />} />
         </Route>
         

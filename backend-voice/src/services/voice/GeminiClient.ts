@@ -8,6 +8,7 @@ export interface GeminiClientCallbacks {
   onToolCall: (toolCall: any) => void;
   voiceName: string;
   businessProfile: string;
+  bookingMode: string;
 }
 
 export class GeminiClient {
@@ -43,15 +44,16 @@ export class GeminiClient {
   private sendSetup() {
     const aiVoice = this.callbacks.voiceName;
     const businessProfile = this.callbacks.businessProfile;
+    const bookingMode = this.callbacks.bookingMode;
 
     const setupMessage = {
       setup: {
         model: "models/gemini-3.1-flash-live-preview",
         systemInstruction: {
-          parts: [{ text: getSystemPrompt("BeautyVoice Demo Salon", businessProfile, aiVoice) }]
+          parts: [{ text: getSystemPrompt("BeautyVoice Demo Salon", businessProfile, aiVoice, bookingMode) }]
         },
         tools: [{
-          functionDeclarations: BookingService.getToolDefinitions()
+          functionDeclarations: BookingService.getToolDefinitions(bookingMode)
         }],
         generationConfig: {
           responseModalities: ["AUDIO"],

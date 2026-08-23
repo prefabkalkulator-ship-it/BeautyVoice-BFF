@@ -16,6 +16,7 @@ model Tenant {
   name            String
   phoneNumber     String         @unique
   businessProfile String         @default("solo") // solo, team, facility
+  bookingMode     String         @default("hourly") // hourly, daily
   aiVoice         String         @default("Aoede") // Aoede, Kore, Puck, Charon
   createdAt       DateTime       @default(now())
   
@@ -26,6 +27,7 @@ model Tenant {
   staffMembers    StaffMember[]
   resources       Resource[]
   subscription    Subscription?
+  timeOffs        TimeOff[]
 }
 
 model Subscription {
@@ -48,11 +50,12 @@ model StaffMember {
   name         String
   role         String?
   isActive     Boolean        @default(true)
-  workingHours String         @default("08:00-20:00")
+  schedule     Json?
   
   tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   services     StaffService[]
   appointments Appointment[]
+  timeOffs     TimeOff[]
 }
 
 model Resource {
@@ -126,4 +129,16 @@ model CallLog {
   createdAt       DateTime @default(now())
   
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model TimeOff {
+  id           String       @id @default(uuid())
+  tenantId     String
+  staffId      String?
+  startDate    DateTime
+  endDate      DateTime
+  reason       String?
+  
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff        StaffMember? @relation(fields: [staffId], references: [id], onDelete: Cascade)
 }

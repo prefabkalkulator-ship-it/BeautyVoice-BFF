@@ -20,6 +20,7 @@ export class CallOrchestrator {
   private activeAudioController: AbortController | null = null;
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
+  private bookingMode: string = "hourly";
 
   private isReady: boolean = false;
   private twilioMessageBuffer: string[] = [];
@@ -49,6 +50,7 @@ export class CallOrchestrator {
       if (tenant) {
         this.voiceName = tenant.aiVoice || "Aoede";
         this.businessProfile = tenant.businessProfile || "solo";
+        this.bookingMode = (tenant as any).bookingMode || "hourly";
       }
     } catch (err) {
       console.error("[Orchestrator] Błąd pobierania tenanta:", err);
@@ -61,7 +63,8 @@ export class CallOrchestrator {
       onAudioReceived: (audioBase64) => this.streamGeminiAudioToCaller(audioBase64),
       onToolCall: (toolCall) => this.orchestrateToolCallWithFiller(toolCall),
       voiceName: this.voiceName,
-      businessProfile: this.businessProfile
+      businessProfile: this.businessProfile,
+      bookingMode: this.bookingMode
     });
 
     this.geminiClient.connect();
@@ -185,7 +188,7 @@ export class CallOrchestrator {
   }
 
   private async executeBusinessAction(functionCall: any) {
-    console.log(`[Backend] Wykonuję operację biznesową: ${functionCall.name}...`);
+    console.log(`[Backend] Wykonuję operację biznesową: ${functionCall.name} z argumentami:`, JSON.stringify(functionCall.args));
     
     try {
       const tenant = await prisma.tenant.findFirst();
@@ -200,9 +203,9 @@ export class CallOrchestrator {
         case 'getFAQ':
           return await bookingService.getFAQ(tenantId);
         case 'checkAvailability':
-          return { availableSlots: await bookingService.checkAvailability(tenantId, args.date, args.serviceName, args.durationMinutes, args.preferredStaffName) };
+          return { availableSlots: await bookingService.checkAvailability(tenantId, args.date, args.serviceName, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights) };
         case 'bookAppointment':
-          return await bookingService.bookAppointment(tenantId, args.customerName, args.customerPhone, args.serviceName, args.startTime, args.durationMinutes, args.preferredStaffName);
+          return await bookingService.bookAppointment(tenantId, args.customerName, args.customerPhone, args.serviceName, args.startTime, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights);
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
       }

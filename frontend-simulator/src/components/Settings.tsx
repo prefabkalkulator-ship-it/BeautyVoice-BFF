@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Save, Plus, X, User } from 'lucide-react';
 
+const defaultSchedule = {
+  "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
+  "2": { "isWorking": true, "start": "09:00", "end": "17:00" },
+  "3": { "isWorking": true, "start": "09:00", "end": "17:00" },
+  "4": { "isWorking": true, "start": "09:00", "end": "17:00" },
+  "5": { "isWorking": true, "start": "09:00", "end": "17:00" },
+  "6": { "isWorking": false, "start": "10:00", "end": "14:00" },
+  "0": { "isWorking": false, "start": "10:00", "end": "14:00" }
+};
+
 export default function Settings() {
   const [tenant, setTenant] = useState<any>(null);
   const [staffList, setStaffList] = useState<any[]>([]);
@@ -8,13 +18,14 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
 
   const [businessProfile, setBusinessProfile] = useState('solo');
+  const [bookingMode, setBookingMode] = useState('hourly');
   const [aiVoice, setAiVoice] = useState('Aoede');
   const [isSaving, setIsSaving] = useState(false);
 
   // Zmienne do modala pracownika
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [currentStaff, setCurrentStaff] = useState<any>(null);
-  const [staffForm, setStaffForm] = useState({ name: '', role: '', workingHours: '08:00-20:00', serviceIds: [] as string[] });
+  const [staffForm, setStaffForm] = useState({ name: '', role: '', schedule: JSON.parse(JSON.stringify(defaultSchedule)), serviceIds: [] as string[] });
 
   const loadData = async (initialLoad = false) => {
     try {
@@ -30,6 +41,7 @@ export default function Settings() {
       setTenant(tData);
       if (initialLoad) {
         setBusinessProfile(tData.businessProfile || 'solo');
+        setBookingMode(tData.bookingMode || 'hourly');
         setAiVoice(tData.aiVoice || 'Aoede');
       }
       setStaffList(sData);
@@ -51,7 +63,7 @@ export default function Settings() {
       await fetch('/api/tenant', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessProfile, aiVoice })
+        body: JSON.stringify({ businessProfile, aiVoice, bookingMode })
       });
       alert('Zapisano ustawienia firmy.');
     } catch (err) {
@@ -62,7 +74,7 @@ export default function Settings() {
 
   const openAddStaff = () => {
     setCurrentStaff(null);
-    setStaffForm({ name: '', role: '', workingHours: '08:00-20:00', serviceIds: [] });
+    setStaffForm({ name: '', role: '', schedule: JSON.parse(JSON.stringify(defaultSchedule)), serviceIds: [] });
     setIsStaffModalOpen(true);
   };
 
@@ -71,7 +83,7 @@ export default function Settings() {
     setStaffForm({ 
       name: staff.name, 
       role: staff.role || '', 
-      workingHours: staff.workingHours || '08:00-20:00',
+      schedule: staff.schedule || JSON.parse(JSON.stringify(defaultSchedule)),
       serviceIds: staff.services?.map((s: any) => s.serviceId) || [] 
     });
     setIsStaffModalOpen(true);
@@ -171,6 +183,28 @@ export default function Settings() {
         </button>
       </div>
 
+      {businessProfile === 'facility' && (
+        <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60 mt-6 mb-6">
+          <h3 className="text-xl font-serif text-surface-900 mb-6">Tryb kalendarza (Obiekty)</h3>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div 
+              onClick={() => setBookingMode('hourly')}
+              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${bookingMode === 'hourly' ? 'border-primary bg-gold-50/30' : 'border-surface-200 hover:border-gold-300'}`}
+            >
+              <div className="font-medium text-surface-900">Godzinowy</div>
+              <div className="text-sm text-surface-500 mt-1">Rezerwacje na konkretne godziny (np. gabinety, sale prób).</div>
+            </div>
+            <div 
+              onClick={() => setBookingMode('daily')}
+              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${bookingMode === 'daily' ? 'border-primary bg-gold-50/30' : 'border-surface-200 hover:border-gold-300'}`}
+            >
+              <div className="font-medium text-surface-900">Dobowy</div>
+              <div className="text-sm text-surface-500 mt-1">Rezerwacje na noce/doby (np. pokoje, apartamenty, hotele).</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {businessProfile !== 'solo' && (
         <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60">
           <div className="flex justify-between items-center mb-6">
@@ -229,32 +263,37 @@ export default function Settings() {
                   className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-gold-500/50"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Godziny pracy</label>
-                <div className="flex items-center gap-2">
-                  <select 
-                    value={(staffForm.workingHours || '08:00-20:00').split('-')[0]} 
-                    onChange={e => setStaffForm({...staffForm, workingHours: `${e.target.value}-${(staffForm.workingHours || '08:00-20:00').split('-')[1]}`})}
-                    className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-gold-500/50 appearance-none"
-                  >
-                    {Array.from({ length: 34 }, (_, i) => {
-                      const h = Math.floor(i / 2) + 6;
-                      const m = i % 2 === 0 ? '00' : '30';
-                      return `${h.toString().padStart(2, '0')}:${m}`;
-                    }).map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <span className="text-surface-400 font-medium">-</span>
-                  <select 
-                    value={(staffForm.workingHours || '08:00-20:00').split('-')[1]} 
-                    onChange={e => setStaffForm({...staffForm, workingHours: `${(staffForm.workingHours || '08:00-20:00').split('-')[0]}-${e.target.value}`})}
-                    className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-gold-500/50 appearance-none"
-                  >
-                    {Array.from({ length: 34 }, (_, i) => {
-                      const h = Math.floor(i / 2) + 6;
-                      const m = i % 2 === 0 ? '00' : '30';
-                      return `${h.toString().padStart(2, '0')}:${m}`;
-                    }).map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-medium text-surface-500 mb-1">Godziny pracy</label>
+                  <button type="button" onClick={() => {
+                    const mon = staffForm.schedule["1"];
+                    const newSch = { ...staffForm.schedule };
+                    ["2","3","4","5"].forEach(d => newSch[d] = { ...mon });
+                    setStaffForm({...staffForm, schedule: newSch});
+                  }} className="text-xs text-primary hover:underline">Kopiuj z Pn na Pn-Pt</button>
+                </div>
+                <div className="border border-surface-200 rounded-xl overflow-hidden text-sm">
+                  {["1", "2", "3", "4", "5", "6", "0"].map(day => {
+                    const dayNames:any = {"1": "Pn", "2": "Wt", "3": "Śr", "4": "Cz", "5": "Pt", "6": "Sb", "0": "Nd"};
+                    const ds = staffForm.schedule[day] || { isWorking: false, start: "09:00", end: "17:00" };
+                    return (
+                      <div key={day} className="flex items-center gap-2 p-2 bg-white border-b border-surface-100 last:border-0">
+                        <div translate="no" className="w-8 font-medium text-surface-600">{dayNames[day]}</div>
+                        <input type="checkbox" checked={ds.isWorking} onChange={e => {
+                          setStaffForm({...staffForm, schedule: {...staffForm.schedule, [day]: {...ds, isWorking: e.target.checked}}});
+                        }} className="rounded text-gold-600 focus:ring-gold-500" />
+                        
+                        <input type="time" value={ds.start} disabled={!ds.isWorking} onChange={e => {
+                          setStaffForm({...staffForm, schedule: {...staffForm.schedule, [day]: {...ds, start: e.target.value}}});
+                        }} className="border border-surface-200 rounded px-1 disabled:opacity-50" />
+                        <span className="text-surface-400">-</span>
+                        <input type="time" value={ds.end} disabled={!ds.isWorking} onChange={e => {
+                          setStaffForm({...staffForm, schedule: {...staffForm.schedule, [day]: {...ds, end: e.target.value}}});
+                        }} className="border border-surface-200 rounded px-1 disabled:opacity-50" />
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
               

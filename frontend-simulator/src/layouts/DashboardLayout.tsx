@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings } from 'lucide-react';
+import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 
 export default function DashboardLayout() {
@@ -13,6 +13,7 @@ export default function DashboardLayout() {
     { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
     { id: 'simulator', path: '/dashboard/simulator', label: 'Symulator', icon: MessageSquare },
     { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Firmy', icon: Settings },
+    { id: 'timeoff', path: '/dashboard/timeoff', label: 'Dni Wolne', icon: CalendarDays },
     { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
   ];
 

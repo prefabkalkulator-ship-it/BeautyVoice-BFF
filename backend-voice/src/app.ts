@@ -39,9 +39,19 @@ app.put('/api/tenant', async (req, res) => {
   try {
     const tenant = await prisma.tenant.findFirst();
     if (!tenant) return res.status(404).json({ error: 'Brak salonu' });
+    
+    let modeToSave = req.body.bookingMode ?? undefined;
+    if (req.body.businessProfile && req.body.businessProfile !== 'facility') {
+      modeToSave = 'hourly';
+    }
+
     const updated = await prisma.tenant.update({
       where: { id: tenant.id },
-      data: { businessProfile: req.body.businessProfile, aiVoice: req.body.aiVoice ?? undefined }
+      data: { 
+        businessProfile: req.body.businessProfile, 
+        aiVoice: req.body.aiVoice ?? undefined,
+        bookingMode: modeToSave 
+      }
     });
     res.json(updated);
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
@@ -65,12 +75,22 @@ app.post('/api/staff', async (req, res) => {
     const tenant = await prisma.tenant.findFirst();
     if (!tenant) return res.status(400).json({ error: 'Brak salonu' });
     
+    const defaultSchedule = {
+      "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
+      "2": { "isWorking": true, "start": "09:00", "end": "17:00" },
+      "3": { "isWorking": true, "start": "09:00", "end": "17:00" },
+      "4": { "isWorking": true, "start": "09:00", "end": "17:00" },
+      "5": { "isWorking": true, "start": "09:00", "end": "17:00" },
+      "6": { "isWorking": false, "start": "10:00", "end": "14:00" },
+      "0": { "isWorking": false, "start": "10:00", "end": "14:00" }
+    };
+
     const staff = await prisma.staffMember.create({
       data: {
         tenantId: tenant.id,
         name: req.body.name,
         role: req.body.role || 'Pracownik',
-        workingHours: req.body.workingHours || '08:00-20:00',
+        schedule: req.body.schedule || defaultSchedule,
         isActive: req.body.isActive !== undefined ? req.body.isActive : true
       }
     });
@@ -95,8 +115,8 @@ app.put('/api/staff/:id', async (req, res) => {
       role: req.body.role,
       isActive: req.body.isActive
     };
-    if (req.body.workingHours !== undefined) {
-      dataToUpdate.workingHours = req.body.workingHours;
+    if (req.body.schedule !== undefined) {
+      dataToUpdate.schedule = req.body.schedule;
     }
 
     const staff = await prisma.staffMember.update({
@@ -120,6 +140,45 @@ app.put('/api/staff/:id', async (req, res) => {
 app.delete('/api/staff/:id', async (req, res) => {
   try {
     await prisma.staffMember.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Błąd' }); }
+});
+
+// TimeOff API
+app.get('/api/timeoff', async (req, res) => {
+  try {
+    const tenant = await prisma.tenant.findFirst();
+    if (!tenant) return res.json([]);
+    const timeOffs = await prisma.timeOff.findMany({
+      where: { tenantId: tenant.id },
+      include: { staff: true },
+      orderBy: { startDate: 'asc' }
+    });
+    res.json(timeOffs);
+  } catch (err) { res.status(500).json({ error: 'Błąd' }); }
+});
+
+app.post('/api/timeoff', async (req, res) => {
+  try {
+    const tenant = await prisma.tenant.findFirst();
+    if (!tenant) return res.status(400).json({ error: 'Brak salonu' });
+    
+    const timeOff = await prisma.timeOff.create({
+      data: {
+        tenantId: tenant.id,
+        staffId: req.body.staffId || null,
+        startDate: new Date(req.body.startDate),
+        endDate: new Date(req.body.endDate),
+        reason: req.body.reason
+      }
+    });
+    res.json(timeOff);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Błąd' }); }
+});
+
+app.delete('/api/timeoff/:id', async (req, res) => {
+  try {
+    await prisma.timeOff.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
 });
@@ -501,22 +560,91 @@ app.post("/api/zadarma-sms", async (req, res) => {
 
     const bodyText = rawBody.trim().toUpperCase();
 
-    if (bodyText === "ANULUJ" && callerPhone) {
+    if (bodyText.startsWith("ANULUJ") && callerPhone) {
       try {
-        const upcoming = await prisma.appointment.findFirst({
-          where: { customerPhone: callerPhone, status: 'confirmed', startTime: { gt: new Date() } },
+        const upcomingList = await prisma.appointment.findMany({
+          where: { 
+            customerPhone: callerPhone, 
+            status: 'confirmed', 
+            startTime: { gt: new Date() } 
+          },
           orderBy: { startTime: 'asc' }
         });
 
-        if (upcoming) {
-          await prisma.appointment.delete({
-            where: { id: upcoming.id }
-          });
+        if (upcomingList.length === 0) {
+          return res.send("OK");
+        }
+
+        if (upcomingList.length === 1) {
+          const upcoming = upcomingList[0];
+          await prisma.appointment.delete({ where: { id: upcoming.id } });
           import('./services/sms/SMSService').then(sms => {
-            sms.SMSService.sendSMS(callerPhone, "Twoja rezerwacja zostala pomyslnie anulowana. Dziekujemy!").catch(console.error);
+            const timeStr = upcoming.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+            sms.SMSService.sendSMS(callerPhone, `Twoja rezerwacja na godz. ${timeStr} zostala pomyslnie anulowana. Dziekujemy!`).catch(console.error);
           });
           return res.send("OK");
         }
+
+        const msgTokens = bodyText.replace('ANULUJ', '').trim().split(/\s+/);
+        let match = null;
+
+        // 1. Spróbuj dopasować po indeksie (np. "ANULUJ 1")
+        if (msgTokens.length === 1 && /^\d$/.test(msgTokens[0])) {
+          const idx = parseInt(msgTokens[0], 10) - 1;
+          if (idx >= 0 && idx < upcomingList.length) {
+            match = upcomingList[idx];
+          }
+        }
+
+        // 2. Spróbuj dopasować po dokładnej dacie i godzinie (np. "24.08 12:30" lub "24.08.12:30")
+        if (!match) {
+          const textToMatch = msgTokens.join('').replace(/[^\d]/g, ''); // "24081230"
+          
+          if (textToMatch.length >= 8) {
+             const matchByDateTime = upcomingList.find(a => {
+               const dateStr = a.startTime.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' }).replace(/[^\d]/g, '');
+               const timeStr = a.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).replace(/[^\d]/g, '');
+               return (dateStr + timeStr) === textToMatch.substring(0, 8);
+             });
+             if (matchByDateTime) match = matchByDateTime;
+          }
+          
+          // 3. Dopasowanie po samej godzinie (pierwsza z brzegu)
+          if (!match) {
+             const timeMatch = bodyText.match(/(\d{1,2})[:.]?(\d{2})/);
+             if (timeMatch) {
+               const hour = parseInt(timeMatch[1], 10);
+               const minute = parseInt(timeMatch[2], 10);
+               const formattedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+               match = upcomingList.find(a => {
+                 const timeStr = a.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+                 return timeStr === formattedTime;
+               });
+             }
+          }
+        }
+
+        if (match) {
+          await prisma.appointment.delete({ where: { id: match.id } });
+          const dateStr = match.startTime.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' });
+          const timeStr = match.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+          import('./services/sms/SMSService').then(sms => {
+            sms.SMSService.sendSMS(callerPhone, `Rezerwacja z dnia ${dateStr} na godz. ${timeStr} zostala anulowana.`).catch(console.error);
+          });
+          return res.send("OK");
+        }
+
+        // Nie podano poprawnej godziny lub indeksu
+        const msgList = upcomingList.map((a, i) => {
+          const dateStr = a.startTime.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' });
+          const timeStr = a.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+          return `${i+1}) ${dateStr} ${timeStr}`;
+        }).join(", ");
+
+        import('./services/sms/SMSService').then(sms => {
+          sms.SMSService.sendSMS(callerPhone, `Masz kilka rezerwacji: ${msgList}. Odpisz np. 'ANULUJ 1' aby usunac pierwsza, lub 'ANULUJ 2' aby usunac druga.`).catch(console.error);
+        });
+
       } catch (err) {
         console.error("❌ [Zadarma SMS Webhook] Błąd bazy danych:", err);
       }

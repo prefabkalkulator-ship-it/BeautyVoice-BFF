@@ -12,82 +12,56 @@ export class BookingService {
   /**
    * Schematy narzędzi (Function Calling) dla Gemini
    */
-  public static getToolDefinitions() {
+  public static getToolDefinitions(bookingMode: string = "hourly") {
     return [
       {
         name: 'getServicesAndPrices',
-        description: 'Pobiera aktualną listę usług salonu, ich ceny, czas trwania oraz listę imion pracowników salonu.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {},
-        },
+        description: 'Pobiera aktualną listę usług salonu (lub pokoi), ceny oraz personel.',
+        parameters: { type: 'OBJECT', properties: {} },
       },
       {
         name: 'checkAvailability',
-        description: 'Sprawdza dostępne godziny na wizytę w danym dniu dla wybranej usługi (uwzględniając dostępność personelu).',
+        description: bookingMode === 'daily'
+          ? 'Sprawdza dostępność zasobów na doby w zadanym przedziale dat.'
+          : 'Sprawdza dostępne godziny na wizytę w danym dniu dla wybranej usługi.',
         parameters: {
           type: 'OBJECT',
           properties: {
             date: {
               type: 'STRING',
-              description: 'Data w formacie YYYY-MM-DD',
+              description: bookingMode === 'daily' ? 'Data zameldowania (przyjazdu) w formacie YYYY-MM-DD' : 'Data w formacie YYYY-MM-DD',
             },
-            serviceName: {
-              type: 'STRING',
-              description: 'Nazwa wybranej usługi',
-            },
-            durationMinutes: {
-              type: 'INTEGER',
-              description: 'Czas trwania usługi w minutach',
-            },
-            preferredStaffName: {
-              type: 'STRING',
-              description: 'Imię preferowanego pracownika (opcjonalne)',
-            },
+            serviceName: { type: 'STRING', description: 'Nazwa wybranej usługi lub pokoju' },
+            durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach (tylko w trybie hourly)' },
+            preferredStaffName: { type: 'STRING', description: 'Imię preferowanego pracownika (opcjonalne)' },
+            numberOfNights: { type: 'INTEGER', description: 'Liczba dób pobytu (tylko w trybie daily)' }
           },
-          required: ['date', 'serviceName', 'durationMinutes'],
+          required: bookingMode === 'daily' ? ['date', 'serviceName', 'numberOfNights'] : ['date', 'serviceName', 'durationMinutes'],
         },
       },
       {
         name: 'getFAQ',
-        description: 'Pobiera listę najczęściej zadawanych pytań (FAQ) i odpowiedzi z bazy wiedzy salonu.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {},
-        },
+        description: 'Pobiera listę najczęściej zadawanych pytań (FAQ).',
+        parameters: { type: 'OBJECT', properties: {} },
       },
       {
         name: 'bookAppointment',
-        description: 'Rezerwuje wizytę dla klienta w systemie.',
+        description: 'Rezerwuje wizytę lub wynajem obiektu.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            customerName: {
-              type: 'STRING',
-              description: 'Imię klienta',
-            },
-            customerPhone: {
-              type: 'STRING',
-              description: 'Numer telefonu klienta',
-            },
-            serviceName: {
-              type: 'STRING',
-              description: 'Nazwa wybranej usługi',
-            },
-            preferredStaffName: {
-              type: 'STRING',
-              description: 'Imię preferowanego pracownika (opcjonalne)',
-            },
+            customerName: { type: 'STRING', description: 'Imię klienta' },
+            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta' },
+            serviceName: { type: 'STRING', description: 'Nazwa usługi / zasobu' },
+            preferredStaffName: { type: 'STRING', description: 'Opcjonalnie' },
             startTime: {
               type: 'STRING',
-              description: 'Data i godzina rozpoczęcia wizyty w lokalnej strefie czasowej (np. 2024-05-20T14:30:00+02:00)',
+              description: 'Data i godzina rozpoczęcia/zameldowania w ISO (np. 2024-05-20T14:30:00+02:00)',
             },
-            durationMinutes: {
-              type: 'INTEGER',
-              description: 'Czas trwania usługi w minutach',
-            },
+            durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach (tylko hourly)' },
+            numberOfNights: { type: 'INTEGER', description: 'Liczba dób pobytu (tylko daily)' }
           },
-          required: ['customerName', 'customerPhone', 'serviceName', 'startTime', 'durationMinutes'],
+          required: bookingMode === 'daily' ? ['customerName', 'customerPhone', 'serviceName', 'startTime', 'numberOfNights'] : ['customerName', 'customerPhone', 'serviceName', 'startTime', 'durationMinutes'],
         },
       },
     ];
@@ -121,13 +95,15 @@ export class BookingService {
   }
 
   /**
-   * 2. Sprawdza wolne terminy w bazie danych na podstawie zapisanych rezerwacji
+   * 2. Sprawdza wolne terminy w bazie danych na podstawie bookingMode
    */
-  public async checkAvailability(tenantId: string, date: string, serviceName: string, durationMinutes: number, preferredStaffName?: string): Promise<string[]> {
+  public async checkAvailability(tenantId: string, date: string, serviceName: string, durationMinutes: number, preferredStaffName?: string, bookingMode: string = "hourly", numberOfNights?: number): Promise<string[]> {
     try {
-      const timeMin = new Date(`${date}T06:00:00+02:00`);
-      const timeMax = new Date(`${date}T22:00:00+02:00`);
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      const isTeam = tenant?.businessProfile === 'team' || tenant?.businessProfile === 'facility';
 
+      const reqDate = new Date(`${date}T00:00:00+02:00`);
+      
       const service = await prisma.service.findFirst({
         where: { tenantId, name: { contains: serviceName, mode: 'insensitive' } },
         include: { staffMembers: { include: { staff: true } } }
@@ -141,15 +117,12 @@ export class BookingService {
       const staffList = service.staffMembers.map(sm => sm.staff).filter(s => s.isActive);
       const allStaffList = await prisma.staffMember.findMany({ where: { tenantId, isActive: true } });
 
-      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-      const isTeam = tenant?.businessProfile === 'team' || tenant?.businessProfile === 'facility';
-
       if (preferredStaffName) {
         const preferred = staffList.find(s => s.name.toLowerCase().includes(preferredStaffName.toLowerCase()));
         if (preferred) {
           targetStaffIds = [preferred.id];
         } else {
-          throw new Error(`Nie znaleziono pracownika o imieniu ${preferredStaffName} wykonującego tę usługę.`);
+          throw new Error(`Nie znaleziono pokoju/pracownika o nazwie ${preferredStaffName}.`);
         }
       } else if (staffList.length > 0) {
         targetStaffIds = staffList.map(s => s.id);
@@ -157,76 +130,118 @@ export class BookingService {
         targetStaffIds = allStaffList.map(s => s.id);
       }
 
-      const appointments = await prisma.appointment.findMany({
-        where: {
-          tenantId,
-          startTime: { gte: timeMin, lt: timeMax },
-          status: 'confirmed'
-        },
-        orderBy: { startTime: 'asc' }
-      });
-
-      const availableSlots: string[] = [];
-      const slotStepMs = 30 * 60000; 
-      let currentSlot = timeMin.getTime();
-      const now = new Date().getTime();
-
-      while (currentSlot + (durationMinutes * 60000) <= timeMax.getTime()) {
-        const slotEnd = currentSlot + (durationMinutes * 60000);
+      if (bookingMode === 'daily') {
+        const nights = numberOfNights || 1;
+        const checkoutDate = new Date(reqDate.getTime() + nights * 24 * 60 * 60 * 1000);
         
-        if (currentSlot <= now) {
-          currentSlot += slotStepMs;
-          continue;
+        // Zwykle hotele: doba zaczyna się o 14:00, kończy o 11:00
+        const checkInTime = new Date(`${date}T14:00:00+02:00`);
+        const checkOutTimeStr = checkoutDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
+        const checkOutTime = new Date(`${checkOutTimeStr}T11:00:00+02:00`);
+
+        const appointments = await prisma.appointment.findMany({
+          where: {
+            tenantId,
+            status: 'confirmed',
+            OR: [
+              { startTime: { lt: checkOutTime }, endTime: { gt: checkInTime } }
+            ]
+          }
+        });
+
+        const availableResources = targetStaffIds.filter(staffId => {
+          const conflicts = appointments.filter(a => a.staffId === staffId);
+          return conflicts.length === 0;
+        });
+
+        if (availableResources.length > 0) {
+          return [`Tak, mamy wolny apartament/pokój w terminie od ${date} na ${nights} nocy.`];
+        } else {
+          return [`Niestety brak wolnych pokoi w podanym terminie.`];
         }
+      } else {
+        const dayOfWeek = new Date(`${date}T12:00:00Z`).getDay(); 
+        const nextDate = new Date(reqDate.getTime() + 24 * 60 * 60 * 1000);
 
-        let hasSlot = false;
+        const timeOffs = await prisma.timeOff.findMany({
+          where: { tenantId, startDate: { lt: nextDate }, endDate: { gte: reqDate } }
+        });
 
-        if (targetStaffIds.length > 0) {
-          for (const staffId of targetStaffIds) {
-            const staff = allStaffList.find(s => s.id === staffId);
-            const [wStart, wEnd] = (staff?.workingHours || '08:00-20:00').split('-');
-            const staffTimeMin = new Date(`${date}T${wStart}:00+02:00`).getTime();
-            const staffTimeMax = new Date(`${date}T${wEnd}:00+02:00`).getTime();
+        if (timeOffs.some(t => t.staffId === null)) return [];
 
-            if (currentSlot < staffTimeMin || slotEnd > staffTimeMax) continue;
+        const appointments = await prisma.appointment.findMany({
+          where: { tenantId, startTime: { gte: reqDate, lt: nextDate }, status: 'confirmed' },
+          orderBy: { startTime: 'asc' }
+        });
 
-            const staffAppointments = appointments.filter(a => a.staffId === staffId);
-            const conflict = staffAppointments.some(a => {
-              return (currentSlot < a.endTime.getTime() && slotEnd > a.startTime.getTime());
-            });
-            if (!conflict) {
-              hasSlot = true;
-              break;
+        const availableSlots: string[] = [];
+        const slotStepMs = 30 * 60000; 
+        
+        let currentSlot = reqDate.getTime() + 6 * 60 * 60 * 1000;
+        const dayEnd = reqDate.getTime() + 22 * 60 * 60 * 1000;
+        const now = new Date().getTime();
+
+        while (currentSlot + (durationMinutes * 60000) <= dayEnd) {
+          const slotEnd = currentSlot + (durationMinutes * 60000);
+          
+          if (currentSlot <= now) {
+            currentSlot += slotStepMs;
+            continue;
+          }
+
+          let hasSlot = false;
+
+          if (targetStaffIds.length > 0) {
+            for (const staffId of targetStaffIds) {
+              const staff = allStaffList.find(s => s.id === staffId);
+              if (timeOffs.some(t => t.staffId === staffId)) continue;
+
+              const schedule = staff?.schedule as any;
+              const daySchedule = schedule ? schedule[dayOfWeek.toString()] : null;
+              
+              if (!daySchedule || !daySchedule.isWorking) continue;
+
+              const workStartStr = daySchedule.start || "09:00";
+              const workEndStr = daySchedule.end || "17:00";
+              
+              const [startH, startM] = workStartStr.split(':').map(Number);
+              const [endH, endM] = workEndStr.split(':').map(Number);
+              
+              const staffStartMs = reqDate.getTime() + (startH * 60 + startM) * 60000;
+              const staffEndMs = reqDate.getTime() + (endH * 60 + endM) * 60000;
+
+              if (currentSlot < Date.now()) continue;
+              if (currentSlot < staffStartMs || slotEnd > staffEndMs) continue;
+
+              const staffAppointments = appointments.filter(a => a.staffId === staffId);
+              const conflict = staffAppointments.some(a => (currentSlot < a.endTime.getTime() && slotEnd > a.startTime.getTime()));
+              
+              if (!conflict) {
+                hasSlot = true;
+                break;
+              }
+            }
+          } else {
+            const staffTimeMin = reqDate.getTime() + 8 * 60 * 60 * 1000;
+            const staffTimeMax = reqDate.getTime() + 20 * 60 * 60 * 1000;
+            if (currentSlot >= staffTimeMin && slotEnd <= staffTimeMax) {
+              const conflict = appointments.some(a => (currentSlot < a.endTime.getTime() && slotEnd > a.startTime.getTime()));
+              if (!conflict) hasSlot = true;
             }
           }
-        } else {
-          // Tryb Solo - tu przyjmujemy domyślne np. 08:00-20:00
-          const staffTimeMin = new Date(`${date}T08:00:00+02:00`).getTime();
-          const staffTimeMax = new Date(`${date}T20:00:00+02:00`).getTime();
-          
-          if (currentSlot >= staffTimeMin && slotEnd <= staffTimeMax) {
-            const conflict = appointments.some(a => {
-              return (currentSlot < a.endTime.getTime() && slotEnd > a.startTime.getTime());
-            });
-            if (!conflict) hasSlot = true;
+
+          if (hasSlot) {
+            const slotDate = new Date(currentSlot);
+            const timeString = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).format(slotDate);
+            availableSlots.push(timeString);
           }
+          currentSlot += slotStepMs;
         }
-
-        if (hasSlot) {
-          const slotDate = new Date(currentSlot);
-          const timeString = new Intl.DateTimeFormat('pl-PL', {
-            hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw'
-          }).format(slotDate);
-          availableSlots.push(timeString);
-        }
-
-        currentSlot += slotStepMs;
+        return availableSlots;
       }
-      
-      return availableSlots;
-    } catch (error) {
-      console.error('Błąd sprawdzania kalendarza DB:', error);
-      throw new Error('Nie udało się sprawdzić dostępności.');
+    } catch (error: any) {
+      console.error('Błąd w checkAvailability:', error);
+      throw new Error(error.message || 'Wystąpił błąd przy sprawdzaniu dostępności.');
     }
   }
 
@@ -255,11 +270,23 @@ export class BookingService {
     serviceName: string,
     startTime: string,
     durationMinutes: number,
-    preferredStaffName?: string
+    preferredStaffName?: string,
+    bookingMode: string = "hourly",
+    numberOfNights?: number
   ): Promise<boolean> {
     try {
       const startDate = new Date(startTime);
-      const endDate = new Date(startDate.getTime() + durationMinutes * 60000);
+      let endDate: Date;
+      
+      if (bookingMode === 'daily') {
+        const nights = numberOfNights || 1;
+        // Wymeldowanie o 11:00 po X nocach
+        endDate = new Date(startDate.getTime() + nights * 24 * 60 * 60 * 1000);
+        const checkOutStr = endDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
+        endDate = new Date(`${checkOutStr}T11:00:00+02:00`);
+      } else {
+        endDate = new Date(startDate.getTime() + durationMinutes * 60000);
+      }
 
       const service = await prisma.service.findFirst({
         where: { tenantId, name: { contains: serviceName, mode: 'insensitive' } },
@@ -300,41 +327,91 @@ export class BookingService {
       }
 
       let assignedStaffId: string | null = null;
-
+      
       // 2. Weryfikacja i znalezienie Pierwszego Wolnego
-      if (targetStaffIds.length > 0) {
-        for (const staffId of targetStaffIds) {
+      if (bookingMode === 'daily') {
+        if (targetStaffIds.length > 0) {
+          for (const staffId of targetStaffIds) {
+            const conflict = await prisma.appointment.findFirst({
+              where: {
+                tenantId,
+                staffId,
+                status: 'confirmed',
+                OR: [
+                  { startTime: { lt: endDate }, endTime: { gt: startDate } }
+                ]
+              }
+            });
+            if (!conflict) {
+              assignedStaffId = staffId;
+              break;
+            }
+          }
+          if (!assignedStaffId) {
+            throw new Error(`KRYTYCZNY BŁĄD: Brak dostępnych pokoi/apartamentów w podanym terminie!`);
+          }
+        }
+      } else {
+        if (targetStaffIds.length > 0) {
+          for (const staffId of targetStaffIds) {
+            const staff = staffList.find(s => s.id === staffId);
+            if (!staff) continue;
+            
+            const reqDateStrLocal = startDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
+            const dayOfWeek = new Date(`${reqDateStrLocal}T12:00:00Z`).getDay();
+            
+            const schedule = staff.schedule as any;
+            const daySchedule = schedule ? schedule[dayOfWeek.toString()] : null;
+            
+            if (!daySchedule || !daySchedule.isWorking) continue;
+
+            const workStartStr = daySchedule.start || "09:00";
+            const workEndStr = daySchedule.end || "17:00";
+            
+            const [startH, startM] = workStartStr.split(':').map(Number);
+            const [endH, endM] = workEndStr.split(':').map(Number);
+            
+            const reqDateStr = startDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
+            const staffStartMs = new Date(`${reqDateStr}T${workStartStr.padStart(5, '0')}:00+02:00`).getTime();
+            const staffEndMs = new Date(`${reqDateStr}T${workEndStr.padStart(5, '0')}:00+02:00`).getTime();
+
+            if (startDate.getTime() < staffStartMs || endDate.getTime() > staffEndMs) {
+              continue; // Poza godzinami pracy
+            }
+
+            const conflict = await prisma.appointment.findFirst({
+              where: {
+                tenantId,
+                staffId,
+                status: 'confirmed',
+                OR: [
+                  { startTime: { lt: endDate }, endTime: { gt: startDate } }
+                ]
+              }
+            });
+            if (!conflict) {
+              assignedStaffId = staffId;
+              break;
+            }
+          }
+          
+          if (!assignedStaffId) {
+            throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już w pełni zajęty! Zaoferuj klientowi inną godzinę.`);
+          }
+        } else {
           const conflict = await prisma.appointment.findFirst({
             where: {
               tenantId,
-              staffId,
               status: 'confirmed',
               OR: [
                 { startTime: { lt: endDate }, endTime: { gt: startDate } }
               ]
             }
           });
-          if (!conflict) {
-            assignedStaffId = staffId;
-            break;
+          if (conflict) {
+            throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już zajęty!`);
           }
         }
-        
-        if (!assignedStaffId) {
-          throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już w pełni zajęty przez wszystkich pracowników! Zaoferuj klientowi inną godzinę.`);
-        }
-      } else {
-        // Tryb Solo (weryfikacja ogólna bez staffId)
-        const conflict = await prisma.appointment.findFirst({
-          where: {
-            tenantId,
-            status: 'confirmed',
-            OR: [
-              { startTime: { lt: endDate }, endTime: { gt: startDate } }
-            ]
-          }
-        });
-        if (conflict) throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już w pełni zajęty w bazie danych!`);
       }
 
       await prisma.appointment.create({
