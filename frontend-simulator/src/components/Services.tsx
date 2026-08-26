@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Scissors, Clock, DollarSign, Pencil, Check, X, Trash2 } from 'lucide-react';
+import { Tag, Clock, DollarSign, Pencil, Check, X, Trash2 } from 'lucide-react';
 
 interface ServiceItem {
   id: string;
@@ -7,6 +7,22 @@ interface ServiceItem {
   price: number;
   durationMinutes: number;
 }
+
+
+const formatDuration = (totalMin: number) => {
+  if (!totalMin) return '0 min';
+  if (totalMin >= 1440 && totalMin % 1440 === 0) return `${totalMin / 1440} dob.`;
+  if (totalMin >= 60 && totalMin % 60 === 0) return `${totalMin / 60} h`;
+  if (totalMin > 60) return `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`;
+  return `${totalMin} min`;
+};
+
+const calculateUnitAndValue = (totalMin: number) => {
+  if (!totalMin) return { val: '', unit: 'min' };
+  if (totalMin >= 1440 && totalMin % 1440 === 0) return { val: totalMin / 1440, unit: 'd' };
+  if (totalMin >= 60 && totalMin % 60 === 0) return { val: totalMin / 60, unit: 'h' };
+  return { val: totalMin, unit: 'min' };
+};
 
 export default function Services() {
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -17,6 +33,7 @@ export default function Services() {
   const [editName, setEditName] = useState('');
   const [editPrice, setEditPrice] = useState<number | ''>('');
   const [editDuration, setEditDuration] = useState<number | ''>('');
+  const [editDurationUnit, setEditDurationUnit] = useState<'min' | 'h' | 'd'>('min');
 
   const fetchServices = () => {
     fetch('/api/services')
@@ -40,7 +57,9 @@ export default function Services() {
     setEditingId(svc.id);
     setEditName(svc.name);
     setEditPrice(svc.price);
-    setEditDuration(svc.durationMinutes);
+    const { val, unit } = calculateUnitAndValue(svc.durationMinutes);
+      setEditDuration(val);
+      setEditDurationUnit(unit as any);
   };
 
   const saveEdit = async (e: React.MouseEvent) => {
@@ -54,14 +73,14 @@ export default function Services() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, price: Number(editPrice), durationMinutes: Number(editDuration) })
+        body: JSON.stringify({ name: editName, price: Number(editPrice), durationMinutes: Number(editDuration) * (editDurationUnit === 'd' ? 1440 : editDurationUnit === 'h' ? 60 : 1) })
       });
       if (res.ok) {
         const savedService = await res.json();
         if (isNewService) {
           setServices(services.map(s => s.id === editingId ? savedService : s));
         } else {
-          setServices(services.map(s => s.id === editingId ? { ...s, name: editName, price: Number(editPrice) || 0, durationMinutes: Number(editDuration) || 0 } : s));
+          setServices(services.map(s => s.id === editingId ? { ...s, name: editName, price: Number(editPrice) || 0, durationMinutes: (Number(editDuration) || 0) * (editDurationUnit === 'd' ? 1440 : editDurationUnit === 'h' ? 60 : 1) } : s));
         }
         setEditingId(null);
       }
@@ -97,9 +116,10 @@ export default function Services() {
     };
     setServices([newService, ...services]);
     setEditingId(newService.id);
-    setEditName('');
-    setEditPrice('');
-    setEditDuration('');
+      setEditName('');
+      setEditPrice('');
+      setEditDuration('');
+      setEditDurationUnit('min');
   };
 
   if (loading) {
@@ -145,7 +165,7 @@ export default function Services() {
               <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-surface-50 rounded-full transition-transform group-hover:scale-150 duration-500 -z-10" />
               
               <div className="bg-gold-50 w-12 h-12 rounded-xl flex items-center justify-center mb-6 border border-gold-100 text-gold-600 relative z-10">
-                <Scissors className="w-6 h-6" />
+                <Tag className="w-6 h-6" />
               </div>
 
               {isEditing ? (
@@ -185,19 +205,26 @@ export default function Services() {
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2 text-surface-500">
                     <Clock className="w-4 h-4" />
-                    <span>Czas (min)</span>
+                    <span>Czas</span>
                   </div>
                   {isEditing ? (
-                    <input 
-                      type="number" 
-                      step="5"
-                      value={editDuration}
-                      onChange={(e) => setEditDuration(e.target.value ? Number(e.target.value) : '')}
-                      placeholder="30"
-                      className="w-20 text-right bg-surface-50 border border-surface-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gold-500/50"
-                    />
+                    <div className="flex gap-1">
+                        <input 
+                          type="number"
+                          step="5"
+                          value={editDuration}
+                          onChange={(e) => setEditDuration(e.target.value ? Number(e.target.value) : '')}
+                          placeholder="30"
+                          className="w-16 text-right bg-surface-50 border border-surface-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gold-500/50"
+                        />
+                        <select value={editDurationUnit} onChange={(e) => setEditDurationUnit(e.target.value as any)} className="bg-surface-50 border border-surface-200 rounded-lg px-1 py-1 text-sm focus:outline-none">
+                          <option value="min">min</option>
+                          <option value="h">h</option>
+                          <option value="d">dob</option>
+                        </select>
+                      </div>
                   ) : (
-                    <span className="font-medium text-surface-900">{svc.durationMinutes} min</span>
+                    <span className="font-medium text-surface-900">{formatDuration(svc.durationMinutes)}</span>
                   )}
                 </div>
               </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import AppointmentsDaily from './AppointmentsDaily';
-import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Scissors } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag } from 'lucide-react';
 
 interface Appointment {
   id: string;
@@ -323,7 +323,7 @@ export default function Appointments() {
                 </div>
                 {app.service?.name && (
                   <div className="flex items-center gap-2 text-surface-600 border-t border-surface-200/60 pt-1.5 mt-1.5">
-                    <Scissors className="w-3.5 h-3.5 text-surface-400" />
+                    <Tag className="w-3.5 h-3.5 text-surface-400" />
                     <span className="text-xs font-medium text-surface-800 truncate">{app.service.name}</span>
                   </div>
                 )}
@@ -509,14 +509,14 @@ export default function Appointments() {
                   </div>
                   {selectedAppt.service && (
                     <div className="flex items-center gap-3 text-surface-600">
-                      <Scissors className="w-4 h-4 text-surface-400" />
+                      <Tag className="w-4 h-4 text-surface-400" />
                       <span className="text-sm">{selectedAppt.service.name}</span>
                     </div>
                   )}
                   {selectedAppt.staff && (
                     <div className="flex items-center gap-3 text-surface-600">
                       <User className="w-4 h-4 text-surface-400" />
-                      <span className="text-sm">Pracownik: {selectedAppt.staff.name}</span>
+                      <span className="text-sm">{selectedAppt.staff.name}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-3 text-surface-600">
@@ -574,13 +574,13 @@ export default function Appointments() {
                 </div>
                 {staffList.length > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-surface-500 mb-1">Pracownik</label>
+                    <label className="block text-xs font-medium text-surface-500 mb-1">Osoba / Zasób</label>
                     <select 
                       value={formData.staffId}
                       onChange={e => setFormData({...formData, staffId: e.target.value})}
                       className="w-full bg-surface-50 border border-surface-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold-500/50"
                     >
-                      <option value="">Wybierz pracownika</option>
+                      <option value="">Wybierz osobę / zasób</option>
                       {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>

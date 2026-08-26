@@ -234,7 +234,7 @@ export default function Faq() {
             <div>
               <h3 className="text-xl font-serif text-surface-900">Cześć! Jestem EVA.</h3>
               <p className="text-surface-500 text-sm">
-                Wklej tutaj swój cennik, wrzuć zdjęcie ulotki lub po prostu kliknij mikrofon i opowiedz mi o swoim salonie.
+                Wklej tutaj swój cennik, wrzuć zdjęcie ulotki lub po prostu kliknij mikrofon i opowiedz mi o swoim biznesie.
                 Jako Twoja wirtualna asystentka przetworzę te dane i nauczę się, jak wyceniać usługi przed klientami.
               </p>
             </div>
@@ -262,7 +262,7 @@ export default function Faq() {
                     }
                   }}
                   placeholder="Skopiuj tekst, upuść plik lub zacznij pisać..."
-                  className="w-full h-48 md:h-64 p-6 pt-16 bg-white/60 backdrop-blur-sm border-2 border-dashed border-surface-200 rounded-3xl focus:outline-none focus:ring-2 focus:ring-gold-500/20 focus:border-gold-400 resize-none transition-all group-hover:border-gold-300"
+                  className="w-full h-48 md:h-64 p-6 pt-[80px] md:pt-16 bg-white/60 backdrop-blur-sm border-2 border-dashed border-surface-200 rounded-3xl focus:outline-none focus:ring-2 focus:ring-gold-500/20 focus:border-gold-400 resize-none transition-all group-hover:border-gold-300"
                 />
                 
                 {/* Ozdobny plus i narzędzia zagnieżdżone w polu */}
@@ -354,7 +354,7 @@ export default function Faq() {
                   onClick={async () => {
                     try {
                       // Tymczasowo sztywne ID salonu (później zastąpimy to ID z autoryzacji)
-                      const tenantId = '00000000-0000-0000-0000-000000000000';
+                      const tenantId = localStorage.getItem('tenantId') || '00000000-0000-0000-0000-000000000000';
                       const res = await fetch('/api/knowledge/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -375,7 +375,7 @@ export default function Faq() {
                       setError(err.message);
                     }
                   }}
-                  className="bg-primary text-primary-foreground px-8 py-3 rounded-xl font-medium hover:bg-surface-800 transition-colors shadow-sm"
+                  className="bg-primary text-primary-foreground px-8 py-3 rounded-xl font-medium hover:bg-surface-800 hover:text-white transition-colors shadow-sm"
                 >
                   Zapisz i naucz mnie
                 </button>
@@ -417,20 +417,11 @@ export default function Faq() {
                 className={`glass-card rounded-2xl p-6 relative group transition-all border border-surface-200/50 ${!isEditing ? 'glass-card-hover cursor-pointer' : ''}`}
                 onClick={() => { if (!isEditing) setExpandedId(isExpanded ? null : faq.id); }}
               >
-                <div className="flex gap-4">
-                  <div className="mt-1">
-                    <div className="bg-gold-50 p-2 rounded-lg text-gold-600 border border-gold-100">
+                <div className="flex flex-col w-full gap-3">
+                  <div className="flex justify-between items-start w-full">
+                    <div className="bg-gold-50 p-2 rounded-lg text-gold-600 border border-gold-100 shrink-0">
                       <HelpCircle className="w-5 h-5" />
                     </div>
-                  </div>
-                  <div className="flex-1 w-full">
-                    <div className="flex justify-between items-start w-full">
-                      {!isEditing ? (
-                        <h3 className="text-lg font-medium text-surface-900 pr-8">{faq.question}</h3>
-                      ) : (
-                        <div className="flex-1"></div>
-                      )}
-                      
                       <div className="flex items-center gap-2">
                         {isEditing ? (
                           <>
@@ -448,10 +439,12 @@ export default function Faq() {
                         )}
                         {!isEditing && (isExpanded ? <ChevronUp className="w-5 h-5 text-surface-400" /> : <ChevronDown className="w-5 h-5 text-surface-400" />)}
                       </div>
-                    </div>
-                    
-                    {isEditing && (
-                      <div className="mt-2 w-full">
+                  </div>
+                  
+                  <div className="w-full">
+                      {!isEditing ? (
+                        <h3 className="text-lg font-medium text-surface-900 w-full">{faq.question}</h3>
+                      ) : (
                         <input 
                           type="text" 
                           value={editQuestion} 
@@ -460,11 +453,11 @@ export default function Faq() {
                           placeholder="Wpisz pytanie..."
                           className="text-lg font-medium text-surface-900 w-full bg-surface-50 border border-surface-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gold-500/50"
                         />
-                      </div>
-                    )}
+                      )}
+                  </div>
                     
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-surface-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {isExpanded && (
+                      <div className="mt-2 pt-4 border-t border-surface-100 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
                         {isEditing ? (
                           <textarea 
                             value={editAnswer} 
@@ -475,11 +468,10 @@ export default function Faq() {
                             className="w-full bg-surface-50 border border-surface-200 rounded-lg p-3 text-surface-800 focus:outline-none focus:ring-2 focus:ring-gold-500/50 resize-none"
                           />
                         ) : (
-                          <p className="text-surface-600 leading-relaxed"><span className="font-bold text-surface-800">EVA:</span> {faq.answer}</p>
+                          <p className="text-surface-600 leading-relaxed w-full"><span className="font-bold text-surface-800">EVA:</span> {faq.answer}</p>
                         )}
                       </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             );

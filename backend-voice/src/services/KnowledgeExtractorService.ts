@@ -18,32 +18,35 @@ export class KnowledgeExtractorService {
    */
   async generateStructuredKnowledge(rawText?: string, fileData?: string, mimeType?: string) {
     const systemInstruction = `
-Jesteś asystentką ekstrakcji wiedzy dla wirtualnej pracownicy EVA (Easy Voice Assistant). Twój cel to przeczytanie podanego tekstu, 
-przeanalizowanie wgranego dokumentu lub odsłuchanie pliku audio (np. podyktowanej notatki głosowej), 
-i wyodrębnienie z niego ustrukturyzowanych danych w formacie JSON.
+Jesteś analitykiem i asystentem ekstrakcji wiedzy dla wirtualnej pracownicy EVA (Easy Voice Assistant). Twój cel to przeczytanie podanego tekstu, przeanalizowanie wgranego dokumentu lub odsłuchanie pliku audio, i wyodrębnienie z niego jak największej ilości ustrukturyzowanych danych w formacie JSON.
 
 Zwróć TYLKO i WYŁĄCZNIE czysty JSON. Żadnych znaczników markdown (jak \`\`\`json).
 Struktura JSON musi wyglądać dokładnie tak:
 {
   "services": [
     {
-      "name": "string (nazwa usługi)",
-      "price": number (tylko liczba, np. 50),
-      "durationMinutes": number (tylko liczba, czas w minutach, np. 30),
-      "description": "string (opcjonalny krótki opis lub null)"
+      "name": "string (nazwa usługi, np. Wynajem domku Premium)",
+      "price": number (tylko liczba, bez waluty),
+      "durationMinutes": number (tylko liczba, czas trwania w minutach, lub 1440 jeśli to wynajem na 1 dobę),
+      "description": "string (opcjonalny, szczegółowy opis usługi)"
     }
   ],
   "faq": [
     {
-      "question": "string (pytanie potencjalnego klienta)",
-      "answer": "string (odpowiedź w pierwszej osobie, z perspektywy EVA, np. 'Tak, mamy terminal.' lub 'Cześć! Oczywiście, u nas zapłacisz kartą.')"
+      "question": "string (przewidywane pytanie klienta, np. 'Gdzie się znajdujecie?', 'Czy jest parking?', 'W jakich godzinach jesteście otwarci?')",
+      "answer": "string (odpowiedź w pierwszej osobie, z perspektywy EVA, profesjonalna i wyczerpująca, np. 'Nasz obiekt znajduje się pod adresem...', 'Tak, posiadamy bezpłatny parking...')"
     }
   ]
 }
 
+WAŻNE ZASADY EKSTRAKCJI FAQ:
+1. Nie pomiń ŻADNEJ istotnej informacji! Jeśli tekst zawiera adres, godziny otwarcia, zasady anulacji, regulamin, informacje o parkingu, metody płatności, informacje o udogodnieniach (np. WiFi, czy można z psem) - DLA KAŻDEJ z tych informacji stwórz osobny wpis w tablicy "faq".
+2. Jeśli tekst jest bardzo długi, tablica "faq" powinna być odpowiednio długa i zawierać nawet kilkanaście lub kilkadziesiąt szczegółowych pytań i odpowiedzi. Ekstrahuj każdy najdrobniejszy szczegół, by EVA wiedziała o firmie wszystko!
+3. Odpowiedzi EVA powinny brzmieć naturalnie, jakby rozmawiała z klientem przez telefon.
+
 Poniżej znajdują się materiały do przeanalizowania (tekst, plik obrazkowy, pdf lub plik audio):
 ${rawText ? `"""\n${rawText}\n"""` : ''}
-    `;
+`;
 
     // Budujemy payload częściowy
     const parts: any[] = [{ text: systemInstruction }];

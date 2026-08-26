@@ -1,3 +1,4 @@
+import { runDailyCron } from './jobs/cron';
 import { app } from './app';
 import { config } from './config/env';
 import { WebSocketServer } from 'ws';
@@ -19,3 +20,10 @@ wss.on('connection', (ws) => {
   console.log('🔗 [WSS] Nowe połączenie WebSocket przychodzące (Twilio)');
   new CallOrchestrator(ws as any);
 });
+
+// Start background cron jobs
+import { processOutboundQueue } from './jobs/OutboundProcessor';
+
+setTimeout(runDailyCron, 5000); // 5 sekund po starcie serwera
+setInterval(processOutboundQueue, 60000); // Co 1 minutę sprawdzamy kolejkę Outbound
+setInterval(runDailyCron, 24 * 60 * 60 * 1000); // Codziennie

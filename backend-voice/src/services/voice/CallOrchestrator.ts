@@ -3,6 +3,8 @@ import { AudioPipeline } from './AudioPipeline';
 import { VADService } from './VADService';
 import { GeminiClient } from './GeminiClient';
 import { prisma } from '../../prisma';
+import { PushService } from '../PushService';
+
 import { BookingService } from '../BookingService';
 
 const bookingService = new BookingService();
@@ -18,9 +20,15 @@ export class CallOrchestrator {
 
   private agentSpeaking: boolean = false;
   private activeAudioController: AbortController | null = null;
+  
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
   private bookingMode: string = "hourly";
+  private tenantName: string = "BeautyVoice";
+  private botName: string = "Ewa";
+  private toneOfVoice: string = "profesjonalny";
+  private tenantId: string = "";
+  private callStartTime: number = 0;
 
   private isReady: boolean = false;
   private twilioMessageBuffer: string[] = [];
@@ -32,25 +40,65 @@ export class CallOrchestrator {
       const msgStr = message.toString();
       if (!this.isReady) {
         this.twilioMessageBuffer.push(msgStr);
+        try {
+          const data = JSON.parse(msgStr);
+          if (data.event === 'start') {
+            const dialedNumber = data.start.customParameters?.dialedNumber || 'unknown';
+            // normalize dialedNumber by adding + if it starts with 48
+              let normalizedDialed = dialedNumber;
+              if (normalizedDialed !== 'unknown' && !normalizedDialed.startsWith('+')) {
+                normalizedDialed = '+' + normalizedDialed;
+              }
+              let tenant = await prisma.tenant.findFirst({ where: { assignedPhoneNumber: normalizedDialed } });
+            if (!tenant) tenant = await prisma.tenant.findFirst();
+            await this.initAsync(tenant);
+          }
+        } catch(e) {}
       } else {
         await this.handleTwilioMessage(msgStr);
       }
     });
 
-    this.twilioWs.on('close', () => {
+    this.twilioWs.on('close', async () => {
       if (this.geminiClient) this.geminiClient.close();
-    });
+      if (this.callStartTime && this.tenantId) {
+        const durationMs = Date.now() - this.callStartTime;
+        const minutes = Math.ceil(durationMs / 60000);
+        try {
+          
+          const updatedSub = await prisma.subscription.update({
+            where: { tenantId: this.tenantId },
+            data: { minutesUsed: { increment: minutes } },
+            include: { tenant: true }
+          });
+          console.log(`[Billing] Dodano ${minutes} min. dla ${this.tenantId}`);
+          
+          if (updatedSub.minutesUsed > updatedSub.minutesIncluded && (updatedSub.minutesUsed - minutes) <= updatedSub.minutesIncluded) {
+            // Właśnie przekroczono pakiet
+            if (updatedSub.tenant.fcmTokens && updatedSub.tenant.fcmTokens.length > 0) {
+              await PushService.sendNotification(
+                updatedSub.tenant.fcmTokens,
+                'Wykorzystano darmowe minuty! 🕒',
+                `Przekroczyłeś swój pakiet ${updatedSub.minutesIncluded} minut. Od teraz naliczana jest opłata groszowa zgodnie z Twoim planem (${updatedSub.planName}).`
+              );
+            }
+          }
 
-    this.initAsync().catch(console.error);
+        } catch(e) { console.error('[Billing error]', e); }
+      }
+    });
   }
 
-  private async initAsync() {
+  private async initAsync(tenant: any) {
     try {
-      const tenant = await prisma.tenant.findFirst();
       if (tenant) {
         this.voiceName = tenant.aiVoice || "Aoede";
         this.businessProfile = tenant.businessProfile || "solo";
-        this.bookingMode = (tenant as any).bookingMode || "hourly";
+        this.bookingMode = tenant.bookingMode || "hourly";
+        this.tenantName = tenant.name || "BeautyVoice";
+        this.botName = tenant.botName || "Ewa";
+        this.toneOfVoice = tenant.toneOfVoice || "profesjonalny";
+        this.tenantId = tenant.id;
       }
     } catch (err) {
       console.error("[Orchestrator] Błąd pobierania tenanta:", err);
@@ -64,7 +112,11 @@ export class CallOrchestrator {
       onToolCall: (toolCall) => this.orchestrateToolCallWithFiller(toolCall),
       voiceName: this.voiceName,
       businessProfile: this.businessProfile,
-      bookingMode: this.bookingMode
+      bookingMode: this.bookingMode,
+      tenantName: this.tenantName,
+      botName: this.botName,
+      toneOfVoice: this.toneOfVoice,
+      tenantId: this.tenantId
     });
 
     this.geminiClient.connect();
@@ -85,22 +137,25 @@ export class CallOrchestrator {
           break;
         case 'start':
           this.streamSid = data.start.streamSid;
+          this.callStartTime = Date.now();
           const callerPhone = data.start.customParameters?.callerPhone || 'unknown';
           
           setTimeout(async () => {
             let contextText = '';
             if (callerPhone !== 'unknown' && this.geminiClient) {
               try {
-                const lastAppt = await prisma.appointment.findFirst({
-                  where: { customerPhone: callerPhone },
-                  orderBy: { startTime: 'desc' },
-                  include: { service: true }
-                });
-                
-                if (lastAppt) {
-                  contextText = `Dzwoni stała klientka ${lastAppt.customerName} z numeru ${callerPhone}. Jej ostatnia wizyta to ${lastAppt.service.name}.`;
-                } else {
-                  contextText = `Dzwoni nowy numer: ${callerPhone}.`;
+                if (this.tenantId) {
+                  const lastAppt = await prisma.appointment.findFirst({
+                    where: { customerPhone: callerPhone, tenantId: this.tenantId },
+                    orderBy: { startTime: 'desc' },
+                    include: { service: true }
+                  });
+                  
+                  if (lastAppt) {
+                    contextText = `Dzwoni stała klientka ${lastAppt.customerName} z numeru ${callerPhone}. Jej ostatnia wizyta to ${lastAppt.service.name}.`;
+                  } else {
+                    contextText = `Dzwoni nowy numer: ${callerPhone}.`;
+                  }
                 }
               } catch (err) {
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
@@ -123,7 +178,7 @@ export class CallOrchestrator {
   }
 
   private executeBargeInMechanism() {
-    console.log('🗣️ [Barge-in] Wykryto przerwanie! Zatrzymywanie mowy.');
+    console.log('--- [Barge-in] Wykryto przerwanie! Zatrzymywanie mowy.');
     this.agentSpeaking = false;
     
     this.audioPlayheadTimeMs = Date.now();
@@ -167,7 +222,7 @@ export class CallOrchestrator {
 
     } catch (err: any) {
       if (err.message === 'Aborted') {
-        console.log('🛑 [Filler] Człowiek wtrącił się podczas sprawdzania danych.');
+        console.log('>>> [Filler] Człowiek wtrącił się podczas sprawdzania danych.');
       }
     } finally {
       this.activeAudioController = null;
@@ -191,9 +246,8 @@ export class CallOrchestrator {
     console.log(`[Backend] Wykonuję operację biznesową: ${functionCall.name} z argumentami:`, JSON.stringify(functionCall.args));
     
     try {
-      const tenant = await prisma.tenant.findFirst();
-      if (!tenant) return { error: "Brak salonu w bazie danych." };
-      const tenantId = tenant.id;
+      if (!this.tenantId) return { error: "Brak salonu w bazie danych." };
+      const tenantId = this.tenantId;
 
       const args = functionCall.args || {};
 
@@ -240,7 +294,6 @@ export class CallOrchestrator {
       
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
       
-      // Wysyłamy całą paczkę bezpośrednio do Twilio, pozwalając mu na naturalne buforowanie bez jąkania
       this.sendMediaMessage(Buffer.from(outMulawBuffer).toString('base64'));
 
       const now = Date.now();

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Edit2, X, Save } from 'lucide-react';
+import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus } from 'lucide-react';
 
 export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading }: any) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -55,7 +55,7 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
       startDate: startStr,
       endDate: endStr,
       serviceId: services[0]?.id || '',
-      staffId: staffId
+      staffId: staffId || (staffList.length > 0 ? staffList[0].id : '')
     });
     setIsEditing(false);
     setIsModalOpen(true);
@@ -120,11 +120,20 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Rezerwacje Dobowe</h2>
-          <p className="text-surface-500 mt-1">Zarządzaj apartamentami i pokojami w trybie dobowym.</p>
+          <p className="text-surface-500 mt-1">Zarządzaj obiektami i zasobami w trybie dobowym.</p>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="flex items-center bg-white border border-surface-200 rounded-lg p-1 shadow-sm">
+        
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button 
+              onClick={() => openAddModal('', 1)}
+              className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-primary/90 transition-all shadow-sm"
+            >
+              <Plus className="w-5 h-5" />
+              Nowa Rezerwacja
+            </button>
+            <div className="flex items-center bg-white border border-surface-200 rounded-lg p-1 shadow-sm">
+
             <button onClick={goPrev} className="p-2 text-surface-400 hover:text-surface-700"><ChevronLeft className="w-5 h-5"/></button>
             <div className="px-4 font-serif capitalize text-surface-900 text-lg min-w-[150px] text-center">{monthName}</div>
             <button onClick={goNext} className="p-2 text-surface-400 hover:text-surface-700"><ChevronRight className="w-5 h-5"/></button>
@@ -137,8 +146,8 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
           <div className="min-w-max">
             {/* Header row - Dates */}
             <div className="flex border-b border-surface-200 bg-surface-50">
-              <div className="w-48 shrink-0 p-4 font-serif text-surface-900 flex items-center border-r border-surface-200 sticky left-0 z-30 bg-surface-50 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                Pokoje / Apartamenty
+              <div className="w-24 sm:w-32 lg:w-48 shrink-0 p-2 lg:p-4 font-serif text-xs lg:text-base text-surface-900 flex items-center border-r border-surface-200 sticky left-0 z-30 bg-surface-50 shadow-[2px_0_5px_rgba(0,0,0,0.05)] truncate overflow-hidden">
+                Obiekty / Zasoby
               </div>
               <div className="flex-1 flex">
                 {daysArray.map(day => (
@@ -153,7 +162,7 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
             {/* Rows - Resources */}
             {staffList.map((room: any) => (
               <div key={room.id} className="flex border-b border-surface-100 relative group min-h-[64px]">
-                <div className="w-48 shrink-0 p-4 font-medium text-surface-800 bg-white z-30 border-r border-surface-200 sticky left-0 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                <div className="w-24 sm:w-32 lg:w-48 shrink-0 p-2 lg:p-4 font-medium text-xs lg:text-base text-surface-800 bg-white z-30 border-r border-surface-200 sticky left-0 shadow-[2px_0_5px_rgba(0,0,0,0.05)] truncate overflow-hidden" title={room.name}>
                   {room.name}
                 </div>
                 <div className="flex-1 flex relative bg-white">
@@ -239,22 +248,22 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 mb-1">Przyjazd</label>
+                    <label className="block text-sm font-medium text-surface-700 mb-1">Początek</label>
                     <input type="date" required value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-surface-700 mb-1">Wyjazd</label>
+                    <label className="block text-sm font-medium text-surface-700 mb-1">Koniec</label>
                     <input type="date" required value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 mb-1">Pokój/Zasób</label>
+                  <label className="block text-sm font-medium text-surface-700 mb-1">Obiekt / Zasób</label>
                   <select value={formData.staffId} onChange={e => setFormData({...formData, staffId: e.target.value})} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5">
                     {staffList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 mb-1">Typ pokoju (Usługa)</label>
+                  <label className="block text-sm font-medium text-surface-700 mb-1">Usługa / Kategoria</label>
                   <select value={formData.serviceId} onChange={e => setFormData({...formData, serviceId: e.target.value})} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5">
                     {services.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.price} zł/noc)</option>)}
                   </select>

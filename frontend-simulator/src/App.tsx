@@ -6,6 +6,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Appointments from './components/Appointments';
 import Services from './components/Services';
 import Faq from './components/Faq';
+import Customers from './components/Customers';
 import Simulator from './components/Simulator';
 import Settings from './components/Settings';
 import TimeOff from './components/TimeOff';
@@ -25,6 +26,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard/appointments" replace />} />
           <Route path="appointments" element={<Appointments />} />
           <Route path="services" element={<Services />} />
+          <Route path="customers" element={<Customers />} />
           <Route path="faq" element={<Faq />} />
           <Route path="simulator" element={<Simulator />} />
           <Route path="settings" element={<Settings />} />

@@ -1,0 +1,20 @@
+﻿{
+  "name": "EasyVoiceAssistant",
+  "short_name": "EasyVoice",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0d9488",
+  "icons": [
+    {
+      "src": "/EVA_favicon_192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/EVA_favicon_512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

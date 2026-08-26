@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
+import { Download, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Bot, Calendar, Clock, Star, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
+import { Bot, Calendar, Clock, Star, ArrowRight, ShieldCheck, Zap , Phone } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -8,9 +10,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-surface-200/50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gold-100 text-gold-600 flex items-center justify-center">
-              <Bot className="w-6 h-6" />
-            </div>
+            <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-10 h-10 rounded-xl shadow-sm" />
             <span className="font-serif text-2xl text-surface-900 flex items-baseline">
               E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
             </span>
@@ -35,12 +35,17 @@ export default function LandingPage() {
             <p className="mt-6 text-lg text-surface-600 leading-relaxed max-w-2xl mx-auto">
               Zatrudnij EVA – wirtualną asystentkę, która umawia wizyty, odpowiada na pytania i zarządza Twoim kalendarzem 24/7.
             </p>
-            <div className="flex items-center justify-center gap-4 pt-6">
-              <Link to="/register" className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl text-lg font-medium hover:bg-surface-800 hover:text-white transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
-                Wypróbuj 7 dni za darmo
-                <ArrowRight className="w-5 h-5" />
-              </Link>
-            </div>
+            
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+                <a href="tel:+48343433088" className="bg-white text-surface-900 border-2 border-surface-200 px-8 py-4 rounded-2xl text-lg font-medium hover:border-gold-500 hover:text-gold-600 transition-all shadow-sm flex items-center gap-3 w-full sm:w-auto justify-center">
+                  <Phone className="w-5 h-5 text-gold-500" />
+                  Przetestuj asystenta
+                </a>
+                <Link to="/register" className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl text-lg font-medium hover:bg-surface-800 hover:text-white transition-all shadow-lg hover:shadow-xl flex items-center gap-2 w-full sm:w-auto justify-center">
+                  Rozpocznij korzystanie
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+              </div>
           </div>
 
           {/* Features Grid */}
@@ -58,7 +63,7 @@ export default function LandingPage() {
               },
               {
                 icon: <ShieldCheck className="w-6 h-6" />,
-                title: 'Baza wiedzy salonu',
+                title: 'Baza wiedzy firmy',
                 desc: 'Zna cennik, usługi i zasady. Odpowie na każde standardowe pytanie klienta bez Twojego udziału.'
               }
             ].map((feat, i) => (

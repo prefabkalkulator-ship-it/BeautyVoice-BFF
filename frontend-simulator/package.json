@@ -13,9 +13,11 @@
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/vite": "^4.3.3",
     "@vapi-ai/web": "^2.6.2",
+    "firebase": "^12.18.0",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.18.2",
     "tailwindcss": "^4.3.3"
   },

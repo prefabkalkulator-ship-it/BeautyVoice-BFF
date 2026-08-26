@@ -1,23 +1,65 @@
 import { useState } from 'react';
-import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays } from 'lucide-react';
+import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { requestForToken, onMessageListener } from '../firebase';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
+  
+  useEffect(() => {
+    const tid = localStorage.getItem('tenantId');
+    if (!tid) {
+      navigate('/login');
+      return;
+    }
+    // Verify tenant still exists in DB
+    fetch('/api/tenant').then(r => {
+      if (r.status === 404 || r.status === 401) {
+        localStorage.removeItem('tenantId');
+        navigate('/login');
+      }
+    }).catch(() => {});
+  }, [navigate]);
+
+
+  const [minutesUsed, setMinutesUsed] = useState(0);
+
+  useEffect(() => {
+    requestForToken();
+    onMessageListener().then((payload: any) => {
+      toast.success(`${payload?.notification?.title}: ${payload?.notification?.body}`, { duration: 6000 });
+    }).catch(err => console.log('Błąd listenera', err));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/subscription')
+      .then(r => r.json())
+      .then(d => {
+        if (d && typeof d.minutesUsed === 'number') {
+          setMinutesUsed(d.minutesUsed);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const tabs = [
     { id: 'appointments', path: '/dashboard/appointments', label: 'Rezerwacje', icon: Calendar },
     { id: 'services', path: '/dashboard/services', label: 'Usługi', icon: ClipboardList },
+    { id: 'customers', path: '/dashboard/customers', label: 'Klienci', icon: Users },
     { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
-    { id: 'simulator', path: '/dashboard/simulator', label: 'Symulator', icon: MessageSquare },
+    { id: 'simulator', path: '/dashboard/simulator', label: 'Marketing AI', icon: MessageSquare },
     { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Firmy', icon: Settings },
     { id: 'timeoff', path: '/dashboard/timeoff', label: 'Dni Wolne', icon: CalendarDays },
     { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
   ];
 
   const handleLogout = () => {
+    localStorage.removeItem('tenantId');
     // TODO: supabase.auth.signOut()
     navigate('/login');
   };
@@ -28,7 +70,7 @@ export default function DashboardLayout() {
       {/* Mobile Header */}
       <div className="md:hidden bg-white border-b border-surface-200 p-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-2">
-          <Phone className="text-gold-600 w-6 h-6" />
+          <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-8 h-8 rounded-lg" />
           <span className="font-serif font-semibold text-lg text-surface-900 flex items-baseline">
             E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
           </span>
@@ -44,9 +86,7 @@ export default function DashboardLayout() {
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <div className="p-6 border-b border-surface-100 flex items-center gap-3">
-          <div className="bg-gold-50 p-2 rounded-xl text-gold-600">
-            <Phone className="w-6 h-6" />
-          </div>
+          <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-10 h-10 rounded-xl shadow-sm" />
           <div>
             <h1 className="font-serif font-semibold text-xl text-surface-900 leading-none flex items-baseline">
               E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
@@ -81,6 +121,10 @@ export default function DashboardLayout() {
           </nav>
 
           <div className="border-t border-surface-100 pt-4 mt-auto">
+             <div className="px-3 mb-4 flex items-center justify-between text-sm text-surface-600 bg-surface-50 p-2.5 rounded-xl border border-surface-200 shadow-sm">
+               <span className="font-medium">Rozmowy:</span>
+               <span className="font-bold text-surface-900">{minutesUsed} min.</span>
+             </div>
              <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
@@ -92,6 +136,7 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
+      <Toaster />
       {/* Main Content */}
       <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
         <Outlet />

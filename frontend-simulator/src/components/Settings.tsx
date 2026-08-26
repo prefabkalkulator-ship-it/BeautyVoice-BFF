@@ -163,10 +163,10 @@ export default function Settings() {
           <h4 className="font-medium text-surface-900 mb-3">Wybór głosu Asystenta AI</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
-              { id: 'Aoede', title: 'EVA - Głos Żeński 1', desc: 'Spokojny, profesjonalny.' },
-              { id: 'Kore', title: 'EVA - Głos Żeński 2', desc: 'Młodszy, energiczny.' },
-              { id: 'Puck', title: 'EVAN - Głos Męski 1', desc: 'Młody, energiczny.' },
-              { id: 'Charon', title: 'EVAN - Głos Męski 2', desc: 'Głęboki, dojrzały, autorytatywny.' }
+              { id: 'Aoede', title: 'Głos Żeński 1', desc: 'Spokojny, profesjonalny.' },
+              { id: 'Kore', title: 'Głos Żeński 2', desc: 'Młodszy, energiczny.' },
+              { id: 'Puck', title: 'Głos Męski 1', desc: 'Młody, energiczny.' },
+              { id: 'Charon', title: 'Głos Męski 2', desc: 'Głęboki, dojrzały, autorytatywny.' }
             ].map(opt => (
               <div 
                 key={opt.id}
@@ -181,7 +181,7 @@ export default function Settings() {
         </div>
 
         <div className="mt-8 border-t border-surface-200 pt-6 mb-6">
-          <h3 className="text-xl font-serif text-surface-900 mb-6">Personalizacja Bota & Integracja (SaaS)</h3>
+          <h3 className="text-xl font-serif text-surface-900 mb-6">Personalizacja Asystenta</h3>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1">Imię Asystenta</label>
@@ -214,7 +214,7 @@ export default function Settings() {
                 readOnly
                 className="w-full rounded-xl border border-surface-200 p-2.5 bg-surface-50 outline-none text-surface-500 font-mono"
               />
-              <div className="text-xs text-surface-500 mt-1">Klienci salonu powinni dzwonić pod ten numer. Numery są przypisywane indywidualnie dla każdego najemcy.</div>
+              <div className="text-xs text-surface-500 mt-1">Klienci firmy powinni dzwonić pod ten numer. Numery są przypisywane indywidualnie dla każdego najemcy.</div>
             </div>
           </div>
         </div>
@@ -291,18 +291,18 @@ export default function Settings() {
             <button onClick={() => setIsStaffModalOpen(false)} className="absolute top-4 right-4 p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg">
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-xl font-serif text-surface-900 mb-4">{currentStaff ? 'Edytuj Pracownika' : 'Dodaj Pracownika'}</h3>
+            <h3 className="text-xl font-serif text-surface-900 mb-4">{currentStaff ? (businessProfile === 'facility' ? 'Edytuj zasób' : 'Edytuj pracownika') : (businessProfile === 'facility' ? 'Dodaj zasób / obiekt' : 'Dodaj pracownika')}</h3>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Imię i nazwisko / Nazwa zasobu</label>
+                <label className="block text-xs font-medium text-surface-500 mb-1">{businessProfile === 'facility' ? 'Nazwa zasobu (np. Mieszkanie, Sala, Sprzęt)' : 'Imię i nazwisko'}</label>
                 <input 
                   type="text" value={staffForm.name} onChange={e => setStaffForm({...staffForm, name: e.target.value})}
                   className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-gold-500/50"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Rola (np. Stylista / Gabinet)</label>
+                <label className="block text-xs font-medium text-surface-500 mb-1">{businessProfile === 'facility' ? 'Kategoria (np. Budynek, Pojazd)' : 'Rola / Stanowisko'}</label>
                 <input 
                   type="text" value={staffForm.role} onChange={e => setStaffForm({...staffForm, role: e.target.value})}
                   className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-gold-500/50"

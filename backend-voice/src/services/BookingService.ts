@@ -14,7 +14,35 @@ export class BookingService {
    */
   public static getToolDefinitions(bookingMode: string = "hourly") {
     return [
-      {
+
+        {
+          name: 'create_informational_campaign',
+          description: 'Przygotowuje kampanię informacyjną lub promocyjną (SMS / Voice) dla wybranej grupy lub pojedynczego klienta. Zwróć to ZAWSZE, gdy właściciel prosi o wysłanie promocji, powiadomień lub SMSów.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              campaign_name: { type: 'STRING', description: 'Nazwa robocza kampanii' },
+              channel: { type: 'STRING', description: 'Kanał: sms lub voice_call' },
+              audience_tags: { type: 'STRING', description: 'Tagi odbiorców np. #vip (rozdzielone przecinkami) lub puste jeśli do wszystkich' },
+              message_content: { type: 'STRING', description: 'Treść wiadomości SMS lub instrukcja dla Voice Bota' },
+              scheduled_time: { type: 'STRING', description: 'Kiedy wysłać (np. now, 2026-05-01)' }
+            },
+            required: ['channel', 'message_content']
+          }
+        },
+        {
+          name: 'schedule_confirmation_flow',
+          description: 'Uruchamia interaktywny mechanizm potwierdzania rezerwacji.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              target_scope: { type: 'STRING', description: 'Zakres: tomorrow_appointments, specific_date' },
+              confirmation_method: { type: 'STRING', description: 'Metoda: sms_two_way, voice_interactive' }
+            },
+            required: ['target_scope', 'confirmation_method']
+          }
+        },
+        {
         name: 'getServicesAndPrices',
         description: 'Pobiera aktualną listę usług salonu (lub pokoi), ceny oraz personel.',
         parameters: { type: 'OBJECT', properties: {} },
@@ -414,11 +442,23 @@ export class BookingService {
         }
       }
 
-      await prisma.appointment.create({
+      
+      // 3.5. Find or create Customer, logic for Mini-CRM
+      let customer = await prisma.customer.findFirst({
+        where: { tenantId, phone: customerPhone }
+      });
+      if (!customer) {
+        customer = await prisma.customer.create({
+          data: { tenantId, name: customerName, phone: customerPhone, tags: [] }
+        });
+      }
+
+      const createdAppt = await prisma.appointment.create({
         data: {
           tenantId,
           serviceId: service.id,
           staffId: assignedStaffId,
+          customerId: customer.id,
           customerName,
           customerPhone,
           startTime: startDate,
@@ -426,6 +466,25 @@ export class BookingService {
           status: 'confirmed'
         }
       });
+
+      // Update tags & lastVisit
+      const visitCount = await prisma.appointment.count({
+        where: { tenantId, customerId: customer.id, status: 'confirmed' }
+      });
+      const newTags = new Set(customer.tags || []);
+      if (visitCount >= 3) newTags.add('#lojalny');
+      if (visitCount >= 5) newTags.add('#vip');
+
+      // Add a service-specific tag based on service name mapping if we wanted, but we'll stick to frequency tags for now.
+      
+      await prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          lastVisitAt: startDate,
+          tags: Array.from(newTags)
+        }
+      });
+
 
       // 4. Wyślij powiadomienie SMS o potwierdzeniu z możliwością anulowania
       const formattedDate = startDate.toLocaleString('pl-PL', { 

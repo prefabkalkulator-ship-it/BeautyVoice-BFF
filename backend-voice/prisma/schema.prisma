@@ -21,6 +21,9 @@ model Tenant {
   aiVoice             String         @default("Aoede")
   botName             String         @default("Ewa")
   toneOfVoice         String         @default("profesjonalny i przyjazny")
+  pinCode             String?
+  termsAcceptedAt     DateTime?
+  fcmTokens           String[]
   createdAt           DateTime       @default(now())
   
   services            Service[]
@@ -31,6 +34,9 @@ model Tenant {
   resources       Resource[]
   subscription    Subscription?
   timeOffs        TimeOff[]
+  customers       Customer[]
+  campaigns       Campaign[]
+  outboundQueues  OutboundQueue[]
 }
 
 model Subscription {
@@ -43,6 +49,10 @@ model Subscription {
   minutesUsed          Int      @default(0)
   aiGenerationsUsed    Int      @default(0)
   status               String   @default("active")
+  pausedAt             DateTime?
+  pausedUntil          DateTime?
+  canceledAt           DateTime?
+  currentPeriodEnd     DateTime?
   
   tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
@@ -110,6 +120,7 @@ model Appointment {
   serviceId     String
   staffId       String?
   resourceId    String?
+  customerId    String?
   customerName  String
   customerPhone String
   startTime     DateTime
@@ -120,6 +131,7 @@ model Appointment {
   service       Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   staff         StaffMember? @relation(fields: [staffId], references: [id], onDelete: SetNull)
   resource      Resource?    @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  customer      Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
 }
 
 model CallLog {
@@ -144,4 +156,61 @@ model TimeOff {
   
   tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   staff        StaffMember? @relation(fields: [staffId], references: [id], onDelete: Cascade)
+}
+
+
+model Customer {
+  id            String        @id @default(uuid())
+  tenantId      String
+  name          String
+  phone         String
+  tags          String[]
+  notes         String?       @db.Text
+  lastVisitAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments  Appointment[]
+  campaignLogs  CampaignLog[]
+}
+
+model Campaign {
+  id             String        @id @default(uuid())
+  tenantId       String
+  name           String
+  type           String        // 'sms' | 'voice'
+  status         String        // 'draft' | 'scheduled' | 'running' | 'completed'
+  messageContent String        @db.Text
+  scheduledAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  logs           CampaignLog[]
+}
+
+model CampaignLog {
+  id         String    @id @default(uuid())
+  campaignId String
+  customerId String
+  status     String    // 'pending' | 'sent' | 'failed'
+  sentAt     DateTime?
+
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model OutboundQueue {
+  id             String    @id @default(uuid())
+  tenantId       String
+  targetPhone    String
+  channel        String    // 'sms' | 'voice'
+  payload        Json
+  status         String    // 'pending' | 'processing' | 'done' | 'failed'
+  scheduledFor   DateTime
+  processedAt    DateTime?
+  errorMessage   String?
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

@@ -1,14 +1,22 @@
-import { useState } from 'react';
-import { Bot, Phone, Building2, ArrowRight, Loader2, X } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+﻿import { useState, useEffect } from 'react';
+import { Phone, Building2, ArrowRight, Loader2, X, Lock } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  const [isLogin, setIsLogin] = useState(location.pathname === '/login');
   
   const [salonName, setSalonName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [pinCode, setPinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setIsLogin(location.pathname === '/login');
+  }, [location]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,15 +24,32 @@ export default function Auth() {
     setError('');
 
     try {
-      // Symulacja rejestracji konta i automatycznego logowania
-      // W przyszłości Supabase OTP via SMS
-      setTimeout(() => {
-        setLoading(false);
-        navigate('/dashboard');
-      }, 1000);
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin 
+        ? { phoneNumber, pinCode }
+        : { name: salonName, phoneNumber, pinCode };
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      
+      const data = await res.json();
+      
+if (!res.ok) {
+        throw new Error(data.error || 'Błąd uwierzytelniania');
+      }
+
+      if (data.tenantId) {
+        localStorage.setItem('tenantId', data.tenantId);
+      }
+      
+      navigate('/dashboard/subscription');
       
     } catch (err: any) {
       setError(err.message || 'Wystąpił błąd podczas uwierzytelniania');
+    } finally {
       setLoading(false);
     }
   };
@@ -37,18 +62,16 @@ export default function Auth() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <Link to="/" className="flex items-center justify-center gap-3 group">
-          <div className="w-12 h-12 rounded-2xl bg-gold-100 text-gold-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-            <Bot className="w-7 h-7" />
-          </div>
+          <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-12 h-12 rounded-2xl shadow-sm group-hover:scale-105 transition-transform" />
           <span className="font-serif text-3xl text-surface-900 flex items-baseline">
             E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
           </span>
         </Link>
         <h2 className="mt-8 text-center text-3xl font-serif text-surface-900 tracking-tight">
-          Stwórz darmowe konto
+          {isLogin ? 'Zaloguj się' : 'Załóż konto'}
         </h2>
         <p className="mt-2 text-center text-sm text-surface-500">
-          Uzupełnij dwa pola i zacznij testować wirtualną asystentkę od zaraz.
+          {isLogin ? 'Wprowadź swój numer telefonu i kod PIN.' : 'Uzupełnij dane, wybierz plan abonamentowy i zatrudnij asystentkę od zaraz.'}
         </p>
       </div>
 
@@ -61,22 +84,24 @@ export default function Auth() {
               </div>
             )}
             
-            <div>
-              <label className="block text-sm font-medium text-surface-700">Nazwa salonu</label>
-              <div className="mt-2 relative rounded-xl shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-                  <Building2 className="h-5 w-5" />
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-surface-700">Nazwa firmy</label>
+                <div className="mt-2 relative rounded-xl shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <input
+                    type="text"
+                    required={!isLogin}
+                    value={salonName}
+                    onChange={(e) => setSalonName(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                    placeholder="Studio Urody EVA"
+                  />
                 </div>
-                <input
-                  type="text"
-                  required
-                  value={salonName}
-                  onChange={(e) => setSalonName(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
-                  placeholder="Studio Urody EVA"
-                />
               </div>
-            </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-surface-700">Numer telefonu</label>
@@ -95,6 +120,23 @@ export default function Auth() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-surface-700">Zabezpieczenie (PIN / NIP)</label>
+              <div className="mt-2 relative rounded-xl shadow-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <input
+                  type="password"
+                  required
+                  value={pinCode}
+                  onChange={(e) => setPinCode(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                  placeholder="****"
+                />
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -102,16 +144,27 @@ export default function Auth() {
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                 <>
-                  Rozpocznij 7-dniowy okres próbny
+                  {isLogin ? 'Wejdź na konto' : 'Załóż konto i wybierz plan'}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
           
-           <p className="mt-6 text-center text-xs text-surface-400">
-             Klikając "Rozpocznij", akceptujesz nasz Regulamin oraz Politykę Prywatności. Do rozpoczęcia okresu próbnego nie wymagamy podpięcia karty kredytowej.
-           </p>
+          <div className="mt-6 text-center">
+            <button 
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-sm text-gold-600 hover:text-gold-700 font-medium transition-colors"
+            >
+              {isLogin ? 'Nie masz konta? Zarejestruj się' : 'Masz już konto? Zaloguj się'}
+            </button>
+          </div>
+          
+           {!isLogin && (
+             <p className="mt-6 text-center text-xs text-surface-400">
+               Klikając "Załóż konto", akceptujesz nasz Regulamin oraz Politykę Prywatności.
+             </p>
+           )}
         </div>
       </div>
     </div>
