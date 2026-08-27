@@ -112,8 +112,14 @@ export class GeminiService {
                 args.serviceName,
                 args.startTime,
                 args.durationMinutes,
-                args.preferredStaffName
+                args.preferredStaffName,
+                'hourly',
+                undefined,
+                args.promoCode
               );
+              toolResult = { success };
+            } else if (name === 'updateCustomerSource') {
+              const success = await bookingService.updateCustomerSource(tenantId, args.customerPhone, args.source);
               toolResult = { success };
             }
           } catch (err: any) {

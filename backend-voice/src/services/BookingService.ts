@@ -9,14 +9,39 @@ export interface ServiceItem {
 }
 
 export class BookingService {
+  public async updateCustomerSource(tenantId: string, customerPhone: string, source: string): Promise<boolean> {
+    try {
+      const customer = await prisma.customer.findFirst({ where: { tenantId, phone: customerPhone } });
+      if (customer) {
+        await prisma.customer.update({ where: { id: customer.id }, data: { source } });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
   /**
    * Schematy narzędzi (Function Calling) dla Gemini
    */
   public static getToolDefinitions(bookingMode: string = "hourly") {
     return [
 
-        {
-          name: 'create_informational_campaign',
+        
+          {
+            name: 'updateCustomerSource',
+            description: 'Używaj TEGO narztdzia wycznie wtedy, gdy zapytasz nowego klienta "Skd si o nas dowiedziae?" a on odpowie (np. z Google, od znajomego, z Facebooka).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                customerPhone: { type: 'STRING', description: 'Numer telefonu klienta' },
+                source: { type: 'STRING', description: 'Źrdo pozyskania klienta (np. Google, Facebook, polecenie, ulotka)' }
+              },
+              required: ['customerPhone', 'source']
+            }
+          },
+          {
+            name: 'create_informational_campaign',
           description: 'Przygotowuje kampanię informacyjną lub promocyjną (SMS / Voice) dla wybranej grupy lub pojedynczego klienta. Zwróć to ZAWSZE, gdy właściciel prosi o wysłanie promocji, powiadomień lub SMSów.',
           parameters: {
             type: 'OBJECT',
@@ -315,7 +340,8 @@ export class BookingService {
     durationMinutes: number,
     preferredStaffName?: string,
     bookingMode: string = "hourly",
-    numberOfNights?: number
+    numberOfNights?: number,
+    promoCode?: string
   ): Promise<boolean> {
     try {
       const startDate = new Date(startTime);
@@ -478,7 +504,8 @@ export class BookingService {
           customerPhone,
           startTime: startDate,
           endTime: endDate,
-          status: 'confirmed'
+          status: 'confirmed',
+          promoCode: promoCode || null
         }
       });
 

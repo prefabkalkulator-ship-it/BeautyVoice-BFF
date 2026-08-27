@@ -126,6 +126,7 @@ model Appointment {
   startTime     DateTime
   endTime       DateTime
   status        String       @default("confirmed") // confirmed, cancelled
+    promoCode     String?
   
   tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   service       Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
