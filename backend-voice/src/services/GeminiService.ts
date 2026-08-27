@@ -88,7 +88,7 @@ export class GeminiService {
 
           try {
             
-            if (name === 'create_informational_campaign' || name === 'schedule_confirmation_flow') {
+            if (name === 'create_informational_campaign' || name === 'schedule_confirmation_flow' || name === 'create_last_minute_offer') {
               return JSON.stringify({
                 _isActionCard: true,
                 toolName: name,

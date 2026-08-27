@@ -69,8 +69,19 @@ app.post('/api/campaigns/execute', async (req, res) => {
       let whereClause: any = { tenantId: tenant.id };
       if (audience_tags) {
         const tagsArray = audience_tags.split(',').map((t: string) => t.trim());
-        if (tagsArray.length > 0) {
-           whereClause.tags = { hasSome: tagsArray };
+        const normalTags = tagsArray.filter(t => t.toLowerCase() !== '#uśpieni' && t.toLowerCase() !== 'uśpieni');
+        
+        if (normalTags.length > 0) {
+           whereClause.tags = { hasSome: normalTags };
+        }
+        
+        if (tagsArray.some(t => t.toLowerCase() === '#uśpieni' || t.toLowerCase() === 'uśpieni')) {
+           const ninetyDaysAgo = new Date();
+           ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+           whereClause.OR = [
+             { lastVisitAt: { lt: ninetyDaysAgo } },
+             { lastVisitAt: null, createdAt: { lt: ninetyDaysAgo } }
+           ];
         }
       }
 
@@ -94,6 +105,80 @@ app.post('/api/campaigns/execute', async (req, res) => {
       return res.json({ success: true, customersCount: customers.length, campaignId: campaign.id });
     } 
     
+    
+    if (toolName === 'create_last_minute_offer') {
+      const { campaign_name, audience_tags, message_content, target_datetime } = args;
+      
+      const campaign = await prisma.campaign.create({
+        data: {
+          tenantId: tenant.id,
+          name: campaign_name || 'Last Minute Offer',
+          type: 'sms',
+          status: 'scheduled',
+          messageContent: message_content,
+        }
+      });
+
+      // Zarejestruj wirtualną rezerwację (Last minute slot)
+      const targetDate = target_datetime ? new Date(target_datetime) : new Date();
+      // Dodaj godzinę końca (+1h)
+      const endDate = new Date(targetDate.getTime() + 60*60*1000);
+      
+      // Wybierzmy pierwszą usługę i pracownika (fallback)
+      const service = await prisma.service.findFirst({ where: { tenantId: tenant.id } });
+      const staff = await prisma.staffMember.findFirst({ where: { tenantId: tenant.id } });
+      
+      await prisma.appointment.create({
+        data: {
+          tenantId: tenant.id,
+          serviceId: service ? service.id : '',
+          staffId: staff ? staff.id : null,
+          customerName: 'Last Minute Slot',
+          customerPhone: 'SYSTEM',
+          startTime: targetDate,
+          endTime: endDate,
+          status: 'last_minute_offer'
+        }
+      });
+
+      let whereClause: any = { tenantId: tenant.id };
+      if (audience_tags) {
+        const tagsArray = audience_tags.split(',').map((t: string) => t.trim());
+        const normalTags = tagsArray.filter(t => t.toLowerCase() !== '#uśpieni' && t.toLowerCase() !== 'uśpieni');
+        
+        if (normalTags.length > 0) {
+           whereClause.tags = { hasSome: normalTags };
+        }
+        
+        if (tagsArray.some(t => t.toLowerCase() === '#uśpieni' || t.toLowerCase() === 'uśpieni')) {
+           const ninetyDaysAgo = new Date();
+           ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+           whereClause.OR = [
+             { lastVisitAt: { lt: ninetyDaysAgo } },
+             { lastVisitAt: null, createdAt: { lt: ninetyDaysAgo } }
+           ];
+        }
+      }
+
+      const customers = await prisma.customer.findMany({ where: whereClause });
+
+      for (const cust of customers) {
+        if (!cust.phone) continue;
+        await prisma.outboundQueue.create({
+          data: {
+            tenantId: tenant.id,
+            targetPhone: cust.phone,
+            channel: 'sms',
+            payload: { customerId: cust.id, campaignId: campaign.id, text: message_content },
+            status: 'pending',
+            scheduledFor: new Date()
+          }
+        });
+      }
+
+      return res.json({ success: true, customersCount: customers.length, campaignId: campaign.id });
+    }
+
     if (toolName === 'schedule_confirmation_flow') {
       // Dla uproszczenia: wysłanie SMSa do jutrzejszych rezerwacji
       const tomorrow = new Date();
@@ -978,6 +1063,42 @@ app.post("/api/zadarma-sms", async (req, res) => {
           });
           return res.send("OK");
         }
+        
+        // Logika Last Minute (Kto pierwszy ten lepszy)
+        const lastMinuteList = await prisma.appointment.findMany({
+          where: {
+            status: 'last_minute_offer',
+            startTime: { gt: new Date() }
+          },
+          orderBy: { startTime: 'asc' },
+          take: 1
+        });
+        
+        if (lastMinuteList.length === 1) {
+          const offer = lastMinuteList[0];
+          // Pobierz imię klienta z bazy, jeśli istnieje, inaczej domyślne
+          const cust = await prisma.customer.findFirst({ where: { phone: callerPhone, tenantId: offer.tenantId } });
+          const nameToSave = cust ? cust.name : 'Klient Last Minute';
+          const idToSave = cust ? cust.id : null;
+          
+          await prisma.appointment.update({
+             where: { id: offer.id },
+             data: { status: 'confirmed_by_client', customerPhone: callerPhone, customerName: nameToSave, customerId: idToSave }
+          });
+          
+          import('./services/sms/SMSService').then(sms => {
+            sms.SMSService.sendSMS(callerPhone, `Zarejestrowano pomyślnie. Czekamy na Ciebie!`).catch(console.error);
+          });
+          return res.send("OK");
+        } else {
+          // Brak ofert last minute (zostały wykupione lub brak)
+          // Jeśli wiemy, że odpowiada na ofertę, wyślij odrzucenie
+          import('./services/sms/SMSService').then(sms => {
+            sms.SMSService.sendSMS(callerPhone, `Przepraszamy, ale ten termin został już przed chwilą zarezerwowany. Zapraszamy do rezerwacji innych wolnych dat!`).catch(console.error);
+          });
+          return res.send("OK");
+        }
+        
       } catch (err) {}
     }
 

@@ -23,15 +23,30 @@ export class BookingService {
             properties: {
               campaign_name: { type: 'STRING', description: 'Nazwa robocza kampanii' },
               channel: { type: 'STRING', description: 'Kanał: sms lub voice_call' },
-              audience_tags: { type: 'STRING', description: 'Tagi odbiorców np. #vip (rozdzielone przecinkami) lub puste jeśli do wszystkich' },
+              audience_tags: { type: 'STRING', description: 'Tagi odbiorców np. #vip, #uśpieni (rozdzielone przecinkami) lub puste jeśli do wszystkich' },
               message_content: { type: 'STRING', description: 'Treść wiadomości SMS lub instrukcja dla Voice Bota' },
               scheduled_time: { type: 'STRING', description: 'Kiedy wysłać (np. now, 2026-05-01)' }
             },
             required: ['channel', 'message_content']
           }
         },
-        {
-          name: 'schedule_confirmation_flow',
+        
+          {
+            name: 'create_last_minute_offer',
+            description: 'Uruchamia kampanię wyścigową (First-Come, First-Served) SMS dla luki w kalendarzu. Używaj zawsze, gdy właściciel prosi o wysłanie oferty "Last minute" i wskazuje termin okienka.',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                campaign_name: { type: 'STRING', description: 'Nazwa robocza kampanii last minute' },
+                audience_tags: { type: 'STRING', description: 'Tagi docelowe (np. #lojalny, #uśpieni) lub puste' },
+                message_content: { type: 'STRING', description: 'Treść SMSa, musi zachęcać do odpowiedzi TAK (np. Dziś o 14:00 zwolnił się termin. Zarezerwuj odpisując TAK!)' },
+                target_datetime: { type: 'STRING', description: 'Data i godzina zwalniającego się terminu w formacie ISO (np. 2026-08-27T14:00:00Z)' }
+              },
+              required: ['message_content', 'target_datetime']
+            }
+          },
+          {
+            name: 'schedule_confirmation_flow',
           description: 'Uruchamia interaktywny mechanizm potwierdzania rezerwacji.',
           parameters: {
             type: 'OBJECT',

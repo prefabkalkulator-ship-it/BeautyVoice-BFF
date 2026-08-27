@@ -215,7 +215,7 @@ Przykładowe komendy:
                         <div className="w-8 h-8 rounded-full bg-gold-100 flex items-center justify-center text-gold-600">
                           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                         </div>
-                        <h4 className="font-serif text-lg text-surface-900">Karta Akcji: {(msg as any).actionCard.toolName === 'create_informational_campaign' ? 'Nowa Kampania' : 'Weryfikacja Rezerwacji'}</h4>
+                        <h4 className="font-serif text-lg text-surface-900">Karta Akcji: {(msg as any).actionCard.toolName === 'create_informational_campaign' ? 'Nowa Kampania' : ((msg as any).actionCard.toolName === 'create_last_minute_offer' ? 'Oferta Last Minute' : 'Weryfikacja Rezerwacji')}</h4>
                       </div>
                       
                       <div className="space-y-3 mb-6 text-sm text-surface-600 bg-surface-50 p-4 rounded-lg">
@@ -229,7 +229,8 @@ const keyLabels: Record<string, string> = {
   channel: 'Kanał',
   scheduled_time: 'Czas wysyłki',
   target_scope: 'Zakres rezerwacji',
-  confirmation_method: 'Metoda potwierdzania'
+  confirmation_method: 'Metoda potwierdzania',
+  target_datetime: 'Termin okienka'
 };
 const valLabels: Record<string, string> = {
   tomorrow_appointments: 'Wizyty z jutra',
@@ -275,7 +276,7 @@ if (k === 'channel') {
   );
 } else {
   inputElement = (
-    <textarea value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} rows={k === 'message_content' ? 3 : 1} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white resize-y focus:outline-none focus:border-gold-300 w-full" />
+    <textarea value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} rows={k === 'message_content' ? 4 : (k === 'campaign_name' ? 2 : 1)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white resize-y focus:outline-none focus:border-gold-300 w-full" />
   );
 }
 
