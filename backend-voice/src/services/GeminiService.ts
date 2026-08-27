@@ -29,7 +29,7 @@ export class GeminiService {
    * Obsługuje pojedynczą turę konwersacji w webhooku
    * Przekazujemy historię konwersacji (z bazy danych / frontendu) i bieżącą wiadomość.
    */
-  public async handleChat(message: string, history: any[] = [], tenantId: string, tenantName: string, businessProfile: string, onToolCall?: () => void, onChunk?: (text: string) => void): Promise<string> {
+  public async handleChat(message: string, history: any[] = [], tenantId: string, tenantName: string, businessProfile: string, reviewLink: string | null = null, onToolCall?: () => void, onChunk?: (text: string) => void): Promise<string> {
     try {
       // Transformacja historii na format akceptowany przez @google/genai
       const formattedHistory = history.map(msg => ({
@@ -42,7 +42,7 @@ export class GeminiService {
         model: 'gemini-3.5-flash',
         history: formattedHistory,
         config: {
-          systemInstruction: getSystemPrompt(tenantName, businessProfile),
+          systemInstruction: getSystemPrompt(tenantName, businessProfile, reviewLink),
           temperature: 0.1, // Niska temperatura dla stabilnych i precyzyjnych rezerwacji
           tools: [{ functionDeclarations: BookingService.getToolDefinitions() as any }],
         }
@@ -88,7 +88,7 @@ export class GeminiService {
 
           try {
             
-            if (name === 'create_informational_campaign' || name === 'schedule_confirmation_flow' || name === 'create_last_minute_offer') {
+            if (name === 'create_informational_campaign' || name === 'schedule_confirmation_flow' || name === 'create_last_minute_offer' || name === 'send_nps_surveys') {
               return JSON.stringify({
                 _isActionCard: true,
                 toolName: name,
@@ -117,6 +117,9 @@ export class GeminiService {
                 undefined,
                 args.promoCode
               );
+              toolResult = { success };
+            } else if (name === 'save_nps_score') {
+              const success = await bookingService.saveNpsScore(tenantId, args.customerPhone, args.score);
               toolResult = { success };
             } else if (name === 'updateCustomerSource') {
               const success = await bookingService.updateCustomerSource(tenantId, args.customerPhone, args.source);

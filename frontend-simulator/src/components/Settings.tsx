@@ -21,6 +21,7 @@ export default function Settings() {
   const [bookingMode, setBookingMode] = useState('hourly');
   const [aiVoice, setAiVoice] = useState('Aoede');
   const [botName, setBotName] = useState('Ewa');
+  const [reviewLink, setReviewLink] = useState('');
   const [toneOfVoice, setToneOfVoice] = useState('profesjonalny i przyjazny');
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);

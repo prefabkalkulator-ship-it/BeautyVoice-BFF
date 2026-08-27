@@ -25,6 +25,7 @@ model Tenant {
   termsAcceptedAt     DateTime?
   fcmTokens           String[]
   createdAt           DateTime       @default(now())
+  reviewLink          String? // Link do opinii Google
   
   services            Service[]
   faqEntries      FaqEntry[]

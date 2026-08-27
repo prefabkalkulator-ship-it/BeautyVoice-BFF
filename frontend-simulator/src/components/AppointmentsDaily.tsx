@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus } from 'lucide-react';
+import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus, Gift, CheckCircle, Tag, User, Phone, Clock, Star } from 'lucide-react';
 
 export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading }: any) {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -237,6 +237,28 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
             </div>
             
             <form onSubmit={saveAppointment} className="p-6 space-y-5">
+              {(selectedAppt?.status === 'confirmed_by_client' || selectedAppt?.promoCode) && (
+                <div className="bg-green-50 rounded-xl p-4 border border-green-200 space-y-2 mb-4">
+                  {selectedAppt?.status === 'confirmed_by_client' && (
+                    <div className="flex items-center gap-2 text-green-700 font-medium">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      Potwierdzone przez klienta (SMS/Głos)
+                    </div>
+                  )}
+                  {selectedAppt?.npsScore && (
+                    <div className="flex items-center gap-2 text-yellow-700 font-medium">
+                      <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                      Ocena klienta: {selectedAppt.npsScore} / 5
+                    </div>
+                  )}
+                  {selectedAppt?.promoCode && (
+                    <div className="flex items-center gap-2 text-amber-700 font-medium">
+                      <Gift className="w-5 h-5 text-amber-600" />
+                      Użyty rabat: {selectedAppt.promoCode}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-surface-700 mb-1">Imię klienta</label>

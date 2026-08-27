@@ -1,14 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
 import AppointmentsDaily from './AppointmentsDaily';
-import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag, Gift, CheckCircle, Star } from 'lucide-react';
 
 interface Appointment {
   id: string;
+  npsScore?: number;
   customerName: string;
   customerPhone: string;
   startTime: string;
   endTime: string;
   status: string;
+  promoCode?: string;
   staffId?: string;
   staff?: { name: string };
   service?: {
@@ -454,15 +456,21 @@ export default function Appointments() {
                           const durationHours = endHour - startHour;
                           const heightPx = durationHours * 96;
                           const bgColor = getColorCode(app.service?.id || '');
+                          const isConfirmedByClient = app.status === 'confirmed_by_client';
+                          const hasPromo = !!app.promoCode;
 
                           return (
                             <div 
                               key={app.id} 
                               onClick={(e) => { e.stopPropagation(); openEditModal(app); }}
                               style={{ top: `${topPx}px`, height: `${heightPx}px` }}
-                              className={`absolute left-1 right-2 z-10 ${bgColor} text-white p-2 rounded-xl shadow-md flex flex-col overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer`}
+                              className={`absolute left-1 right-2 z-10 ${bgColor} text-white p-2 rounded-xl shadow-md flex flex-col overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${isConfirmedByClient ? 'ring-2 ring-green-400 border-2 border-green-500' : 'border border-transparent'}`}
                             >
-                              <span className="font-semibold text-xs truncate drop-shadow-sm">{app.customerName}</span>
+                              <span className="font-semibold text-xs truncate drop-shadow-sm flex items-center gap-1">
+                                {app.customerName}
+                                {hasPromo && <Gift className="w-3 h-3 text-yellow-300 ml-1" title="Z kodem rabatowym" />}
+                                {app.npsScore && <span className="ml-1 flex items-center text-[10px] text-yellow-300" title="Ocena NPS"><Star className="w-2.5 h-2.5 mr-0.5"/>{app.npsScore}</span>}
+                              </span>
                               <span className="text-[10px] opacity-90 truncate">{app.service?.name}</span>
                             </div>
                           );
@@ -498,6 +506,28 @@ export default function Appointments() {
 
             {!isEditing && selectedAppt.id !== 'new' ? (
               <div className="space-y-4">
+                {(selectedAppt.status === 'confirmed_by_client' || selectedAppt.promoCode) && (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200 space-y-2 mb-4">
+                    {selectedAppt.status === 'confirmed_by_client' && (
+                      <div className="flex items-center gap-2 text-green-700 font-medium">
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                        Potwierdzone przez klienta (SMS/Głos)
+                      </div>
+                    )}
+                    {selectedAppt.npsScore && (
+                      <div className="flex items-center gap-2 text-yellow-700 font-medium">
+                        <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                        Ocena klienta: {selectedAppt.npsScore} / 5
+                      </div>
+                    )}
+                    {selectedAppt.promoCode && (
+                      <div className="flex items-center gap-2 text-amber-700 font-medium">
+                        <Gift className="w-5 h-5 text-amber-600" />
+                        Użyty rabat: {selectedAppt.promoCode}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="bg-surface-50 rounded-xl p-4 border border-surface-100 space-y-3">
                   <div className="flex items-center gap-3 text-surface-800">
                     <User className="w-4 h-4 text-surface-400" />

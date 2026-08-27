@@ -9,6 +9,30 @@ export interface ServiceItem {
 }
 
 export class BookingService {
+  public async saveNpsScore(tenantId: string, phone: string, score: number): Promise<boolean> {
+    try {
+      const now = new Date();
+      const lastApp = await prisma.appointment.findFirst({
+        where: {
+          tenantId,
+          customerPhone: phone,
+          endTime: { lt: now },
+          surveySent: true
+        },
+        orderBy: { endTime: 'desc' }
+      });
+      if (!lastApp) return false;
+      await prisma.appointment.update({
+        where: { id: lastApp.id },
+        data: { npsScore: score }
+      });
+      return true;
+    } catch (error) {
+      console.error('Error saving NPS score:', error);
+      return false;
+    }
+  }
+
   public async updateCustomerSource(tenantId: string, customerPhone: string, source: string): Promise<boolean> {
     try {
       const customer = await prisma.customer.findFirst({ where: { tenantId, phone: customerPhone } });

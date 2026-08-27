@@ -21,7 +21,7 @@ export class WebhookController {
 
       console.log('🗣️ Otrzymano wiadomość:', message);
 
-      const reply = await geminiService.handleChat(message, history || [], tenant.id, tenant.name, tenant.businessProfile || 'solo');
+      const reply = await geminiService.handleChat(message, history || [], tenant.id, tenant.name, tenant.businessProfile || 'solo', tenant.reviewLink);
 
       console.log('🤖 Odpowiedź asystenta:', reply);
 
@@ -135,7 +135,7 @@ export class WebhookController {
       };
 
       // Przekazujemy do naszej usługi z kontekstem Tenanta (bez filler words generowanych przez LLM)
-      const reply = await geminiService.handleChat(lastMessage, history, tenant.id, tenant.name, tenant.businessProfile || 'solo', onToolCall, onChunk);
+      const reply = await geminiService.handleChat(lastMessage, history, tenant.id, tenant.name, tenant.businessProfile || 'solo', tenant.reviewLink, onToolCall, onChunk);
 
       console.log(`🤖 [Vapi Tenant: ${tenant.name}] Odpowiedź asystenta:`, reply);
 
