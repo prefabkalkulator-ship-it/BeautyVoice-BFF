@@ -87,6 +87,14 @@ export class GeminiService {
           let toolResult;
 
           try {
+            
+            if (name === 'create_informational_campaign' || name === 'schedule_confirmation_flow') {
+              return JSON.stringify({
+                _isActionCard: true,
+                toolName: name,
+                args: args
+              });
+            }
             if (name === 'getServicesAndPrices') {
               const data = await bookingService.getServicesAndPrices(tenantId);
               toolResult = data;

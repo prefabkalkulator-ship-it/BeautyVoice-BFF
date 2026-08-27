@@ -19,9 +19,27 @@ export default function Simulator() {
   }, []);
 
 
-  const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'assistant', content: 'Dzień dobry! Z tej strony EVA, wirtualna asystentka. W czym mogę pomóc?' }
-  ]);
+  
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('marketing_chat_history');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch(e) {}
+    }
+    return [
+      { id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA, wirtualna asystentka. W czym mogę pomóc?
+
+Przykładowe komendy:
+• "Wyślij przypomnienie z 10% rabatu do klientów z tagiem #lojalny, kanał sms"
+• "Uruchom potwierdzanie jutrzejszych rezerwacji SMSem"` }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('marketing_chat_history', JSON.stringify(messages));
+  }, [messages]);
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
@@ -65,6 +83,44 @@ export default function Simulator() {
       </div>
     );
   }
+  
+  
+  const updateActionCardArg = (msgId: string, k: string, v: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === msgId && (m as any).actionCard) {
+        return {
+          ...m,
+          actionCard: {
+            ...(m as any).actionCard,
+            args: {
+              ...(m as any).actionCard.args,
+              [k]: v
+            }
+          }
+        };
+      }
+      return m;
+    }));
+  };
+
+  const executeActionCard = async (msgId: string, actionCard: any) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: true } as any : m));
+    try {
+      const res = await fetch('/api/campaigns/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolName: actionCard.toolName, args: actionCard.args })
+      });
+      if (res.ok) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: false, _executed: true, content: 'Uruchomiono pomyślnie!' } as any : m));
+      } else {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: false, content: 'Błąd podczas uruchamiania.' } as any : m));
+      }
+    } catch (e) {
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: false, content: 'Błąd połączenia.' } as any : m));
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -124,6 +180,13 @@ export default function Simulator() {
           <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Marketing AI</h2>
           <p className="text-surface-500 mt-1">Zarządzaj akcjami wychodzącymi (Outbound) i kampaniami informacyjnymi.</p>
         </div>
+        <button onClick={() => { setMessages([{ id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA, wirtualna asystentka. W czym mogę pomóc?
+
+Przykładowe komendy:
+• "Wyślij przypomnienie z 10% rabatu do klientów z tagiem #lojalny, kanał sms"
+• "Uruchom potwierdzanie jutrzejszych rezerwacji SMSem"` }]); localStorage.removeItem('marketing_chat_history'); }} className="text-surface-500 hover:text-surface-800 text-sm font-medium px-3 py-1.5 border border-surface-200 rounded-lg hover:bg-surface-100 transition-colors">
+          Wyczyść czat
+        </button>
       </div>
 
       <div className="flex-1 glass-card rounded-2xl flex flex-col overflow-hidden border border-surface-200/60 shadow-lg relative max-w-3xl mx-auto w-full mt-4">
@@ -133,14 +196,14 @@ export default function Simulator() {
               <div className="flex max-w-[95%] md:max-w-[85%]">
                 
                 {msg.role === 'user' ? (
-                  <div className="p-3.5 rounded-2xl rounded-tr-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-sm">
+                  <div className="p-3.5 rounded-2xl rounded-tr-sm bg-primary text-primary-foreground text-sm leading-relaxed shadow-sm whitespace-pre-wrap">
                     <div className="flex items-center mb-1.5 text-primary-foreground/70">
                       <User size={14} />
                     </div>
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="py-2 text-sm leading-relaxed text-surface-800">
+                  <div className="py-2 text-sm leading-relaxed text-surface-800 whitespace-pre-wrap">
                     <div className="flex items-center mb-1.5 text-gold-600">
                       <Bot size={14} />
                     </div>
@@ -156,12 +219,76 @@ export default function Simulator() {
                       </div>
                       
                       <div className="space-y-3 mb-6 text-sm text-surface-600 bg-surface-50 p-4 rounded-lg">
-                        {Object.entries((msg as any).actionCard.args).map(([k, v]) => (
-                           <div key={k} className="flex flex-col sm:flex-row sm:gap-4">
-                             <span className="font-medium text-surface-900 min-w-[120px]">{k}:</span>
-                             <span className="break-words">{String(v)}</span>
-                           </div>
-                        ))}
+                        
+                        {Object.entries((msg as any).actionCard.args).map(([k, v]) => {
+                           
+const keyLabels: Record<string, string> = {
+  campaign_name: 'Nazwa kampanii',
+  message_content: 'Treść wiadomości',
+  audience_tags: 'Grupa docelowa (Tagi)',
+  channel: 'Kanał',
+  scheduled_time: 'Czas wysyłki',
+  target_scope: 'Zakres rezerwacji',
+  confirmation_method: 'Metoda potwierdzania'
+};
+const valLabels: Record<string, string> = {
+  tomorrow_appointments: 'Wizyty z jutra',
+  sms_two_way: 'SMS Dwukierunkowy (TAK/NIE)',
+  now: 'Teraz',
+  sms: 'SMS'
+};
+
+
+const label = keyLabels[k] || k;
+const val = typeof v === 'string' ? v : String(v);
+
+let inputElement;
+
+if (k === 'channel') {
+  inputElement = (
+    <select value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300">
+      <option value="sms">SMS</option>
+      <option value="voice_call">Telefon (Voice)</option>
+    </select>
+  );
+} else if (k === 'scheduled_time') {
+  inputElement = (
+    <select value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300">
+      <option value="now">Teraz</option>
+      <option value="tomorrow">Jutro</option>
+      <option value="next_week">W przyszłym tygodniu</option>
+    </select>
+  );
+} else if (k === 'target_scope') {
+  inputElement = (
+    <select value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300">
+      <option value="tomorrow_appointments">Wizyty z jutra</option>
+      <option value="all_unconfirmed">Wszystkie niepotwierdzone</option>
+    </select>
+  );
+} else if (k === 'confirmation_method') {
+  inputElement = (
+    <select value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300">
+      <option value="sms_two_way">SMS Dwukierunkowy (TAK/NIE)</option>
+      <option value="voice_call">Telefon (Rozmowa z EVA)</option>
+    </select>
+  );
+} else {
+  inputElement = (
+    <textarea value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} rows={k === 'message_content' ? 3 : 1} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white resize-y focus:outline-none focus:border-gold-300 w-full" />
+  );
+}
+
+return (
+  <div key={k} className="flex flex-col sm:flex-row sm:gap-4 sm:items-start">
+    <span className="font-medium text-surface-900 min-w-[150px] mt-2">{label}:</span>
+    <div className="flex-1 w-full">
+      {inputElement}
+    </div>
+  </div>
+);
+})}
+
                       </div>
 
                       <div className="flex gap-3">
@@ -171,7 +298,17 @@ export default function Simulator() {
                           className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
                           {(msg as any)._loading ? 'Uruchamianie...' : 'Zatwierdź i Uruchom'}
                         </button>
-                        <button className="px-4 py-2 text-surface-500 hover:text-surface-700 font-medium transition-colors">
+                        <button 
+                          onClick={() => {
+                            const newMsgs = [...messages];
+                            const idx = newMsgs.findIndex(m => m.id === msg.id);
+                            if (idx !== -1) {
+                              (newMsgs[idx] as any)._executed = true;
+                              newMsgs.push({ id: Date.now().toString(), role: 'assistant', content: 'Akcja została odrzucona przez użytkownika.' });
+                              setMessages(newMsgs);
+                            }
+                          }}
+                          className="px-4 py-2 text-surface-500 hover:text-surface-700 font-medium transition-colors">
                           Odrzuć
                         </button>
                       </div>

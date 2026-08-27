@@ -109,7 +109,7 @@ app.post('/api/campaigns/execute', async (req, res) => {
       let added = 0;
       for (const appt of appointments) {
          if (!appt.customerPhone) continue;
-         const text = `Przypomnienie: jutro masz wizytę o ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}. Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
+         const text = `Przypomnienie: masz zaplanowaną rezerwację na jutro (godz. ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}). Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
          
          await prisma.outboundQueue.create({
           data: {
