@@ -24,9 +24,26 @@ export class WebhookController {
       const reply = await geminiService.handleChat(message, history || [], tenant.id, tenant.name, tenant.businessProfile || 'solo', tenant.reviewLink);
 
       console.log('🤖 Odpowiedź asystenta:', reply);
+      
+      let finalReply = reply;
+      let actionCard = undefined;
+
+      try {
+        if (reply.includes('_isActionCard')) {
+          const parsed = JSON.parse(reply);
+          if (parsed._isActionCard) {
+            actionCard = {
+              toolName: parsed.toolName,
+              args: parsed.args
+            };
+            finalReply = ''; // Pusty tekst, UI wyrenderuje kartę
+          }
+        }
+      } catch(e) {}
 
       res.status(200).json({
-        reply: reply,
+        reply: finalReply,
+        actionCard: actionCard
       });
     } catch (error) {
       console.error('Webhook Error:', error);
