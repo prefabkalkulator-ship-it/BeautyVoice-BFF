@@ -36,6 +36,7 @@
     "onnxruntime-node": "^1.27.0",
     "pg": "^8.23.0",
     "stripe": "^22.5.0",
+    "twilio": "^6.1.0",
     "wavefile": "^11.0.0",
     "ws": "^8.21.3",
     "zadarma-api": "^1.0.4"

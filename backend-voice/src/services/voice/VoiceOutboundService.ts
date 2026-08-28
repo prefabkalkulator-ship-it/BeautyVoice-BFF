@@ -1,49 +1,81 @@
-﻿import { Client } from 'zadarma-api';
-import { prisma } from '../../prisma';
+﻿import { Client as ZadarmaClient } from 'zadarma-api';
+import twilio from 'twilio';
 
 export class VoiceOutboundService {
   private static zadarmaKey = process.env.ZADARMA_KEY;
   private static zadarmaSecret = process.env.ZADARMA_SECRET;
-  private static zadarmaFrom = process.env.ZADARMA_PBX_EXTENSION || process.env.ZADARMA_PHONE_NUMBER || '100';
+  private static twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  private static twilioToken = process.env.TWILIO_AUTH_TOKEN;
+  private static callerId = process.env.ZADARMA_PHONE_NUMBER || '+48533989987';
 
-  // Globalny cache dla śledzenia aktywnych dzwonień (numer klienta -> taskId)
   public static activeOutboundCalls = new Map<string, string>();
 
   static async initiateCall(taskId: string, targetPhone: string): Promise<boolean> {
+    const normalizedPhone = targetPhone.replace('+', '');
+    this.activeOutboundCalls.set(normalizedPhone, taskId);
+    this.activeOutboundCalls.set(`+${normalizedPhone}`, taskId);
+
+    // Jeli mamy skonfigurowane Twilio, uywamy bezporednio Twilio REST API (BYOC/Verified Caller)
+    if (this.twilioSid && this.twilioToken) {
+      console.log(`[VoiceOutbound] Inicjowanie poczenia przez Twilio REST API do: ${targetPhone}`);
+      try {
+        const client = twilio(this.twilioSid, this.twilioToken);
+        const twiml = `
+          <Response>
+            <Connect>
+              <Stream url="wss://${process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app'}/connection">
+                <Parameter name="outboundTaskId" value="${taskId}" />
+              </Stream>
+            </Connect>
+          </Response>
+        `;
+        
+        // Zapewniamy plus dla twilio do formatu E.164
+        const to = targetPhone.startsWith('+') ? targetPhone : '+' + targetPhone;
+        const from = process.env.TWILIO_CALLER_ID || '+48533989987';
+
+        const call = await client.calls.create({
+          twiml: twiml,
+          to: to,
+          from: from
+        });
+        
+        console.log(`[VoiceOutbound] Twilio call created. SID: ${call.sid}`);
+        return true;
+      } catch (err: any) {
+        console.error('[VoiceOutbound] Bd inicjacji przez Twilio:', err.message);
+        this.clearCall(targetPhone);
+        return false;
+      }
+    }
+
+    // Fallback na stary mechanizm Zadarmy jeli brak kluczy Twilio
     if (!this.zadarmaKey || !this.zadarmaSecret) {
-      console.log(`[VoiceOutbound] Brak kluczy Zadarma. Symulacja dzwonienia do ${targetPhone}`);
-      // Symulacja rejestracji calla
-      this.activeOutboundCalls.set(targetPhone.replace('+', ''), taskId);
-      
-      // Tutaj w dev środowisku można wywołać bezpośrednio nasz webhook dla testów
+      console.log(`[VoiceOutbound] Brak kluczy. Symulacja dzwonienia do ${targetPhone}`);
       return true;
     }
 
     try {
-      // Rejestrujemy intencję dzwonienia. Twilio najpewniej przyśle numer z lub bez plusa.
-      const normalizedPhone = targetPhone.replace('+', '');
-      this.activeOutboundCalls.set(normalizedPhone, taskId);
-      this.activeOutboundCalls.set(`+${normalizedPhone}`, taskId); // Zabezpieczenie na obie wersje
-
-      const api = new Client(this.zadarmaKey, this.zadarmaSecret);
-
-      console.log(`[VoiceOutbound] Inicjowanie callbacku Zadarma: ${this.zadarmaFrom} -> ${targetPhone}`);
+      const api = new ZadarmaClient(this.zadarmaKey, this.zadarmaSecret);
+      const zFrom = process.env.ZADARMA_PBX_EXTENSION || this.callerId;
+      console.log(`[VoiceOutbound] Inicjowanie callbacku Zadarma: ${zFrom} -> ${targetPhone}`);
+      
       const response = await api.call('/v1/request/callback/', {
-        from: this.zadarmaFrom.startsWith('+') ? this.zadarmaFrom : '+' + this.zadarmaFrom,
+        from: zFrom.startsWith('+') ? zFrom : '+' + zFrom,
         to: targetPhone
       }, 'GET');
 
       if (response && response.status === 'success') {
-        console.log(`[VoiceOutbound] Zadarma zaakceptowała Callback. Oczekujemy na połączenie w Twilio!`);
+        console.log(`[VoiceOutbound] Zadarma zaakceptowaa Callback.`);
         return true;
       } else {
-        console.error('[VoiceOutbound] Zadarma Callback błąd:', response);
-        this.activeOutboundCalls.delete(normalizedPhone);
-        this.activeOutboundCalls.delete(`+${normalizedPhone}`);
+        console.error('[VoiceOutbound] Zadarma Callback bd:', response);
+        this.clearCall(targetPhone);
         return false;
       }
-    } catch (err) {
-      console.error('[VoiceOutbound] Wyjątek podczas inicjacji:', err);
+    } catch (err: any) {
+      console.error('[VoiceOutbound] Wyjtek Zadarma Callback:', err.message);
+      this.clearCall(targetPhone);
       return false;
     }
   }
