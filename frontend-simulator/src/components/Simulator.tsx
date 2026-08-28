@@ -28,11 +28,7 @@ export default function Simulator() {
       } catch(e) {}
     }
     return [
-      { id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA, wirtualna asystentka. W czym mogę pomóc?
-
-Przykładowe komendy:
-• "Wyślij przypomnienie z 10% rabatu do klientów z tagiem #lojalny, kanał sms"
-• "Uruchom potwierdzanie jutrzejszych rezerwacji SMSem"` }
+      { id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA. Użyj poniższych przycisków, by uruchomić gotowe kampanie, lub po prostu napisz do mnie, co chcesz osiągnąć.` }
     ];
   });
 
@@ -208,11 +204,7 @@ Przykładowe komendy:
           <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Marketing AI</h2>
           <p className="text-surface-500 mt-1">Zarządzaj akcjami wychodzącymi (Outbound) i kampaniami informacyjnymi.</p>
         </div>
-        <button onClick={() => { setMessages([{ id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA, wirtualna asystentka. W czym mogę pomóc?
-
-Przykładowe komendy:
-• "Wyślij przypomnienie z 10% rabatu do klientów z tagiem #lojalny, kanał sms"
-• "Uruchom potwierdzanie jutrzejszych rezerwacji SMSem"` }]); localStorage.removeItem('marketing_chat_history'); }} className="text-surface-500 hover:text-surface-800 text-sm font-medium px-3 py-1.5 border border-surface-200 rounded-lg hover:bg-surface-100 transition-colors">
+        <button onClick={() => { setMessages([{ id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA. Użyj poniższych przycisków, by uruchomić gotowe kampanie, lub po prostu napisz do mnie, co chcesz osiągnąć.` }]); localStorage.removeItem('marketing_chat_history'); }} className="text-surface-500 hover:text-surface-800 text-sm font-medium px-3 py-1.5 border border-surface-200 rounded-lg hover:bg-surface-100 transition-colors">
           Wyczyść czat
         </button>
       </div>
@@ -237,6 +229,14 @@ Przykładowe komendy:
                     </div>
                     
                   {msg.content}
+                  {msg.id === '1' && (
+                      <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-surface-100">
+                        <button onClick={() => handleSendDirect("Mamy wolne miejsce na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
+                        <button onClick={() => handleSendDirect("Wyślij ankiety NPS do klientów, którzy byli u nas wczoraj")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie NPS (Wczoraj)</button>
+                        <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
+                        <button onClick={() => handleSendDirect("Potwierdź jutrzejsze wizyty sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź wizyty</button>
+                      </div>
+                  )}
                   {(msg as any).actionCard && !(msg as any)._executed && (
                     <div className="mt-4 p-5 bg-white border border-gold-200 rounded-xl shadow-sm">
                       <div className="flex items-center gap-3 mb-4">
@@ -369,14 +369,7 @@ return (
         </div>
 
         <div className="p-4 bg-white border-t border-surface-100 z-10 relative">
-          {messages.length === 1 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button onClick={() => handleSendDirect("Mamy wolne miejsce na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">🚀 Oferta Last Minute</button>
-              <button onClick={() => handleSendDirect("Wyślij ankiety NPS do klientów, którzy byli u nas wczoraj")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">⭐️ Badanie NPS (Wczoraj)</button>
-              <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">♻️ Wybudź klientów</button>
-              <button onClick={() => handleSendDirect("Potwierdź jutrzejsze wizyty sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">🗓 Potwierdź wizyty</button>
-            </div>
-          )}
+          
           <form onSubmit={handleSend} className="relative">
             <input
               type="text"
