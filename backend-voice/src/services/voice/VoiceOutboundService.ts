@@ -29,9 +29,9 @@ export class VoiceOutboundService {
 
       console.log(`[VoiceOutbound] Inicjowanie callbacku Zadarma: ${this.zadarmaFrom} -> ${targetPhone}`);
       const response = await api.call('/v1/request/callback/', {
-        from: this.zadarmaFrom,
+        from: this.zadarmaFrom.startsWith('+') ? this.zadarmaFrom : '+' + this.zadarmaFrom,
         to: targetPhone
-      }, 'POST');
+      }, 'GET');
 
       if (response && response.status === 'success') {
         console.log(`[VoiceOutbound] Zadarma zaakceptowała Callback. Oczekujemy na połączenie w Twilio!`);

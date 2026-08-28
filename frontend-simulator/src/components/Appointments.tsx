@@ -302,7 +302,7 @@ export default function Appointments() {
       {view === 'list' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {appointments.map(app => (
-            <div key={app.id} className="glass-card glass-card-hover rounded-xl p-4 relative overflow-hidden group">
+            <div key={app.id} className={`glass-card glass-card-hover rounded-xl p-4 relative overflow-hidden group ${app.status === 'confirmed_by_client' ? 'border-2 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : ''}`}>
               <div className="flex justify-between items-start mb-4">
                 <div className="text-xl font-serif text-surface-900 flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-gold-500" />
