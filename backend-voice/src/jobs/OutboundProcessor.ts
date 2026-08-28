@@ -1,5 +1,6 @@
 ﻿import { prisma } from '../prisma';
 import { SMSService } from '../services/sms/SMSService';
+import { VoiceOutboundService } from '../services/voice/VoiceOutboundService';
 
 export async function processOutboundQueue() {
   try {
@@ -40,13 +41,22 @@ export async function processOutboundQueue() {
             data: { status: 'done', processedAt: new Date() }
           });
         } else if (task.channel === 'voice') {
-          // Tutaj w przyszłości integracja API Zadarma / Twilio do wykonania automatycznego calla do bota.
-          // Zastępczo oznaczamy jako zrobione.
-          console.log(`[OutboundProcessor] Symulacja Voice Call do: ${task.targetPhone}`);
-          await prisma.outboundQueue.update({
-            where: { id: task.id },
-            data: { status: 'done', processedAt: new Date(), errorMessage: 'Symulacja (brak wdrożonego API do inicjacji Voice)' }
-          });
+          console.log(`[OutboundProcessor] Inicjowanie Voice Outbound Call do: ${task.targetPhone}`);
+          const success = await VoiceOutboundService.initiateCall(task.id, task.targetPhone);
+          
+          if (success) {
+            await prisma.outboundQueue.update({
+              where: { id: task.id },
+              // Pozostawiamy status 'pending' albo dajemy 'in_progress', żeby CallOrchestrator mógł go podjąć.
+              // Zróbmy 'in_progress' żeby job tego nie przetwarzał wielokrotnie.
+              data: { status: 'in_progress' }
+            });
+          } else {
+            await prisma.outboundQueue.update({
+              where: { id: task.id },
+              data: { status: 'failed', processedAt: new Date(), errorMessage: 'Błąd API Zadarma przy inicjacji' }
+            });
+          }
         }
       } catch (err: any) {
         await prisma.outboundQueue.update({

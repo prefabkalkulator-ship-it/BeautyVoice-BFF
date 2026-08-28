@@ -139,10 +139,21 @@ export class CallOrchestrator {
           this.streamSid = data.start.streamSid;
           this.callStartTime = Date.now();
           const callerPhone = data.start.customParameters?.callerPhone || 'unknown';
+          const outboundTaskId = data.start.customParameters?.outboundTaskId;
           
           setTimeout(async () => {
             let contextText = '';
-            if (callerPhone !== 'unknown' && this.geminiClient) {
+            if (outboundTaskId && this.tenantId) {
+               // OUTBOUND CALL LOGIC
+               const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId } });
+               if (task) {
+                  const payload = typeof task.payload === 'object' && task.payload !== null ? task.payload as any : {};
+                  contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie!`;
+                  // Oznacz task jako zakończony
+                  await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
+               }
+            } else if (callerPhone !== 'unknown' && this.geminiClient) {
+              // INBOUND CALL LOGIC
               try {
                 if (this.tenantId) {
                   const lastAppt = await prisma.appointment.findFirst({

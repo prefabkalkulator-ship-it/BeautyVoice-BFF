@@ -1,47 +1,28 @@
 ﻿const fs = require('fs');
 let code = fs.readFileSync('src/app.ts', 'utf8');
 
-const search = `} else if (toolName === 'create_last_minute_offer') {`;
-const replace = `} else if (toolName === 'send_nps_surveys') {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        yesterday.setHours(0, 0, 0, 0);
-        const endOfYesterday = new Date(yesterday);
-        endOfYesterday.setHours(23, 59, 59, 999);
-        
-        const apps = await prisma.appointment.findMany({
-          where: {
-            tenantId: tenant.id,
-            endTime: { gte: yesterday, lte: endOfYesterday },
-            surveySent: false,
-            status: { not: 'cancelled' }
-          },
-          include: { tenant: true }
-        });
+code = code.replace(
+  "import { knowledgeService } from './services/KnowledgeExtractorService';",
+  "import { knowledgeService } from './services/KnowledgeExtractorService';\nimport { VoiceOutboundService } from './services/voice/VoiceOutboundService';"
+);
 
-        if (apps.length === 0) {
-          return res.json({ success: true, message: 'Brak nowych wizyt do wysłania ankiet.' });
-        }
+const searchTwilio = `  res.type("text/xml");
+  res.send(\`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://\${host}/api/twilio-voice"><Parameter name="callerPhone" value="\${callerPhone}" /><Parameter name="dialedNumber" value="\${calledNumber}" /></Stream></Connect></Response>\`);
+});`;
 
-        for (const app of apps) {
-          await prisma.outboundQueue.create({
-            data: {
-              tenantId: app.tenantId,
-              campaignId: campaignName || 'nps_survey',
-              customerPhone: app.customerPhone,
-              customerName: app.customerName,
-              messageContent: "Dziękujemy za wczorajszą wizytę! Jak oceniasz nasze usługi w skali od 1 do 5? Odpisz oceniając naszą pracę!",
-              channel: 'sms',
-              status: 'pending'
-            }
-          });
-          await prisma.appointment.update({
-            where: { id: app.id },
-            data: { surveySent: true }
-          });
-        }
-        return res.json({ success: true, message: \`Kolejka zasilona (\${apps.length} ankiet).\` });
-      } else if (toolName === 'create_last_minute_offer') {`;
+const replaceTwilio = `  // Wykrywanie czy to jest Zadarma Callback (Outbound) - szukamy obu numerów w cache (Twilio może podać numer klienta w From lub To zależnie od konfiguracji pbx)
+  let outboundTaskId = VoiceOutboundService.getTaskIdByPhone(callerPhone);
+  if (!outboundTaskId) {
+    outboundTaskId = VoiceOutboundService.getTaskIdByPhone(calledNumber);
+  }
 
-code = code.replace(search, replace);
+  // W TwiML dodajemy opcjonalny parametr outboundTaskId
+  const outboundParam = outboundTaskId ? \`<Parameter name="outboundTaskId" value="\${outboundTaskId}" />\` : '';
+
+  res.type("text/xml");
+  res.send(\`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://\${host}/api/twilio-voice"><Parameter name="callerPhone" value="\${callerPhone}" /><Parameter name="dialedNumber" value="\${calledNumber}" />\${outboundParam}</Stream></Connect></Response>\`);
+});`;
+
+code = code.replace(searchTwilio, replaceTwilio);
+
 fs.writeFileSync('src/app.ts', code, 'utf8');
