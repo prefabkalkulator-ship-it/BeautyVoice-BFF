@@ -234,7 +234,7 @@ export default function Simulator() {
                         <button onClick={() => handleSendDirect("Mamy wolne miejsce na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
                         <button onClick={() => handleSendDirect("Wyślij ankiety NPS do klientów, którzy byli u nas wczoraj")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie NPS (Wczoraj)</button>
                         <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
-                        <button onClick={() => handleSendDirect("Potwierdź jutrzejsze wizyty sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź wizyty</button>
+                        <button onClick={() => handleSendDirect("Potwierdź jutrzejsze rezerwacje sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
                       </div>
                   )}
                   {(msg as any).actionCard && !(msg as any)._executed && (
@@ -261,7 +261,7 @@ const keyLabels: Record<string, string> = {
   target_datetime: 'Termin okienka'
 };
 const valLabels: Record<string, string> = {
-  tomorrow_appointments: 'Wizyty z jutra',
+  tomorrow_appointments: 'Rezerwacje z jutra',
   sms_two_way: 'SMS Dwukierunkowy (TAK/NIE)',
   now: 'Teraz',
   sms: 'SMS'
@@ -291,7 +291,7 @@ if (k === 'channel') {
 } else if (k === 'target_scope') {
   inputElement = (
     <select value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300">
-      <option value="tomorrow_appointments">Wizyty z jutra</option>
+      <option value="tomorrow_appointments">Rezerwacje z jutra</option>
       <option value="all_unconfirmed">Wszystkie niepotwierdzone</option>
     </select>
   );

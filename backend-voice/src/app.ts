@@ -218,7 +218,7 @@ app.post('/api/campaigns/execute', async (req, res) => {
     }
 
     if (toolName === 'schedule_confirmation_flow') {
-      // Dla uproszczenia: wysłanie SMSa do jutrzejszych rezerwacji
+      const { confirmation_method } = args;
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowEnd = new Date(tomorrow);
@@ -232,14 +232,23 @@ app.post('/api/campaigns/execute', async (req, res) => {
       let added = 0;
       for (const appt of appointments) {
          if (!appt.customerPhone) continue;
-         const text = `Przypomnienie: masz zaplanowaną rezerwację na jutro (godz. ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}). Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
+         
+         let text = '';
+         let channel = 'sms';
+         
+         if (confirmation_method === 'voice_call' || confirmation_method === 'voice') {
+           channel = 'voice';
+           text = `Dzwonisz do klienta by przypomnieć i poprosić o potwierdzenie rezerwacji, która odbędzie się jutro o godz. ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}.`;
+         } else {
+           text = `Przypomnienie: masz zaplanowaną rezerwację na jutro (godz. ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}). Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
+         }
          
          await prisma.outboundQueue.create({
           data: {
             tenantId: tenant.id,
             targetPhone: appt.customerPhone,
-            channel: 'sms',
-            payload: { appointmentId: appt.id, text },
+            channel: channel,
+            payload: { appointmentId: appt.id, text: text, customerName: appt.customerName },
             status: 'pending',
             scheduledFor: new Date()
           }
