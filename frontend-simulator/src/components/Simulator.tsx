@@ -121,6 +121,34 @@ Przykładowe komendy:
     }
   };
 
+  const handleSendDirect = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text };
+    setInput("");
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          history: updatedMessages
+        })
+      });
+
+      const data = await response.json();
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: data.reply, actionCard: data.actionCard }]);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -341,6 +369,14 @@ return (
         </div>
 
         <div className="p-4 bg-white border-t border-surface-100 z-10 relative">
+          {messages.length === 1 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button onClick={() => handleSendDirect("Mamy wolne miejsce na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">🚀 Oferta Last Minute</button>
+              <button onClick={() => handleSendDirect("Wyślij ankiety NPS do klientów, którzy byli u nas wczoraj")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">⭐️ Badanie NPS (Wczoraj)</button>
+              <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">♻️ Wybudź klientów</button>
+              <button onClick={() => handleSendDirect("Potwierdź jutrzejsze wizyty sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all">🗓 Potwierdź wizyty</button>
+            </div>
+          )}
           <form onSubmit={handleSend} className="relative">
             <input
               type="text"
