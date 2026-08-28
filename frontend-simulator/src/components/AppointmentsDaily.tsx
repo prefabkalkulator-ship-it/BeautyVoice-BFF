@@ -3,6 +3,25 @@ import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus, Gift, Chec
 
 export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading }: any) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    // Automatyczne przewijanie do 'wczoraj' po załadowaniu lub zmianie miesiąca
+    if (scrollRef.current) {
+      const today = new Date();
+      if (today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear()) {
+        const currentDay = today.getDate();
+        // Chcemy widzieć wczoraj, dzisiaj, jutro. Wczoraj to (currentDay - 1). 
+        // 1 dzień to 48px (w-12). Zostawiamy mały margines, np. 2 dni wcześniej = (currentDay - 3)
+        const targetDay = Math.max(1, currentDay - 2); 
+        const scrollAmount = (targetDay - 1) * 48; // w-12 = 48px
+        scrollRef.current.scrollTo({ left: scrollAmount, behavior: 'smooth' });
+      } else {
+        // Inny miesiąc, scroll na początek
+        scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+      }
+    }
+  }, [currentDate.getMonth(), currentDate.getFullYear(), loading]);
   
   // Przejście o miesiąc w tył/przód
   const goPrev = () => {
@@ -142,7 +161,7 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
       </div>
 
       <div className="glass-card rounded-3xl border border-surface-200/60 overflow-hidden bg-white shadow-xl">
-        <div className="overflow-x-auto pb-4">
+        <div className="overflow-x-auto pb-4" ref={scrollRef}>
           <div className="min-w-max">
             {/* Header row - Dates */}
             <div className="flex border-b border-surface-200 bg-surface-50">
