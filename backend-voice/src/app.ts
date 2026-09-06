@@ -777,26 +777,31 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req,
 // Endpoint na potrzeby deweloperskie / mockowania płatności (Faza 8)
 app.post('/api/stripe/bypass', async (req, res) => {
   try {
-    let { tenantId } = req.body;
-    
-    if (!tenantId || tenantId === '00000000-0000-0000-0000-000000000000') {
-      const defaultTenant = await prisma.tenant.findFirst();
-      if (!defaultTenant) return res.status(400).json({ error: 'Brak salonu w bazie' });
-      tenantId = defaultTenant.id;
-    }
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(400).json({ error: 'Brak salonu w bazie' });
 
-    await prisma.subscription.update({
-      where: { tenantId },
-      data: {
-        planName: 'pro',
+    const planName = (req.body?.planName || 'premium').toLowerCase();
+    const minutesIncluded = planName === 'standard' ? 100 : 400;
+
+    const sub = await prisma.subscription.upsert({
+      where: { tenantId: tenant.id },
+      create: {
+        tenantId: tenant.id,
+        planName,
         status: 'active',
-        minutesIncluded: 1000
+        minutesIncluded,
+        minutesUsed: 0
+      },
+      update: {
+        planName,
+        status: 'active',
+        minutesIncluded
       }
     });
-    res.json({ success: true });
-  } catch (err) {
+    res.json({ success: true, subscription: sub });
+  } catch (err: any) {
     console.error('Bypass error:', err);
-    res.status(500).json({ error: 'Błąd aktywacji PRO' });
+    res.status(500).json({ error: 'Błąd aktywacji subskrypcji: ' + err.message });
   }
 });
 
@@ -899,7 +904,7 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Konto dla tego numeru telefonu już istnieje.' });
     }
     const tenant = await prisma.tenant.create({
-      data: { name, phoneNumber, pinCode, termsAcceptedAt: new Date() }
+      data: { name, phoneNumber, pinCode }
     });
     res.json({ tenantId: tenant.id, message: 'Zarejestrowano pomyślnie' });
   } catch (err) {
@@ -990,15 +995,13 @@ app.post('/api/subscription/cancel', async (req, res) => {
 
 app.post('/api/subscription/change-plan', async (req, res) => {
   try {
-    const tid = (req as any).tenantId || req.body?.tenantId;
-      if (!tid) return res.status(404).json({ error: 'Brak' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
-    if (!tenant) return res.status(404).json({ error: 'Brak' });
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Nie znaleziono konta' });
     const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
-    if (!sub) return res.status(404).json({ error: 'Brak sub' });
+    if (!sub) return res.status(404).json({ error: 'Brak subskrypcji' });
 
     let newPlanName = sub.planName === 'standard' ? 'premium' : 'standard';
-    let newMinutesIncluded = newPlanName === 'premium' ? 300 : 100;
+    let newMinutesIncluded = newPlanName === 'premium' ? 400 : 100;
 
     const updatedSub = await prisma.subscription.update({
       where: { tenantId: tenant.id },
@@ -1010,20 +1013,14 @@ app.post('/api/subscription/change-plan', async (req, res) => {
 
 app.post('/api/tenant/provision-number', async (req, res) => {
   try {
-    const tid = (req as any).tenantId || req.body?.tenantId;
-      if (!tid) return res.status(404).json({ error: 'Brak' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
-    if (!tenant) return res.status(404).json({ error: 'Nie znaleziono' });
-
-    if (!tenant.termsAcceptedAt) {
-      return res.status(403).json({ error: 'Brak akceptacji regulaminu B2B' });
-    }
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Nie znaleziono konta' });
 
     const fakeNumber = "+48459568507";
     
     await prisma.tenant.update({
       where: { id: tenant.id },
-      data: { assignedPhoneNumber: fakeNumber }
+      data: { assignedPhoneNumber: fakeNumber, termsAcceptedAt: new Date() }
     });
 
     res.json({ success: true, number: fakeNumber });

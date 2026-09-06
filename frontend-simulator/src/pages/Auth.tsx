@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Phone, Building2, ArrowRight, Loader2, X, Lock } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
@@ -97,7 +97,7 @@ if (!res.ok) {
                     value={salonName}
                     onChange={(e) => setSalonName(e.target.value)}
                     className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
-                    placeholder="Studio Urody EVA"
+                    placeholder="Np. Twoja Firma, Gabinet, Kancelaria, Salon"
                   />
                 </div>
               </div>

@@ -116,7 +116,7 @@ export default function Subscription() {
     setError('');
     
     try {
-      const tenantId = '00000000-0000-0000-0000-000000000000';
+      const tenantId = localStorage.getItem('tenantId');
       
       const resTerms = await fetch('/api/tenant', {
         method: 'PUT',
@@ -128,7 +128,7 @@ export default function Subscription() {
       const resStripe = await fetch('/api/stripe/bypass', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, planName: selectedPlan })
+        body: JSON.stringify({ tenantId, planName: selectedPlan || 'premium' })
       });
       if (!resStripe.ok) throw new Error('Błąd płatności Stripe');
 
@@ -141,9 +141,24 @@ export default function Subscription() {
       if (!resProv.ok) throw new Error(dataProv.error || 'Błąd generowania numeru');
       
       setProvisionedNumber(dataProv.number);
+
+      // Pobierz zaktualizowaną subskrypcję i dane tenanta
+      const rSub = await fetch('/api/subscription');
+      if (rSub.ok) {
+        const dSub = await rSub.json();
+        if (dSub && dSub.status && dSub.status !== 'none') {
+          setSubDetails(dSub);
+        }
+      }
+      const rTen = await fetch('/api/tenant');
+      if (rTen.ok) {
+        const dTen = await rTen.json();
+        if (dTen) setTenant(dTen);
+      }
+
       setStep(4);
-    } catch (err) {
-      setError(err.message);
+    } catch (err: any) {
+      setError(err.message || 'Wystąpił błąd podczas aktywacji');
     } finally {
       setIsLoading(false);
     }
@@ -171,6 +186,9 @@ export default function Subscription() {
             <h2 className="text-xl font-medium text-surface-900">Aktualny plan: <span className="font-bold uppercase text-primary">{subDetails?.planName || 'Standard'}</span></h2>
             <p className="text-surface-600 mt-2">Status: <strong className="uppercase">{subStatus}</strong></p>
             <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || 100}</strong></p>
+            {tenant?.assignedPhoneNumber && (
+              <p className="text-surface-600 mt-2">Dedykowany numer asystenta: <strong className="font-mono text-primary font-bold text-lg">{tenant.assignedPhoneNumber}</strong></p>
+            )}
             {subStatus === 'paused' && <p className="text-amber-600 mt-2">Zawieszono do: {new Date(subDetails?.pausedUntil).toLocaleDateString()}</p>}
             {subStatus === 'canceled' && <p className="text-red-600 mt-2">Subskrypcja wygasa z końcem okresu.</p>}
           </div>
@@ -371,9 +389,17 @@ export default function Subscription() {
                 <p className="text-xs text-surface-500 mt-4">Możesz wyłączyć przekierowanie kodem <code className="font-mono">#21#</code> lub <code className="font-mono">#61#</code> w dowolnym momencie.</p>
               </div>
 
-              <a href="/dashboard/settings" className="mt-8 inline-flex items-center gap-2 text-green-700 hover:text-green-800 font-medium">
-                Przejdź do ustawień asystenta <ArrowRight className="w-4 h-4" />
-              </a>
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <button 
+                  onClick={() => setSubStatus('active')}
+                  className="w-full sm:w-auto px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-surface-800 transition shadow-sm"
+                >
+                  Przejdź do zarządzania subskrypcją
+                </button>
+                <a href="/dashboard/settings" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-green-700 hover:text-green-800 font-medium py-3">
+                  Ustawienia firmy <ArrowRight className="w-4 h-4" />
+                </a>
+              </div>
             </div>
           )}
 
