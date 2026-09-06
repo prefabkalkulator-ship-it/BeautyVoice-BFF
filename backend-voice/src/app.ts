@@ -1115,7 +1115,9 @@ app.post("/api/zadarma-sms", async (req, res) => {
     
     if ((bodyText === "TAK" || bodyText === "POTWIERDZAM") && callerPhone) {
       try {
-        const upcomingList = await prisma.appointment.findMany({
+        const ten = await prisma.tenant.findFirst({ where: { OR: [ { appointments: { some: { customerPhone: callerPhone } } } ] }, include: { subscription: true } }); if (ten && (ten.isSuspended || (ten.subscription && (ten.subscription.status === 'paused' || ten.subscription.status === 'canceled')))) { console.log('[Zadarma] SMS zignorowany, konto zawieszone'); return res.send('OK'); }
+
+const upcomingList = await prisma.appointment.findMany({
           where: { 
             customerPhone: callerPhone, 
             status: 'confirmed', 
@@ -1175,7 +1177,9 @@ app.post("/api/zadarma-sms", async (req, res) => {
 
     if (bodyText.startsWith("ANULUJ") && callerPhone) {
       try {
-        const upcomingList = await prisma.appointment.findMany({
+        const ten = await prisma.tenant.findFirst({ where: { OR: [ { appointments: { some: { customerPhone: callerPhone } } } ] }, include: { subscription: true } }); if (ten && (ten.isSuspended || (ten.subscription && (ten.subscription.status === 'paused' || ten.subscription.status === 'canceled')))) { console.log('[Zadarma] SMS zignorowany, konto zawieszone'); return res.send('OK'); }
+
+const upcomingList = await prisma.appointment.findMany({
           where: { 
             customerPhone: callerPhone, 
             status: 'confirmed', 

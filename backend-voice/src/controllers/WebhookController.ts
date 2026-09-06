@@ -78,17 +78,40 @@ User: ${message}`;
       let tenant;
       if (tenantNumber) {
         tenant = await prisma.tenant.findFirst({
-          where: { phoneNumber: tenantNumber }
+          where: { phoneNumber: tenantNumber },
+          include: { subscription: true }
         });
       }
 
       // Fallback: jeśli nie znaleziono po numerze (lub dzwonimy z panelu testowego), bierzemy pierwszego z bazy
       if (!tenant) {
-        tenant = await prisma.tenant.findFirst();
+        tenant = await prisma.tenant.findFirst({
+          include: { subscription: true }
+        });
       }
 
       if (!tenant) {
         res.status(400).json({ error: 'Brak przypisanego Tenanta dla tego numeru.' });
+        return;
+      }
+      
+      if (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled'))) {
+        const isStream = req.body.stream !== false;
+        const msg = "Przepraszamy, ale asystent głosowy dla tego numeru jest obecnie niedostępny z przyczyn technicznych.";
+        
+        if (isStream) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache, no-transform');
+          res.setHeader('Connection', 'keep-alive');
+          res.flushHeaders();
+          
+          res.write(`data: ${JSON.stringify({ id: 'chatcmpl-1', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: 'beautyvoice', choices: [{ index: 0, delta: { content: msg }, finish_reason: null }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ id: 'chatcmpl-1', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: 'beautyvoice', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } else {
+          res.json({ id: 'chatcmpl-1', object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'beautyvoice', choices: [{ index: 0, message: { role: 'assistant', content: msg }, finish_reason: 'stop' }] });
+        }
         return;
       }
 
