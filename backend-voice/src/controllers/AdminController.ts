@@ -106,6 +106,25 @@ export class AdminController {
       res.status(500).json({ error: e.message });
     }
   }
+
+  public async setSubscriptionStatus(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const { status } = req.body;
+      const pausedUntil = status === 'paused' ? new Date(Date.now() + 30 * 24 * 3600 * 1000) : null;
+      const sub = await prisma.subscription.update({
+        where: { tenantId: id },
+        data: {
+          status,
+          pausedAt: status === 'paused' ? new Date() : null,
+          pausedUntil
+        }
+      });
+      res.status(200).json(sub);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  }
 }
 
 export const adminController = new AdminController();

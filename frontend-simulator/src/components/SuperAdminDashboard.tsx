@@ -45,19 +45,32 @@ export function SuperAdminDashboard() {
   };
 
   const handleAction = async (id: string, action: string, payload: any = {}) => {
-    if (!window.confirm(`Czy na pewno chcesz wykonać akcję: ${action}?`)) return;
+    const actionLabels: Record<string, string> = {
+      approve: 'Zatwierdź profil jako bezpieczny',
+      suspend: payload.suspend ? 'Zawieś całe konto (blokada AI i połączeń)' : 'Odblokuj konto użytkownika',
+      'adjust-minutes': `Zmień minuty (${payload.additionalMinutes > 0 ? '+' : ''}${payload.additionalMinutes} min)`,
+      sms: 'Wyślij wiadomość SMS',
+      'subscription/status': payload.status === 'active' ? 'Wznów subskrypcję użytkownika (Status: active)' : 'Zawieś subskrypcję na 30 dni (Status: paused)'
+    };
+    const confirmPrompt = actionLabels[action] || action;
+    if (!window.confirm(`Czy na pewno chcesz wykonać operację: "${confirmPrompt}"?`)) return;
     try {
-      await fetch(`/api/admin/tenants/${id}/${action}`, {
+      const res = await fetch(`/api/admin/tenants/${id}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      fetchTenants();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Błąd: ${err.error || res.statusText}`);
+      }
+      await fetchTenants();
       if (selectedTenant && selectedTenant.id === id) {
-        fetchTenantDetails(id);
+        await fetchTenantDetails(id);
       }
     } catch (e) {
       console.error(e);
+      alert('Błąd połączenia z serwerem');
     }
   };
 
@@ -151,9 +164,12 @@ export function SuperAdminDashboard() {
                 {t.riskLevel === 'LOW' && <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">LOW</span>}
               </div>
               <div className="text-sm text-gray-500">📞 {t.phoneNumber} {t.contactEmail && <span className="ml-2 text-gray-400">| ✉️ {t.contactEmail}</span>}</div>
-              <div className="text-xs text-gray-400 mt-1 flex justify-between">
+              <div className="text-xs text-gray-400 mt-1 flex justify-between items-center">
                 <span>Minuty: {t.subscription?.minutesUsed || 0} / {t.subscription?.minutesIncluded || 0}</span>
-                {t.isSuspended && <span className="text-red-500 font-bold">ZAWIESZONY</span>}
+                <div className="flex gap-1">
+                  {t.isSuspended && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold text-[10px]">ZAWIESZONY</span>}
+                  {t.subscription?.status === 'paused' && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold text-[10px]">PAUZA SUB</span>}
+                </div>
               </div>
             </div>
           ))}
@@ -179,7 +195,19 @@ export function SuperAdminDashboard() {
             </button>
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
-              <h1 className="text-2xl md:text-3xl font-bold break-words">{selectedTenant.name}</h1>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold break-words">{selectedTenant.name}</h1>
+                <div className="flex items-center gap-2 mt-2">
+                  {selectedTenant.isSuspended ? (
+                    <span className="bg-red-600 text-white text-xs px-2.5 py-1 rounded-full font-bold">🚫 Konto Zawieszone (Blokada AI)</span>
+                  ) : (
+                    <span className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-full font-bold">✅ Konto Aktywne</span>
+                  )}
+                  {selectedTenant.subscription?.status === 'paused' && (
+                    <span className="bg-amber-500 text-white text-xs px-2.5 py-1 rounded-full font-bold">⏸️ Abonament Wstrzymany</span>
+                  )}
+                </div>
+              </div>
               <div className="flex flex-col sm:flex-row gap-2 shrink-0">
                 <button 
                   onClick={() => handleAction(selectedTenant.id, 'approve')}
@@ -191,7 +219,7 @@ export function SuperAdminDashboard() {
                   onClick={() => handleAction(selectedTenant.id, 'suspend', { suspend: !selectedTenant.isSuspended })}
                   className={`px-4 py-3 sm:py-2 font-semibold rounded shadow transition text-sm sm:text-base text-center ${selectedTenant.isSuspended ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
                 >
-                  {selectedTenant.isSuspended ? '🔓 Odblokuj' : '🚫 Zawieś Konto'}
+                  {selectedTenant.isSuspended ? '🔓 Odblokuj Konto' : '🚫 Zawieś Konto'}
                 </button>
                 <button 
                   onClick={(e) => {
@@ -244,18 +272,43 @@ export function SuperAdminDashboard() {
               <h3 className="font-bold text-xl mb-4 text-gray-800">⚙️ Zarządzanie Abonamentem</h3>
               <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-blue-50 p-4 rounded-lg">
                 <div className="text-sm">
-                  Obecny plan: <strong className="uppercase">{selectedTenant.subscription?.planName}</strong>
+                  <div>Obecny plan: <strong className="uppercase">{selectedTenant.subscription?.planName || 'Brak'}</strong></div>
+                  <div className="mt-1">
+                    Status: <span className={`font-bold uppercase ${selectedTenant.subscription?.status === 'paused' ? 'text-amber-600' : selectedTenant.subscription?.status === 'active' ? 'text-green-600' : 'text-gray-600'}`}>
+                      {selectedTenant.subscription?.status || 'none'}
+                    </span>
+                    {selectedTenant.subscription?.pausedUntil && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        (do {new Date(selectedTenant.subscription.pausedUntil).toLocaleDateString('pl-PL')})
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
+                  {selectedTenant.subscription?.status === 'paused' ? (
+                    <button 
+                      onClick={() => handleAction(selectedTenant.id, 'subscription/status', { status: 'active' })}
+                      className="px-3 py-2 sm:py-1 bg-green-600 text-white rounded hover:bg-green-700 font-medium text-sm"
+                    >
+                      ▶️ Wznów Subskrypcję
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => handleAction(selectedTenant.id, 'subscription/status', { status: 'paused' })}
+                      className="px-3 py-2 sm:py-1 bg-amber-500 text-white rounded hover:bg-amber-600 font-medium text-sm"
+                    >
+                      ⏸️ Zawieś na 30 dni
+                    </button>
+                  )}
                   <button 
                     onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: 100 })}
-                    className="flex-1 sm:flex-none px-3 py-2 sm:py-1 bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-100 font-medium"
+                    className="px-3 py-2 sm:py-1 bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-100 font-medium text-sm"
                   >
                     +100 Minut
                   </button>
                   <button 
                     onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: -100 })}
-                    className="flex-1 sm:flex-none px-3 py-2 sm:py-1 bg-white border border-red-300 text-red-700 rounded hover:bg-red-100 font-medium"
+                    className="px-3 py-2 sm:py-1 bg-white border border-red-300 text-red-700 rounded hover:bg-red-100 font-medium text-sm"
                   >
                     -100 Minut
                   </button>

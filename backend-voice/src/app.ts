@@ -930,11 +930,8 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/tenant/wipe', async (req, res) => {
   try {
-    const tid = (req as any).tenantId || req.body?.tenantId;
-      if (!tid) return res.status(404).json({ error: 'Brak' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
-    if (!tenant) return res.status(400).json({ error: 'Brak tenanta' });
-    
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
     await prisma.tenant.delete({ where: { id: tenant.id } });
     res.json({ success: true, message: 'Dane usunięto bezpowrotnie.' });
   } catch (err) {
@@ -946,9 +943,7 @@ app.post('/api/tenant/wipe', async (req, res) => {
 // --- SUBSCRIPTION ENDPOINTS ---
 app.get('/api/subscription', async (req, res) => {
     try {
-      const tid = (req as any).tenantId || req.query?.tenantId;
-      if (!tid) return res.json({ status: 'none' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
+      const tenant = await getContextTenant(req);
       if (!tenant) return res.json({ status: 'none' });
       const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
       res.json(sub || { status: 'none' });
@@ -957,10 +952,8 @@ app.get('/api/subscription', async (req, res) => {
 
 app.post('/api/subscription/pause', async (req, res) => {
   try {
-    const tid = (req as any).tenantId || req.body?.tenantId;
-      if (!tid) return res.status(404).json({ error: 'Brak' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
-    if (!tenant) return res.status(404).json({ error: 'Brak' });
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
     const pausedUntil = new Date();
     pausedUntil.setDate(pausedUntil.getDate() + 30);
     const sub = await prisma.subscription.update({
@@ -973,10 +966,8 @@ app.post('/api/subscription/pause', async (req, res) => {
 
 app.post('/api/subscription/resume', async (req, res) => {
   try {
-    const tid = (req as any).tenantId || req.body?.tenantId;
-      if (!tid) return res.status(404).json({ error: 'Brak' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
-    if (!tenant) return res.status(404).json({ error: 'Brak' });
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
     const sub = await prisma.subscription.update({
       where: { tenantId: tenant.id },
       data: { status: 'active', pausedAt: null, pausedUntil: null }
@@ -987,10 +978,8 @@ app.post('/api/subscription/resume', async (req, res) => {
 
 app.post('/api/subscription/cancel', async (req, res) => {
   try {
-    const tid = (req as any).tenantId || req.body?.tenantId;
-      if (!tid) return res.status(404).json({ error: 'Brak' });
-      const tenant = await prisma.tenant.findUnique({ where: { id: tid } });
-    if (!tenant) return res.status(404).json({ error: 'Brak' });
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
     const sub = await prisma.subscription.update({
       where: { tenantId: tenant.id },
       data: { status: 'canceled', canceledAt: new Date() }
@@ -1045,26 +1034,44 @@ app.post('/api/tenant/provision-number', async (req, res) => {
 
 export { app };
 
-app.post("/api/twilio-incoming", (req, res) => {
+app.post("/api/twilio-incoming", async (req, res) => {
   const host = req.headers.host;
   let callerPhone = req.body.From || 'unknown';
   let calledNumber = req.body.To || 'unknown';
   
   if (callerPhone.includes('sip:')) {
     const match = callerPhone.match(/sip:(.+)@/);
-    if (match && match[1]) {
-      callerPhone = match[1];
-    } else {
-      callerPhone = 'unknown';
-    }
+    if (match && match[1]) callerPhone = match[1];
+    else callerPhone = 'unknown';
   }
   if (calledNumber.includes('sip:')) {
     const match = calledNumber.match(/sip:(.+)@/);
-    if (match && match[1]) {
-      calledNumber = match[1];
-    } else {
-      calledNumber = 'unknown';
-    }
+    if (match && match[1]) calledNumber = match[1];
+    else calledNumber = 'unknown';
+  }
+
+  // Weryfikacja czy salon docelowy nie jest zawieszony lub zapauzowany
+  let normalizedDialed = calledNumber;
+  if (normalizedDialed !== 'unknown' && !normalizedDialed.startsWith('+')) {
+    normalizedDialed = '+' + normalizedDialed;
+  }
+  
+  let tenant = await prisma.tenant.findFirst({
+    where: { OR: [{ assignedPhoneNumber: normalizedDialed }, { phoneNumber: normalizedDialed }] },
+    include: { subscription: true }
+  });
+  if (!tenant) {
+    tenant = await prisma.tenant.findFirst({
+      where: { name: { not: 'DEMO' } },
+      include: { subscription: true }
+    });
+  }
+
+  res.type("text/xml");
+
+  if (tenant && (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled')))) {
+    console.log(`🚫 [Twilio Incoming] Odrzucono połączenie od ${callerPhone} do ${calledNumber}. Salon: ${tenant.name} jest zawieszony (isSuspended: ${tenant.isSuspended}, sub: ${tenant.subscription?.status})`);
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Przepraszamy, asystent głosowy jest obecnie niedostępny z przyczyn technicznych. Prosimy spróbować później.</Say><Hangup/></Response>`);
   }
   
   // Wykrywanie czy to jest Zadarma Callback (Outbound) - szukamy obu numerów w cache (Twilio może podać numer klienta w From lub To zależnie od konfiguracji pbx)
@@ -1073,10 +1080,8 @@ app.post("/api/twilio-incoming", (req, res) => {
     outboundTaskId = VoiceOutboundService.getTaskIdByPhone(calledNumber);
   }
 
-  // W TwiML dodajemy opcjonalny parametr outboundTaskId
   const outboundParam = outboundTaskId ? `<Parameter name="outboundTaskId" value="${outboundTaskId}" />` : '';
 
-  res.type("text/xml");
   res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" />${outboundParam}</Stream></Connect></Response>`);
 });
 
@@ -1278,5 +1283,6 @@ app.post('/api/admin/tenants/:id/suspend', (req, res) => adminController.suspend
 app.post('/api/admin/tenants/:id/approve', (req, res) => adminController.approveTenant(req, res));
 app.post('/api/admin/tenants/:id/adjust-minutes', (req, res) => adminController.adjustMinutes(req, res));
 app.post('/api/admin/tenants/:id/sms', (req, res) => adminController.sendSmsNotification(req, res));
+app.post('/api/admin/tenants/:id/subscription/status', (req, res) => adminController.setSubscriptionStatus(req, res));
 
 

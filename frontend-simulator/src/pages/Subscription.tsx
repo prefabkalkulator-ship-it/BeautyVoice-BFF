@@ -11,6 +11,7 @@ export default function Subscription() {
   const [provisionedNumber, setProvisionedNumber] = useState(null);
   const [subStatus, setSubStatus] = useState('none');
   const [subDetails, setSubDetails] = useState<any>(null);
+  const [tenant, setTenant] = useState<any>(null);
   const [showWipeModal, setShowWipeModal] = useState(false);
 
   useEffect(() => {
@@ -22,29 +23,48 @@ export default function Subscription() {
           setSubDetails(d);
         }
       });
+    fetch('/api/tenant')
+      .then(r => r.json())
+      .then(t => {
+        if (t) setTenant(t);
+      });
   }, []);
 
   const handlePause = async () => {
-    if (!confirm('Czy na pewno chcesz zawiesić subskrypcję?')) return;
+    if (!confirm('Czy na pewno chcesz zawiesić subskrypcję na 30 dni?')) return;
     setIsLoading(true);
-    const r = await fetch('/api/subscription/pause', { method: 'POST' });
+    const tid = localStorage.getItem('tenantId');
+    const r = await fetch('/api/subscription/pause', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId: tid })
+    });
     const d = await r.json();
-    setSubStatus(d.status);
-    setSubDetails(d);
+    if (d && d.status) {
+      setSubStatus(d.status);
+      setSubDetails(d);
+    }
     setIsLoading(false);
   };
 
   const handleResume = async () => {
     setIsLoading(true);
-    const r = await fetch('/api/subscription/resume', { method: 'POST' });
+    const tid = localStorage.getItem('tenantId');
+    const r = await fetch('/api/subscription/resume', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId: tid })
+    });
     const d = await r.json();
-    setSubStatus(d.status);
-    setSubDetails(d);
+    if (d && d.status) {
+      setSubStatus(d.status);
+      setSubDetails(d);
+    }
     setIsLoading(false);
   };
 
   const handleCancel = async () => {
-    setShowWipeModal(true);
+    if (window.confirm('Czy na pewno chcesz usunąć konto i wszystkie dane? Ta operacja jest nieodwracalna!')) confirmWipe();
   };
 
   const confirmWipe = async () => {
@@ -134,12 +154,24 @@ export default function Subscription() {
     return (
       <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <h1 className="text-3xl font-serif text-surface-900 mb-6">Zarządzanie Subskrypcją</h1>
+        {tenant?.isSuspended && (
+          <div className="mb-6 p-4 bg-red-50 border-2 border-red-500 rounded-2xl flex items-start gap-3">
+            <span className="text-2xl">🚫</span>
+            <div>
+              <h3 className="font-bold text-red-800 text-sm">Blokada Administracyjna (SuperAdmin)</h3>
+              <p className="text-xs text-red-600 mt-1">
+                Twoje konto zostało zawieszone przez administratora platformy. Asystent głosowy i obsługa połączeń są wyłączone.
+                Nawet jeśli subskrypcja jest aktywna, połączenia nie będą odbierane do czasu odblokowania konta przez administratora.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
           <div className="mb-6">
             <h2 className="text-xl font-medium text-surface-900">Aktualny plan: <span className="font-bold uppercase text-primary">{subDetails?.planName || 'Standard'}</span></h2>
             <p className="text-surface-600 mt-2">Status: <strong className="uppercase">{subStatus}</strong></p>
             <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || 100}</strong></p>
-            {subStatus === 'paused' && <p className="text-amber-600 mt-2">Zawieś do: {new Date(subDetails?.pausedUntil).toLocaleDateString()}</p>}
+            {subStatus === 'paused' && <p className="text-amber-600 mt-2">Zawieszono do: {new Date(subDetails?.pausedUntil).toLocaleDateString()}</p>}
             {subStatus === 'canceled' && <p className="text-red-600 mt-2">Subskrypcja wygasa z końcem okresu.</p>}
           </div>
 

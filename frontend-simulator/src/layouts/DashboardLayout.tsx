@@ -30,11 +30,19 @@ export default function DashboardLayout() {
       navigate('/login');
       return;
     }
-    // Verify tenant still exists in DB
+    // Verify tenant still exists in DB and check suspension status
     fetch('/api/tenant').then(r => {
       if (r.status === 404 || r.status === 401) {
         localStorage.removeItem('tenantId');
         navigate('/login');
+        return;
+      }
+      return r.json();
+    }).then(t => {
+      if (t && t.isSuspended) {
+        setIsSuspended(true);
+      } else {
+        setIsSuspended(false);
       }
     }).catch(() => {});
   }, [navigate]);
@@ -42,6 +50,7 @@ export default function DashboardLayout() {
 
   const [minutesUsed, setMinutesUsed] = useState(0);
   const [minutesIncluded, setMinutesIncluded] = useState(0);
+  const [isSuspended, setIsSuspended] = useState(false);
 
   useEffect(() => {
     requestForToken();
@@ -154,6 +163,17 @@ export default function DashboardLayout() {
       <Toaster />
       {/* Main Content */}
       <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
+        {isSuspended && (
+          <div className="mb-6 bg-red-600 text-white p-4 rounded-2xl shadow-lg flex items-center gap-4">
+            <span className="text-3xl">🚫</span>
+            <div>
+              <h4 className="font-bold text-base sm:text-lg">Konto zostało zawieszone przez administratora platformy</h4>
+              <p className="text-xs sm:text-sm text-red-100 mt-1">
+                Połączenia telefoniczne, asystent głosowy AI oraz kampanie SMS zostały wstrzymane. Skontaktuj się z administratorem, aby wyjaśnić status i odblokować konto.
+              </p>
+            </div>
+          </div>
+        )}
         <Outlet />
       </main>
 

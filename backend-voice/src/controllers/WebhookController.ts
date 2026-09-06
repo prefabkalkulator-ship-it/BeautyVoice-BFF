@@ -12,10 +12,14 @@ export class WebhookController {
         return;
       }
 
-      // W uproszczonym symulatorze używamy pierwszego Tenanta
-      const tenant = await prisma.tenant.findFirst();
+      // W symulatorze używamy tenanta (nie DEMO)
+      const tenant = await prisma.tenant.findFirst({ where: { name: { not: 'DEMO' } }, include: { subscription: true } }) || await prisma.tenant.findFirst({ include: { subscription: true } });
       if (!tenant) {
         res.status(400).json({ error: 'Brak zdefiniowanego Tenanta w bazie danych.' });
+        return;
+      }
+      if (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled'))) {
+        res.json({ reply: 'Przepraszamy, ale asystent jest obecnie niedostępny (konto jest zawieszone).' });
         return;
       }
 
@@ -72,22 +76,25 @@ User: ${message}`;
       }
 
       // Wyciągamy numer Vapi (numer salonu) z payloadu, aby zidentyfikować Tenanta
-      const tenantNumber = call?.phoneNumber;
+      const rawTenantNum = typeof call?.phoneNumber === 'string' ? call.phoneNumber : call?.phoneNumber?.number;
       const callerNumber = call?.customer?.number;
       
       let tenant;
-      if (tenantNumber) {
+      if (rawTenantNum) {
+        let normalized = rawTenantNum;
+        if (!normalized.startsWith('+')) normalized = '+' + normalized;
         tenant = await prisma.tenant.findFirst({
-          where: { phoneNumber: tenantNumber },
+          where: { OR: [{ assignedPhoneNumber: normalized }, { phoneNumber: normalized }, { assignedPhoneNumber: rawTenantNum }, { phoneNumber: rawTenantNum }] },
           include: { subscription: true }
         });
       }
 
-      // Fallback: jeśli nie znaleziono po numerze (lub dzwonimy z panelu testowego), bierzemy pierwszego z bazy
+      // Fallback: jeśli nie znaleziono po numerze, bierzemy właściwy salon (nie DEMO)
       if (!tenant) {
         tenant = await prisma.tenant.findFirst({
+          where: { name: { not: 'DEMO' } },
           include: { subscription: true }
-        });
+        }) || await prisma.tenant.findFirst({ include: { subscription: true } });
       }
 
       if (!tenant) {

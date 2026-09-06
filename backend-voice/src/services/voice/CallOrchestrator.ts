@@ -64,10 +64,24 @@ export class CallOrchestrator {
               if (normalizedDialed !== 'unknown' && !normalizedDialed.startsWith('+')) {
                 normalizedDialed = '+' + normalizedDialed;
               }
-              tenant = await prisma.tenant.findFirst({ where: { assignedPhoneNumber: normalizedDialed } });
+              tenant = await prisma.tenant.findFirst({
+                where: { OR: [{ assignedPhoneNumber: normalizedDialed }, { phoneNumber: normalizedDialed }] },
+                include: { subscription: true }
+              });
             }
             
-            if (!tenant) tenant = await prisma.tenant.findFirst();
+            if (!tenant) {
+              tenant = await prisma.tenant.findFirst({
+                where: { name: { not: 'DEMO' } },
+                include: { subscription: true }
+              });
+            }
+
+            if (tenant && (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled')))) {
+              console.log(`🚫 [CallOrchestrator] Połączenie odrzucone dla tenanta ${tenant.name} - konto zablokowane (isSuspended: ${tenant.isSuspended}, sub: ${tenant.subscription?.status})`);
+              this.twilioWs.close();
+              return;
+            }
 
             // Uruchom Gemini NATYCHMIAST — asystent może się przywitać
             await this.initAsync(tenant);
