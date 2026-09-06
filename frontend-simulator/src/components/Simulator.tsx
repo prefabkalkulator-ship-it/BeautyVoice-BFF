@@ -1,3 +1,4 @@
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2 } from 'lucide-react';
 
@@ -8,14 +9,36 @@ interface Message {
 }
 
 export default function Simulator() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [sub, setSub] = useState<any>(null);
   const [subLoading, setSubLoading] = useState(true);
+  const [availableServices, setAvailableServices] = useState<any[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/subscription')
       .then(res => res.json())
       .then(data => { setSub(data); setSubLoading(false); })
       .catch(() => setSubLoading(false));
+
+    fetch('/api/services')
+      .then(res => res.json())
+      .then(data => setAvailableServices(data || []))
+      .catch(() => {});
+
+    fetch('/api/customers')
+      .then(res => res.json())
+      .then(data => {
+        const tags = new Set<string>();
+        data.forEach((c: any) => {
+          if (c.tags && Array.isArray(c.tags)) {
+            c.tags.forEach((t: string) => tags.add(t));
+          }
+        });
+        setAvailableTags(Array.from(tags).sort());
+      })
+      .catch(() => {});
   }, []);
 
 
@@ -46,12 +69,30 @@ export default function Simulator() {
   };
 
   useEffect(() => {
-    scrollToBottom();
+    setTimeout(scrollToBottom, 100);
   }, [messages]);
+  
+  useEffect(() => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }, 200);
+  }, []);
 
 
   
               
+  
+
+  useEffect(() => {
+    if (location.state?.initialPrompt && !subLoading && sub?.planName === 'premium' && !isLoading) {
+      const prompt = location.state.initialPrompt;
+      navigate(location.pathname, { replace: true, state: {} });
+      setTimeout(() => {
+        handleSendDirect(prompt);
+      }, 100);
+    }
+  }, [location.state, subLoading, isLoading, navigate, sub]);
+
   if (subLoading) {
     return (
       <div className="flex items-center justify-center p-12 h-full">
@@ -108,7 +149,35 @@ export default function Simulator() {
         body: JSON.stringify({ toolName: actionCard.toolName, args: actionCard.args })
       });
       if (res.ok) {
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: false, _executed: true, content: 'Uruchomiono pomyślnie!' } as any : m));
+        let data: any = {};
+        try { data = await res.json(); } catch(e) {}
+        
+        
+        
+        const hour = new Date().getHours();
+        const quietHours = hour >= 20 || hour < 9;
+        const quietSuffix = quietHours ? '\n\n(Uwaga: Obecnie trwa cisza nocna. Zlecenia oczekują w kolejce i zostaną wysłane po godz. 09:00)' : '';
+        
+        let contentStr = 'Uruchomiono pomyślnie!';
+        if (actionCard.toolName === 'create_informational_campaign') {
+           contentStr = `Uruchomiono pomyślnie! Kampania: ${actionCard.args.campaign_name || 'Informacyjna'}. Kanał: ${actionCard.args.channel === 'voice_call' ? 'Telefon' : 'SMS'}, Odbiorcy: ${actionCard.args.audience_tags || 'Wszyscy'}`;
+        } else if (actionCard.toolName === 'create_last_minute_offer') {
+           contentStr = `Uruchomiono pomyślnie! Oferta Last Minute na: ${actionCard.args.target_datetime}, Kanał: ${actionCard.args.channel === 'voice_call' ? 'Telefon' : 'SMS'}`;
+        } else if (actionCard.toolName === 'send_nps_surveys') {
+           contentStr = 'Uruchomiono badanie zadowolenia klienta.';
+        }
+        contentStr += quietSuffix;
+
+        
+        
+        if (data && data.customersCount !== undefined) {
+           contentStr += `\n\n(Zakwalifikowano ${data.customersCount} odbiorców spełniających kryteria tagów)`;
+        }
+        if (data && data.message) {
+           contentStr += `\n\nSzczegóły: ${data.message}`;
+        }
+
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: false, _executed: true, content: contentStr } as any : m));
       } else {
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, _loading: false, content: 'Błąd podczas uruchamiania.' } as any : m));
       }
@@ -122,8 +191,33 @@ export default function Simulator() {
     
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text };
     setInput("");
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    setMessages(prev => {
+      const updatedMessages = [...prev, userMsg];
+      
+      // Perform the fetch immediately inside so it captures the latest state
+      setTimeout(() => {
+        setIsLoading(true);
+        fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            history: updatedMessages
+              .filter(m => m.id !== '1')
+              .map(m => ({ role: m.role, content: m.content }))
+          })
+        }).then(res => res.json()).then(data => {
+            if (data.actionCard && data.actionCard.toolName === 'create_last_minute_offer' && data.actionCard.args && !('service_name' in data.actionCard.args)) {
+              data.actionCard.args.service_name = '';
+            }
+            setMessages(prev2 => [...prev2, { id: Date.now().toString(), role: 'assistant', content: data.reply, actionCard: data.actionCard }]);
+        }).catch(console.error).finally(() => setIsLoading(false));
+      }, 0);
+
+      return updatedMessages;
+    });
+    // We already handled fetch inside prev to avoid closure issues
+    return;
     setIsLoading(true);
 
     try {
@@ -133,6 +227,8 @@ export default function Simulator() {
         body: JSON.stringify({
           message: text,
           history: updatedMessages
+              .filter(m => m.id !== '1')
+              .map(m => ({ role: m.role, content: m.content }))
         })
       });
 
@@ -231,8 +327,8 @@ export default function Simulator() {
                   {msg.content}
                   {msg.id === '1' && (
                       <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-surface-100">
-                        <button onClick={() => handleSendDirect("Mamy wolne miejsce na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
-                        <button onClick={() => handleSendDirect("Wyślij ankiety NPS do klientów, którzy byli u nas wczoraj")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie NPS (Wczoraj)</button>
+                        <button onClick={() => handleSendDirect("Mamy wolną rezerwację na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
+                        <button onClick={() => handleSendDirect("Uruchom badanie zadowolenia klienta dla ostatnich wizyt")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
                         <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
                         <button onClick={() => handleSendDirect("Potwierdź jutrzejsze rezerwacje sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
                       </div>
@@ -243,7 +339,7 @@ export default function Simulator() {
                         <div className="w-8 h-8 rounded-full bg-gold-100 flex items-center justify-center text-gold-600">
                           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                         </div>
-                        <h4 className="font-serif text-lg text-surface-900">Karta Akcji: {(msg as any).actionCard.toolName === 'create_informational_campaign' ? 'Nowa Kampania' : ((msg as any).actionCard.toolName === 'create_last_minute_offer' ? 'Oferta Last Minute' : 'Weryfikacja Rezerwacji')}</h4>
+                        <h4 className="font-serif text-lg text-surface-900">Karta Akcji: {(msg as any).actionCard.toolName === 'create_informational_campaign' ? (((msg as any).actionCard.args?.audience_tags || '').includes('uśpieni') ? 'Wybudzanie Klientów' : 'Nowa Kampania') : ((msg as any).actionCard.toolName === 'create_last_minute_offer' ? 'Oferta Last Minute' : ((msg as any).actionCard.toolName === 'send_nps_surveys' ? 'Badanie zadowolenia klienta' : 'Weryfikacja Rezerwacji'))}</h4>
                       </div>
                       
                       <div className="space-y-3 mb-6 text-sm text-surface-600 bg-surface-50 p-4 rounded-lg">
@@ -258,7 +354,8 @@ const keyLabels: Record<string, string> = {
   scheduled_time: 'Czas wysyłki',
   target_scope: 'Zakres rezerwacji',
   confirmation_method: 'Metoda potwierdzania',
-  target_datetime: 'Termin okienka'
+  target_datetime: 'Termin okienka',
+  service_name: 'Nazwa usługi [będzie wpisana do wiadomości automatycznie]'
 };
 const valLabels: Record<string, string> = {
   tomorrow_appointments: 'Rezerwacje z jutra',
@@ -274,10 +371,15 @@ const val = typeof v === 'string' ? v : String(v);
 let inputElement;
 
 if (k === 'channel') {
+  const isNps = (msg as any).actionCard.toolName === 'send_nps_surveys';
+  const isReactivation = (msg as any).actionCard.toolName === 'create_informational_campaign' && ((msg as any).actionCard.args?.audience_tags || '').includes('uśpieni');
+  const isLastMinute = (msg as any).actionCard.toolName === 'create_last_minute_offer';
+  const smsOnly = isNps || isReactivation || isLastMinute;
+
   inputElement = (
     <select value={val} onChange={e => updateActionCardArg(msg.id, k, e.target.value)} className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300">
       <option value="sms">SMS</option>
-      <option value="voice_call">Telefon (Voice)</option>
+      {!smsOnly && <option value="voice_call">Telefon (Voice)</option>}
     </select>
   );
 } else if (k === 'scheduled_time') {
@@ -301,6 +403,77 @@ if (k === 'channel') {
       <option value="sms_two_way">SMS Dwukierunkowy (TAK/NIE)</option>
       <option value="voice_call">Telefon (Rozmowa z EVA)</option>
     </select>
+  );
+} else if (k === 'service_name') {
+  inputElement = (
+    <select 
+      value={val} 
+      onChange={e => updateActionCardArg(msg.id, k, e.target.value)} 
+      className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300"
+    >
+      <option value="">-- Wybierz usługę --</option>
+      {availableServices.map(s => (
+        <option key={s.id} value={s.name}>{s.name}</option>
+      ))}
+    </select>
+  );
+} else if (k === 'audience_tags') {
+  const currentTags = val ? val.split(',').map(t => t.trim()).filter(Boolean) : [];
+  inputElement = (
+    <div className="flex flex-col gap-2 w-full">
+      <div className="relative group/dropdown">
+        <div className="w-full p-2 border border-surface-200 rounded text-sm bg-white cursor-pointer hover:border-gold-300 flex justify-between items-center">
+          <span className="truncate text-surface-600">
+            {currentTags.length > 0 ? currentTags.join(', ') : 'Wybierz tagi...'}
+          </span>
+          <span className="text-surface-400 text-xs">▼</span>
+        </div>
+        <div className="absolute top-full left-0 w-full mt-1 bg-white border border-surface-200 rounded-lg shadow-lg opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible transition-all z-10 max-h-48 overflow-y-auto">
+          {availableTags.map(tag => {
+            const isSelected = currentTags.includes(tag);
+            return (
+              <div 
+                key={tag}
+                className="px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 cursor-pointer flex items-center gap-2"
+                onClick={() => {
+                  let newTags;
+                  if (isSelected) newTags = currentTags.filter(t => t !== tag);
+                  else newTags = [...currentTags, tag];
+                  updateActionCardArg(msg.id, k, newTags.join(', '));
+                }}
+              >
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isSelected ? 'bg-gold-500 border-gold-500' : 'border-surface-300'}`}>
+                  {isSelected && <div className="w-2 h-2 bg-white rounded-full" />}
+                </div>
+                {tag}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+} else if (k === 'target_datetime') {
+  let formattedVal = '';
+  if (val) {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      const offset = d.getTimezoneOffset() * 60000;
+      formattedVal = new Date(d.getTime() - offset).toISOString().slice(0, 16);
+    }
+  }
+  inputElement = (
+    <input 
+      type="datetime-local" 
+      value={formattedVal}
+      onChange={e => {
+        if (e.target.value) {
+          const d = new Date(e.target.value);
+          if(!isNaN(d.getTime())) updateActionCardArg(msg.id, k, d.toISOString());
+        }
+      }}
+      className="flex-1 p-2 border border-surface-200 rounded text-sm bg-white focus:outline-none focus:border-gold-300 w-full"
+    />
   );
 } else {
   inputElement = (

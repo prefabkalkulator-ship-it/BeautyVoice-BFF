@@ -29,7 +29,7 @@ export class GeminiService {
    * Obsługuje pojedynczą turę konwersacji w webhooku
    * Przekazujemy historię konwersacji (z bazy danych / frontendu) i bieżącą wiadomość.
    */
-  public async handleChat(message: string, history: any[] = [], tenantId: string, tenantName: string, businessProfile: string, reviewLink: string | null = null, onToolCall?: () => void, onChunk?: (text: string) => void): Promise<string> {
+  public async handleChat(message: string, history: any[] = [], tenantId: string, tenantName: string, businessProfile: string, reviewLink: string | null = null, onToolCall?: () => void, onChunk?: (text: string) => void, callerPhone?: string): Promise<string> {
     try {
       // Transformacja historii na format akceptowany przez @google/genai
       const formattedHistory = history.map(msg => ({
@@ -42,7 +42,7 @@ export class GeminiService {
         model: 'gemini-3.5-flash',
         history: formattedHistory,
         config: {
-          systemInstruction: getSystemPrompt(tenantName, businessProfile, reviewLink),
+          systemInstruction: getSystemPrompt({ tenantName, businessProfile, isTextChat: !onToolCall }),
           temperature: 0.1, // Niska temperatura dla stabilnych i precyzyjnych rezerwacji
           tools: [{ functionDeclarations: BookingService.getToolDefinitions() as any }],
         }
@@ -150,7 +150,17 @@ export class GeminiService {
         return fallback;
       }
 
-      return fullText;
+      let finalResponse = fullText;
+      if (!onToolCall) {
+        // Czat tekstowy (np. Simulator, Marketing AI)
+        // Usuwamy sztuczne wstawki "myślenia", z którymi LLM czasem przesadza pomimo zakazów w prompcie.
+        finalResponse = finalResponse.replace(/^(?:(?:Hmm|Hmmm|Hm|Mhm|Niech no spojrzę|Niech no zobaczę|Momencik|Sekundka|Sekunda|Daj mi chwilę|Chwileczkę|Zaraz)[,\.\!\?\s]*)+/gi, '').trim();
+        
+        // Zabezpieczenie: jeśli usunęliśmy wszystko, przywracamy tekst, żeby nie wysłać pustej wiadomości
+        if (!finalResponse) finalResponse = fullText;
+      }
+
+      return finalResponse;
     } catch (error) {
       console.error('Gemini Service Error:', error);
       return 'Przepraszam, mam w tej chwili problemy z połączeniem z systemem. Proszę spróbować później.';

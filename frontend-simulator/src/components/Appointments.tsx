@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import AppointmentsDaily from './AppointmentsDaily';
 import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag, Gift, CheckCircle, Star } from 'lucide-react';
@@ -7,6 +8,7 @@ interface Appointment {
   npsScore?: number;
   customerName: string;
   customerPhone: string;
+  callerPhone?: string;
   startTime: string;
   endTime: string;
   status: string;
@@ -29,6 +31,7 @@ const COLOR_CODES = [
 ];
 
 export default function Appointments() {
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [staffList, setStaffList] = useState<any[]>([]);
@@ -503,6 +506,23 @@ export default function Appointments() {
                 {selectedAppt.id === 'new' ? 'Nowa Wizyta' : 'Szczegóły Wizyty'}
               </h3>
             </div>
+            
+            <div className="mb-6 -mt-2">
+                <p className="text-xs font-medium text-surface-500 mb-2 uppercase tracking-wider">Marketing AI</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedAppt.id === 'new' ? (
+                    <>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Uruchom kampanię Last Minute na datę " + ((formData.date ? formData.date + ' ' + formData.startTime : selectedAppt.startTime)) } })} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Stwórz kampanię informacyjną z tagiem #uśpieni celującą w termin " + ((formData.date ? formData.date + ' ' + formData.startTime : selectedAppt.startTime)) } })} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij prośbę o potwierdzenie rezerwacji do klienta " + formData.customerPhone + " na datę " + ((formData.date ? formData.date + ' ' + formData.startTime : selectedAppt.startTime)) } })} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } })} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
+                    </>
+                  )}
+                </div>
+            </div>
 
             {!isEditing && selectedAppt.id !== 'new' ? (
               <div className="space-y-4">
@@ -584,7 +604,26 @@ export default function Appointments() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-surface-500 mb-1">Telefon</label>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="block text-xs font-medium text-surface-500">Telefon</label>
+                    {selectedAppt.callerPhone && (
+                        <div className="group/tooltip outline-none" tabIndex={0}>
+                          <div className="w-5 h-5 rounded-full bg-gold-100 text-gold-600 flex items-center justify-center text-xs font-bold cursor-pointer border border-gold-300">
+                            i
+                          </div>
+                          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 p-5 bg-[#36454F] text-white text-base rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible group-focus-within/tooltip:opacity-100 group-focus-within/tooltip:visible transition-all z-[100] text-center shadow-2xl border border-surface-600">
+                            <p className="text-sm text-surface-200 mb-1">Rezerwacji dokonano z numeru:</p>
+                            <p className="font-bold text-xl mb-3 tracking-wide">{selectedAppt.callerPhone}</p>
+                            <a 
+                              href={`tel:${selectedAppt.callerPhone.replace(/\s/g, '')}`} 
+                              className="flex items-center justify-center gap-2 w-full bg-gold-500 hover:bg-gold-600 text-white py-2.5 rounded-lg font-medium text-sm transition-colors text-center shadow-lg"
+                            >
+                              📞 Zadzwoń
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                  </div>
                   <input 
                     type="text" 
                     value={formData.customerPhone}

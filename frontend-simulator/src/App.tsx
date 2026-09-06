@@ -11,6 +11,7 @@ import Simulator from './components/Simulator';
 import Settings from './components/Settings';
 import TimeOff from './components/TimeOff';
 import Subscription from './pages/Subscription';
+import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 
 import './index.css';
 
@@ -21,6 +22,7 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Auth />} />
         <Route path="/register" element={<Auth />} />
+        <Route path="/superadmin" element={<SuperAdminDashboard />} />
         
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Navigate to="/dashboard/appointments" replace />} />

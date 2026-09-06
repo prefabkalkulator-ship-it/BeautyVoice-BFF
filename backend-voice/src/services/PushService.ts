@@ -3,20 +3,26 @@ import { getMessaging } from 'firebase-admin/messaging';
 
 // Initialize firebase admin if not already initialized
 if (getApps().length === 0) {
-  initializeApp({
-    credential: applicationDefault(), // Uses GOOGLE_APPLICATION_CREDENTIALS
+  // Remove conflicting env var on Cloud Run
+if (process.env.K_SERVICE) {
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+}
+initializeApp({
+    credential: applicationDefault(),
     projectId: 'beautyvoice-bff'
-  });
+});
 }
 
 export class PushService {
-  static async sendNotification(tokens: string[], title: string, body: string, url?: string) {
+  static async sendNotification(tokens: string[], title: string, body: string, url?: string, phone?: string) {
     if (!tokens || tokens.length === 0) return;
     
     const message = {
-      notification: { title, body },
       data: {
-        click_action: url || 'https://beautyvoice-bff.web.app/dashboard'
+        title,
+        body,
+        click_action: url || 'https://beautyvoice-bff.web.app/dashboard',
+        phone: phone || ''
       },
       tokens
     };

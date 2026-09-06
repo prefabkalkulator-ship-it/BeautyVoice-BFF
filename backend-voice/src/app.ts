@@ -302,11 +302,26 @@ app.put('/api/tenant', async (req, res) => {
         aiVoice: req.body.aiVoice ?? undefined,
         bookingMode: modeToSave,
         botName: req.body.botName ?? undefined,
-        toneOfVoice: req.body.toneOfVoice ?? undefined 
+        toneOfVoice: req.body.toneOfVoice ?? undefined,
+        termsAcceptedAt: req.body.termsAcceptedAt ? new Date(req.body.termsAcceptedAt) : undefined,
+        fcmTokens: req.body.fcmToken ? { push: req.body.fcmToken } : undefined,
+        reviewLink: req.body.reviewLink ?? undefined,
+        reviewLink1: req.body.reviewLink1 ?? undefined,
+        reviewLink2: req.body.reviewLink2 ?? undefined,
+        contactEmail: req.body.contactEmail !== undefined ? req.body.contactEmail : undefined,
+        emailPublicForAi: req.body.emailPublicForAi !== undefined ? req.body.emailPublicForAi : undefined
       }
     });
+
+    if (req.body.businessProfile) {
+      import('./services/ModerationService').then(async mod => {
+        const faqs = await prisma.faqEntry.findMany({ where: { tenantId: tenant.id } });
+        mod.moderationService.moderateKnowledgeBase(tenant.id, req.body.businessProfile, faqs);
+      });
+    }
+
     res.json(updated);
-  } catch (err) { res.status(500).json({ error: 'Błąd' }); }
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // Staff API
@@ -1250,3 +1265,14 @@ app.post("/api/zadarma-sms", async (req, res) => {
 
     res.send("OK");
   });
+
+// --- API dla Super-Administratora ---
+import { adminController } from './controllers/AdminController';
+app.get('/api/admin/tenants', (req, res) => adminController.getTenants(req, res));
+app.get('/api/admin/tenants/:id', (req, res) => adminController.getTenantDetails(req, res));
+app.post('/api/admin/tenants/:id/suspend', (req, res) => adminController.suspendTenant(req, res));
+app.post('/api/admin/tenants/:id/approve', (req, res) => adminController.approveTenant(req, res));
+app.post('/api/admin/tenants/:id/adjust-minutes', (req, res) => adminController.adjustMinutes(req, res));
+app.post('/api/admin/tenants/:id/sms', (req, res) => adminController.sendSmsNotification(req, res));
+
+

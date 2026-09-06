@@ -22,7 +22,12 @@ export default function Settings() {
   const [aiVoice, setAiVoice] = useState('Aoede');
   const [botName, setBotName] = useState('Ewa');
   const [reviewLink, setReviewLink] = useState('');
+  const [reviewLink1, setReviewLink1] = useState('');
+  const [reviewLink2, setReviewLink2] = useState('');
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [toneOfVoice, setToneOfVoice] = useState('profesjonalny i przyjazny');
+  const [contactEmail, setContactEmail] = useState('');
+  const [emailPublicForAi, setEmailPublicForAi] = useState(false);
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -49,6 +54,10 @@ export default function Settings() {
         setAiVoice(tData.aiVoice || 'Aoede');
         setBotName(tData.botName || 'Ewa');
         setToneOfVoice(tData.toneOfVoice || 'profesjonalny i przyjazny');
+        setReviewLink1(tData.reviewLink1 || '');
+        setReviewLink2(tData.reviewLink2 || '');
+        setContactEmail(tData.contactEmail || '');
+        setEmailPublicForAi(tData.emailPublicForAi || false);
         setAssignedPhoneNumber(tData.assignedPhoneNumber || '');
       }
       setStaffList(sData);
@@ -67,11 +76,11 @@ export default function Settings() {
   const saveTenantSettings = async () => {
     setIsSaving(true);
     try {
-      await fetch('/api/tenant', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessProfile, aiVoice, bookingMode, botName, toneOfVoice })
-      });
+        await fetch('/api/tenant', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessProfile, aiVoice, bookingMode, botName, toneOfVoice, reviewLink1, reviewLink2, contactEmail, emailPublicForAi })
+        });
       alert('Zapisano ustawienia firmy.');
     } catch (err) {
       alert('Błąd zapisu');
@@ -208,6 +217,28 @@ export default function Settings() {
               <div className="text-xs text-surface-500 mt-1">Decyduje o charakterze rozmowy.</div>
             </div>
             <div className="md:col-span-2 mt-2">
+              <label className="block text-sm font-medium text-surface-700 mb-1">Email kontaktowy firmy</label>
+              <input 
+                type="email" 
+                value={contactEmail} 
+                onChange={e => setContactEmail(e.target.value)}
+                className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary"
+                placeholder="np. kontakt@mojafirma.pl"
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <input 
+                  type="checkbox" 
+                  id="emailPublic" 
+                  checked={emailPublicForAi} 
+                  onChange={e => setEmailPublicForAi(e.target.checked)}
+                  className="w-4 h-4 text-primary accent-primary"
+                />
+                <label htmlFor="emailPublic" className="text-sm text-surface-700">
+                  Udostępnij AI (klienci mogą pytać o email) / odznacz, jeśli tylko do kontaktu z nami
+                </label>
+              </div>
+            </div>
+            <div className="md:col-span-2 mt-2">
               <label className="block text-sm font-medium text-surface-700 mb-1">Twój Wirtualny Numer Telefonu (SIP / SMS)</label>
               <input 
                 type="text" 
@@ -227,6 +258,40 @@ export default function Settings() {
         >
           <Save className="w-4 h-4" /> Zapisz Profil
         </button>
+      </div>
+
+      {/* Automatyzacje NPS */}
+      <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60 mt-6 mb-6">
+        <div className="flex items-center gap-3 mb-6">
+          <h3 className="text-xl font-serif text-surface-900">Automatyzacje NPS i Oceny (Funkcja Premium)</h3>
+          <div className="relative flex items-center justify-center w-6 h-6 rounded-full bg-gold-100 text-gold-600 cursor-pointer" onClick={() => setIsTooltipOpen(!isTooltipOpen)}>
+            <span className="text-sm font-bold">i</span>
+            {isTooltipOpen && (
+              <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-sm sm:absolute sm:left-1/2 sm:top-auto sm:bottom-full sm:translate-y-0 mb-2 p-5 bg-surface-900 text-white text-[13px] sm:text-xs rounded-2xl shadow-2xl z-[100] text-left leading-relaxed cursor-default" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-start mb-2">
+                  <span className="font-bold text-gold-300 text-sm">Jak działają automatyzacje?</span>
+                  <button onClick={(e) => { e.stopPropagation(); setIsTooltipOpen(false); }} className="text-surface-400 hover:text-white p-1 -mr-2 -mt-2"><X className="w-4 h-4" /></button>
+                </div>
+                System automatycznie monitoruje wizyty. Jeśli dodasz linki do opinii, asystent AI może po wizycie wysłać SMS z prośbą o ocenę (skala 1-5). Oceny pozytywne otrzymają bezpośredni link np. do Google Maps. Oceny negatywne trafią do Ciebie jako notatka.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-surface-700 mb-2">Uniwersalny link do opinii 1 (np. Google Maps)</label>
+            <input type="text" value={reviewLink1} onChange={e => setReviewLink1(e.target.value)} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gold-500 transition-shadow" placeholder="https://g.page/r/..." />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-surface-700 mb-2">Uniwersalny link do opinii 2 (np. Booksy, Facebook)</label>
+            <input type="text" value={reviewLink2} onChange={e => setReviewLink2(e.target.value)} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gold-500 transition-shadow" placeholder="https://booksy.com/..." />
+          </div>
+        </div>
+        <div className="flex justify-start pt-4 mt-4">
+          <button onClick={saveTenantSettings} disabled={isSaving} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-surface-800 hover:text-white transition-colors disabled:opacity-50">
+            <Save className="w-4 h-4" /> {isSaving ? 'Zapisywanie...' : 'Zapisz NPS'}
+          </button>
+        </div>
       </div>
 
       {businessProfile === 'facility' && (

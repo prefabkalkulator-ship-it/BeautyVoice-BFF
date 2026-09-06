@@ -13,6 +13,7 @@ export interface GeminiClientCallbacks {
   botName?: string;
   tenantName?: string;
   toneOfVoice?: string;
+    contextHistory?: string;
 }
 
 export class GeminiClient {
@@ -54,10 +55,19 @@ export class GeminiClient {
       setup: {
         model: "models/gemini-3.1-flash-live-preview",
         systemInstruction: {
-          parts: [{ text: getSystemPrompt(this.callbacks.tenantName || "BeautyVoice", businessProfile, aiVoice, bookingMode, this.callbacks.botName || "Ewa", this.callbacks.toneOfVoice || "profesjonalny") }]
+          parts: [{ text: getSystemPrompt({
+              tenantName: this.callbacks.tenantName || "BeautyVoice",
+              businessProfile: businessProfile,
+              voiceName: aiVoice,
+              bookingMode: bookingMode,
+              botNameArg: this.callbacks.botName || "Ewa",
+              toneOfVoiceArg: this.callbacks.toneOfVoice || "profesjonalny",
+              contextHistory: this.callbacks.contextHistory || "",
+              isTextChat: false
+            }) }]
         },
         tools: [{
-          functionDeclarations: BookingService.getToolDefinitions(bookingMode)
+          functionDeclarations: BookingService.getToolDefinitions(bookingMode, true)
         }],
         generationConfig: {
           responseModalities: ["AUDIO"],
@@ -132,6 +142,15 @@ export class GeminiClient {
   sendToolResponse(functionResponses: any[]) {
     this.send({
       toolResponse: { functionResponses }
+    });
+  }
+
+  sendInputText(text: string) {
+    this.send({
+      clientContent: {
+        turns: [{ role: 'user', parts: [{ text: `[SYSTEM CONTEXT UPDATE] ${text}` }] }],
+        turnComplete: false
+      }
     });
   }
 

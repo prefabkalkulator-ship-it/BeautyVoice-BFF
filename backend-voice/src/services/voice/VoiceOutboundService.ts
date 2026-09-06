@@ -23,7 +23,7 @@ export class VoiceOutboundService {
         const twiml = `
           <Response>
             <Connect>
-              <Stream url="wss://${process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app'}/connection">
+              <Stream url="wss://${process.env.HOST || 'beautyvoice-bff-pnhdkoavla-lm.a.run.app'}/api/twilio-voice">
                 <Parameter name="outboundTaskId" value="${taskId}" />
               </Stream>
             </Connect>

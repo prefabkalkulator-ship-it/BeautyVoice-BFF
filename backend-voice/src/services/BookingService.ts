@@ -48,8 +48,46 @@ export class BookingService {
   /**
    * Schematy narzędzi (Function Calling) dla Gemini
    */
-  public static getToolDefinitions(bookingMode: string = "hourly") {
-    return [
+  public static getToolDefinitions(bookingMode: string = "hourly", isVoiceBot: boolean = false) {
+    const allTools = [
+          {
+            name: 'send_nps_surveys',
+            description: 'Wysyła ankiety badania zadowolenia do klientów po wizycie (np. dla ostatnich wizyt). Prosi o wpisanie message_content w którym określamy treść ankiety. ZAWSZE JAKO DOMYŚLNY message_content UŻYJ DOKŁADNIE TEGO TEKSTU: "Dzień dobry! Jak oceniasz Naszą usługę w skali od 0 do 5? Twoja opinia jest dla nas bardzo ważna. Odpowiedz na tę wiadomość, wpisując samą cyfrę. Dziękujemy!"',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                campaign_name: { type: 'STRING', description: 'Nazwa robocza kampanii zadowolenia' },
+                audience_tags: { type: 'STRING', description: 'Tagi docelowe (np. #wczorajsi) lub puste' },
+                customerPhone: { type: 'STRING', description: 'Konkretny numer telefonu klienta (opcjonalnie)' },
+                channel: { type: 'STRING', description: 'Kanał wysyłki (sms)', enum: ['sms'] },
+                message_content: { type: 'STRING', description: 'Treść powiadomienia NPS. (ZAWSZE UŻYWAJ TEKSTU Z OPISU!)' }
+              },
+              required: ['message_content', 'channel', 'audience_tags', 'campaign_name']
+            }
+          },
+      {
+        name: 'confirmAppointment',
+        description: 'Potwierdza rezerwację w systemie. Użyj tego narzędzia, gdy dzwonisz do klienta by potwierdzić rezerwację i klient odpowie twierdząco (np. "Tak, będę"). Jeśli znasz ID rezerwacji z kontekstu, podaj je.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta, z którym aktualnie rozmawiasz' },
+            appointmentId: { type: 'STRING', description: 'ID rezerwacji (opcjonalnie)' }
+          },
+          required: ['customerPhone']
+        }
+      },
+      {
+        name: 'cancelAppointment',
+        description: 'Odwołuje rezerwację w systemie. Użyj tego narzędzia, gdy klient poinformuje, że nie przyjdzie, chce zrezygnować, lub odpowie przecząco na prośbę o potwierdzenie wizyty.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta' }
+          },
+          required: ['customerPhone']
+        }
+      },
 
         
           {
@@ -65,6 +103,18 @@ export class BookingService {
             }
           },
           {
+            name: 'requestHumanContact',
+            description: 'Przekazuje prośbę o kontakt do żywego człowieka (recepcji). Użyj tego, gdy klient prosi o człowieka, lub gdy wpadniesz w pętlę krytycznych błędów z danymi (odrzucana rezerwacja).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                customerPhone: { type: 'STRING', description: 'Numer telefonu klienta' },
+                reason: { type: 'STRING', description: 'Krótki powód prośby o kontakt (np. zły format numeru, klient chce rozmawiać z człowiekiem)' }
+              },
+              required: ['customerPhone', 'reason']
+            }
+          },
+          {
             name: 'create_informational_campaign',
           description: 'Przygotowuje kampanię informacyjną lub promocyjną (SMS / Voice) dla wybranej grupy lub pojedynczego klienta. Zwróć to ZAWSZE, gdy właściciel prosi o wysłanie promocji, powiadomień lub SMSów.',
           parameters: {
@@ -73,7 +123,7 @@ export class BookingService {
               campaign_name: { type: 'STRING', description: 'Nazwa robocza kampanii' },
               channel: { type: 'STRING', description: 'Kanał: sms lub voice_call' },
               audience_tags: { type: 'STRING', description: 'Tagi odbiorców np. #vip, #uśpieni (rozdzielone przecinkami) lub puste jeśli do wszystkich' },
-              message_content: { type: 'STRING', description: 'Treść wiadomości SMS lub instrukcja dla Voice Bota' },
+              message_content: { type: 'STRING', description: 'Treść wiadomości SMS lub instrukcja dla Voice Bota. ZAWSZE używaj słowa \'rezerwacja\' zamiast \'wizyta\', zwracaj się do klienta na \'Ty\' (np. \'za Tobą\'), ale w imieniu firmy używaj liczby mnogiej (np. \'Tęsknimy\' zamiast \'Tęsknię\')' },
               scheduled_time: { type: 'STRING', description: 'Kiedy wysłać (np. now, 2026-05-01)' }
             },
             required: ['channel', 'message_content']
@@ -82,16 +132,18 @@ export class BookingService {
         
           {
             name: 'create_last_minute_offer',
-            description: 'Uruchamia kampanię wyścigową (First-Come, First-Served) SMS dla luki w kalendarzu. Używaj zawsze, gdy właściciel prosi o wysłanie oferty "Last minute" i wskazuje termin okienka.',
+            description: 'Uruchamia kampanię wyścigową (First-Come, First-Served) dla luki w kalendarzu. Używaj zawsze, gdy właściciel prosi o wysłanie oferty "Last minute" i wskazuje termin okienka.',
             parameters: {
               type: 'OBJECT',
               properties: {
                 campaign_name: { type: 'STRING', description: 'Nazwa robocza kampanii last minute' },
                 audience_tags: { type: 'STRING', description: 'Tagi docelowe (np. #lojalny, #uśpieni) lub puste' },
-                message_content: { type: 'STRING', description: 'Treść SMSa, musi zachęcać do odpowiedzi TAK (np. Dziś o 14:00 zwolnił się termin. Zarezerwuj odpisując TAK!)' },
-                target_datetime: { type: 'STRING', description: 'Data i godzina zwalniającego się terminu w formacie ISO (np. 2026-08-27T14:00:00Z)' }
+                channel: { type: 'STRING', description: 'Kanał wysyłki (sms lub voice_call)', enum: ['sms', 'voice_call'] },
+                service_name: { type: 'STRING', description: 'Opcjonalna nazwa zwalniającego się obiektu/usługi (np. Domek 6-osobowy)' },
+                message_content: { type: 'STRING', description: 'Treść powiadomienia zachęcająca do odpowiedzi TAK. Jeśli promują konkretną usługę, zamiast jej nazwy wpisz DOKŁADNIE tag [USŁUGA] (np. Zwolnił się [USŁUGA] dzisiaj o 16:00! Odpisz TAK, aby zarezerwować!)' },
+                target_datetime: { type: 'STRING', description: 'Data i godzina zwalniającego się terminu w formacie ISO (ZAWSZE podawaj dzisiejszą datę w formacie YYYY-MM-DD, a nie historyczną!)' }
               },
-              required: ['message_content', 'target_datetime']
+              required: ['message_content', 'target_datetime', 'channel', 'audience_tags', 'service_name']
             }
           },
           {
@@ -100,7 +152,8 @@ export class BookingService {
           parameters: {
             type: 'OBJECT',
             properties: {
-              target_scope: { type: 'STRING', description: 'Zakres: tomorrow_appointments, specific_date' },
+              target_scope: { type: 'STRING', description: 'Zakres: tomorrow_appointments, specific_date, specific_customer' },
+                customerPhone: { type: 'STRING', description: 'Opcjonalny numer telefonu (dla specific_customer)' },
               confirmation_method: { type: 'STRING', description: 'Metoda: sms_two_way, voice_interactive' }
             },
             required: ['target_scope', 'confirmation_method']
@@ -151,12 +204,18 @@ export class BookingService {
               description: 'Data i godzina rozpoczęcia/zameldowania w ISO (np. 2024-05-20T14:30:00+02:00)',
             },
             durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach (tylko hourly)' },
-            numberOfNights: { type: 'INTEGER', description: 'Liczba dób pobytu (tylko daily)' }
+            numberOfNights: { type: 'INTEGER', description: 'Liczba dób pobytu (tylko daily)' },
+            promoCode: { type: 'STRING', description: 'Opcjonalny kod rabatowy podany przez klienta (np. POWROT15)' }
           },
           required: bookingMode === 'daily' ? ['customerName', 'customerPhone', 'serviceName', 'startTime', 'numberOfNights'] : ['customerName', 'customerPhone', 'serviceName', 'startTime', 'durationMinutes'],
         },
       },
     ];
+
+    if (isVoiceBot) {
+      return allTools.filter(t => !['create_informational_campaign', 'create_last_minute_offer', 'schedule_confirmation_flow', 'send_nps_surveys'].includes(t.name));
+    }
+    return allTools;
   }
 
   /**
@@ -234,7 +293,7 @@ export class BookingService {
         const appointments = await prisma.appointment.findMany({
           where: {
             tenantId,
-            status: 'confirmed',
+            status: { in: ['confirmed', 'confirmed_by_client'] },
             OR: [
               { startTime: { lt: checkOutTime }, endTime: { gt: checkInTime } }
             ]
@@ -262,7 +321,7 @@ export class BookingService {
         if (timeOffs.some(t => t.staffId === null)) return [];
 
         const appointments = await prisma.appointment.findMany({
-          where: { tenantId, startTime: { gte: reqDate, lt: nextDate }, status: 'confirmed' },
+          where: { tenantId, startTime: { gte: reqDate, lt: nextDate }, status: { in: ['confirmed', 'confirmed_by_client'] } },
           orderBy: { startTime: 'asc' }
         });
 
@@ -355,6 +414,79 @@ export class BookingService {
   /**
    * 3. Rezerwuje wizytę: dodaje do tabeli Appointment w bazie danych
    */
+  public async confirmAppointment(tenantId: string, customerPhone: string) {
+    try {
+      const appointments = await prisma.appointment.findMany({
+        where: { tenantId, customerPhone, status: { in: ['confirmed', 'confirmed_by_client'] } },
+        orderBy: { startTime: 'asc' },
+        take: 1
+      });
+      if (appointments.length > 0) {
+        await prisma.appointment.update({
+          where: { id: appointments[0].id },
+          data: { status: 'confirmed_by_client' }
+        });
+        return { success: true, message: "Rezerwacja została pomyślnie potwierdzona." };
+      }
+      
+      const lastMinuteList = await prisma.appointment.findMany({
+        where: { tenantId, status: 'last_minute_offer', startTime: { gt: new Date() } },
+        orderBy: { startTime: 'asc' },
+        take: 1
+      });
+      if (lastMinuteList.length > 0) {
+          const offer = lastMinuteList[0];
+          const cust = await prisma.customer.findFirst({ where: { phone: customerPhone, tenantId } });
+          const nameToSave = cust ? cust.name : `Nieznany (tel: ${customerPhone})`;
+          await prisma.appointment.update({
+             where: { id: offer.id },
+             data: { status: 'confirmed_by_client', customerPhone: customerPhone, customerName: nameToSave, customerId: cust ? cust.id : null }
+          });
+          return { success: true, message: "Rezerwacja została pomyślnie potwierdzona i przypisana klientowi." };
+      }
+      
+      return { success: false, message: "Nie znaleziono rezerwacji do potwierdzenia dla tego numeru." };
+    } catch(e) { return { error: e.message }; }
+  }
+
+  public async cancelAppointment(tenantId: string, customerPhone: string) {
+    try {
+      const appointments = await prisma.appointment.findMany({
+        where: { tenantId, customerPhone, status: { in: ['confirmed', 'confirmed_by_client'] } },
+        orderBy: { startTime: 'asc' },
+        take: 1
+      });
+      if (appointments.length > 0) {
+        await prisma.appointment.update({
+          where: { id: appointments[0].id },
+          data: { status: 'cancelled' }
+        });
+        return { success: true, message: "Rezerwacja została odwołana." };
+      }
+      return { success: false, message: "Nie znaleziono rezerwacji do odwołania." };
+    } catch(e) { return { error: e.message }; }
+  }
+
+  public async requestHumanContact(tenantId: string, customerPhone: string, reason: string) {
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (tenant?.fcmTokens && tenant.fcmTokens.length > 0) {
+        const { PushService } = await import('./PushService');
+        await PushService.sendNotification(
+          tenant.fcmTokens,
+          'Prośba o kontakt (AI)',
+          `Klient prosi o kontakt. Numer: ${customerPhone}. Powód: ${reason}`,
+          '',
+          customerPhone
+        );
+      }
+      return { success: true, message: 'Powiadomienie zostało wysłane. Możesz się pożegnać.' };
+    } catch(e: any) {
+      console.error('Błąd przy requestHumanContact:', e);
+      return { error: e.message };
+    }
+  }
+
   public async bookAppointment(
     tenantId: string,
     customerName: string,
@@ -365,9 +497,32 @@ export class BookingService {
     preferredStaffName?: string,
     bookingMode: string = "hourly",
     numberOfNights?: number,
-    promoCode?: string
+    promoCode?: string,
+    callerPhone?: string
   ): Promise<boolean> {
     try {
+      let isForeign = false;
+      if (customerPhone.trim().startsWith('+') && !customerPhone.replace(/\s/g, '').startsWith('+48')) {
+        isForeign = true;
+      }
+      const rawPhone = customerPhone.replace(/[\s\-\+]/g, '');
+      const phoneDigits = rawPhone.startsWith('48') ? rawPhone.substring(2) : (rawPhone.startsWith('0048') ? rawPhone.substring(4) : rawPhone);
+      
+      if (isForeign) {
+        if (rawPhone.length < 9 || rawPhone.length > 15) {
+          throw new Error("BŁĄD DANYCH: Zagraniczny numer telefonu musi mieć od 9 do 15 cyfr. Obecnie podałeś: " + customerPhone + ". Poproś klienta o podanie poprawnego numeru telefonu.");
+        }
+      } else {
+        if (!/^\d{9}$/.test(phoneDigits)) {
+          throw new Error("BŁĄD DANYCH: Polski numer telefonu musi składać się z dokładnie 9 cyfr. Obecnie podałeś: " + phoneDigits + " (" + phoneDigits.length + " cyfr). Poproś klienta o podanie poprawnego 9-cyfrowego numeru telefonu bez numeru kierunkowego lub z prefiksem +48.");
+        }
+      }
+      
+      const cleanName = customerName.trim();
+      if (cleanName.length < 3 || /\d/.test(cleanName)) {
+         throw new Error("BŁĄD DANYCH: Imię klienta '" + cleanName + "' jest za krótkie lub zawiera cyfry. Poproś klienta o przeliterowanie imienia.");
+      }
+
       const startDate = new Date(startTime);
       let endDate: Date;
       
@@ -429,7 +584,7 @@ export class BookingService {
               where: {
                 tenantId,
                 staffId,
-                status: 'confirmed',
+                status: { in: ['confirmed', 'confirmed_by_client'] },
                 OR: [
                   { startTime: { lt: endDate }, endTime: { gt: startDate } }
                 ]
@@ -476,7 +631,7 @@ export class BookingService {
               where: {
                 tenantId,
                 staffId,
-                status: 'confirmed',
+                status: { in: ['confirmed', 'confirmed_by_client'] },
                 OR: [
                   { startTime: { lt: endDate }, endTime: { gt: startDate } }
                 ]
@@ -495,7 +650,7 @@ export class BookingService {
           const conflict = await prisma.appointment.findFirst({
             where: {
               tenantId,
-              status: 'confirmed',
+              status: { in: ['confirmed', 'confirmed_by_client'] },
               OR: [
                 { startTime: { lt: endDate }, endTime: { gt: startDate } }
               ]
@@ -529,13 +684,14 @@ export class BookingService {
           startTime: startDate,
           endTime: endDate,
           status: 'confirmed',
-          promoCode: promoCode || null
+          promoCode: promoCode || null,
+          callerPhone: callerPhone || null
         }
       });
 
       // Update tags & lastVisit
       const visitCount = await prisma.appointment.count({
-        where: { tenantId, customerId: customer.id, status: 'confirmed' }
+        where: { tenantId, customerId: customer.id, status: { in: ['confirmed', 'confirmed_by_client'] } }
       });
       const newTags = new Set(customer.tags || []);
       if (visitCount >= 3) newTags.add('#lojalny');
@@ -568,9 +724,13 @@ export class BookingService {
       SMSService.sendSMS(customerPhone, smsBody).catch(console.error);
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Błąd rezerwacji DB:', error);
-      throw new Error('Wystąpił problem podczas próby zapisania wizyty.');
+      // Przekazujemy dokładny błąd walidacji do asystenta AI, żeby wiedział co powiedzieć klientowi
+      if (error instanceof Error && (error.message.includes('BŁĄD DANYCH') || error.message.includes('KRYTYCZNY BŁĄD'))) {
+        throw error;
+      }
+      throw new Error('Wystąpił problem podczas próby zapisania wizyty. Spróbuj jeszcze raz lub przeproś klienta.');
     }
   }
 }

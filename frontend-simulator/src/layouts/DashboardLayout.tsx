@@ -10,6 +10,19 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const callNumber = searchParams.get('call');
+    if (callNumber) {
+      toast('Przygotowuję połączenie... Potwierdź uruchomienie telefonu w oknie systemowym.', { icon: '📞', duration: 4000 });
+      setTimeout(() => {
+        window.location.href = 'tel:' + callNumber;
+      }, 500);
+      searchParams.delete('call');
+      navigate({ search: searchParams.toString() }, { replace: true });
+    }
+  }, [location.search, navigate]);
+
   
   useEffect(() => {
     const tid = localStorage.getItem('tenantId');
@@ -28,6 +41,7 @@ export default function DashboardLayout() {
 
 
   const [minutesUsed, setMinutesUsed] = useState(0);
+  const [minutesIncluded, setMinutesIncluded] = useState(0);
 
   useEffect(() => {
     requestForToken();
@@ -42,6 +56,7 @@ export default function DashboardLayout() {
       .then(d => {
         if (d && typeof d.minutesUsed === 'number') {
           setMinutesUsed(d.minutesUsed);
+          setMinutesIncluded(d.minutesIncluded || 0);
         }
       })
       .catch(() => {});
@@ -122,8 +137,8 @@ export default function DashboardLayout() {
 
           <div className="border-t border-surface-100 pt-4 mt-auto">
              <div className="px-3 mb-4 flex items-center justify-between text-sm text-surface-600 bg-surface-50 p-2.5 rounded-xl border border-surface-200 shadow-sm">
-               <span className="font-medium">Rozmowy:</span>
-               <span className="font-bold text-surface-900">{minutesUsed} min.</span>
+               <span className="font-medium">Minuty:</span>
+               <span className="font-bold text-surface-900">{minutesUsed} / {minutesIncluded}</span>
              </div>
              <button
                 onClick={handleLogout}

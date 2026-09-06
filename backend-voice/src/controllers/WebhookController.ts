@@ -21,9 +21,18 @@ export class WebhookController {
 
       console.log('🗣️ Otrzymano wiadomość:', message);
 
-      const reply = await geminiService.handleChat(message, history || [], tenant.id, tenant.name, tenant.businessProfile || 'solo', tenant.reviewLink);
+      let contextHistory = "";
+      const recentQueue = await prisma.outboundQueue.findMany({ where: { status: 'done' }, orderBy: { scheduledFor: 'desc' }, take: 2 });
+      if (recentQueue.length > 0) {
+          contextHistory = `[HISTORIA KONTAKTU] Klient niedawno otrzymał z systemu SMS o treści: "${(recentQueue[0].payload as any).text}"`;
+      }
+      
+      const contextualMessage = `[SYSTEM INFO: ${new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}]
+${contextHistory}
+User: ${message}`;
+        const reply = await geminiService.handleChat(contextualMessage, history || [], tenant.id, tenant.name, tenant.businessProfile || 'solo', tenant.reviewLink1);
 
-      console.log('🤖 Odpowiedź asystenta:', reply);
+        console.log('🤖 Odpowiedź asystenta:', reply);
       
       let finalReply = reply;
       let actionCard = undefined;
@@ -63,13 +72,13 @@ export class WebhookController {
       }
 
       // Wyciągamy numer Vapi (numer salonu) z payloadu, aby zidentyfikować Tenanta
-      // Vapi wysyła call.phoneNumber lub call.customer.number
-      const calledNumber = call?.phoneNumber || call?.customer?.number;
+      const tenantNumber = call?.phoneNumber;
+      const callerNumber = call?.customer?.number;
       
       let tenant;
-      if (calledNumber) {
+      if (tenantNumber) {
         tenant = await prisma.tenant.findFirst({
-          where: { phoneNumber: calledNumber }
+          where: { phoneNumber: tenantNumber }
         });
       }
 
@@ -83,6 +92,17 @@ export class WebhookController {
         return;
       }
 
+      let systemContext = '';
+      if (callerNumber) {
+        const knownCustomer = await prisma.customer.findFirst({ where: { phone: callerNumber, tenantId: tenant.id } });
+        if (knownCustomer) {
+           systemContext = `\n\n[SYSTEM INFO] To jest połączenie od TWOJEGO STAŁEGO KLIENTA. Został rozpoznany po numerze telefonu (Caller ID). Jego imię to: ${knownCustomer.name}, a numer to: ${knownCustomer.phone}.
+1) Powitaj go serdecznie po imieniu w pierwszym zdaniu.
+2) ZAKAZ pytania o imię i numer telefonu w trakcie całej rozmowy (masz już te dane). (ZIGNORUJ PUNKT 6 Z INSTRUKCJI)
+3) ZAKAZ pytania skąd klient dowiedział się o salonie. (ZIGNORUJ PUNKT 0 Z INSTRUKCJI)`;
+        }
+      }
+
       // Wyciągamy ostatnią wiadomość i historię
       let lastMessage = '';
       let history = [];
@@ -91,9 +111,9 @@ export class WebhookController {
       
       if (nonSystemMessages.length === 0) {
         // Vapi przysłało tylko system prompt - chce żeby asystent zaczął rozmowę
-        lastMessage = 'Przywitaj się z klientem krótko, zgodnie z instrukcjami z system prompt (Dzień dobry, dodzwoniłeś się...).';
+        lastMessage = 'Przywitaj się z klientem krótko, zgodnie z instrukcjami z system prompt (Dzień dobry, dodzwoniłeś się...).' + systemContext;
       } else {
-        lastMessage = nonSystemMessages[nonSystemMessages.length - 1]?.content || '';
+        lastMessage = (nonSystemMessages[nonSystemMessages.length - 1]?.content || '') + (nonSystemMessages.length === 1 ? systemContext : '');
         history = nonSystemMessages.slice(0, -1);
       }
 
@@ -152,7 +172,7 @@ export class WebhookController {
       };
 
       // Przekazujemy do naszej usługi z kontekstem Tenanta (bez filler words generowanych przez LLM)
-      const reply = await geminiService.handleChat(lastMessage, history, tenant.id, tenant.name, tenant.businessProfile || 'solo', tenant.reviewLink, onToolCall, onChunk);
+      const reply = await geminiService.handleChat(lastMessage, history, tenant.id, tenant.name, tenant.businessProfile || "solo", tenant.reviewLink1, onToolCall, onChunk, callerNumber);
 
       console.log(`🤖 [Vapi Tenant: ${tenant.name}] Odpowiedź asystenta:`, reply);
 

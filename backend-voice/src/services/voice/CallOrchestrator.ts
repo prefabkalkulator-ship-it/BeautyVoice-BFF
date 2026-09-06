@@ -29,6 +29,9 @@ export class CallOrchestrator {
   private toneOfVoice: string = "profesjonalny";
   private tenantId: string = "";
   private callStartTime: number = 0;
+  private hasSentGreeting: boolean = false;
+  private callerPhone: string = "";
+  private contextHistory: string = "";
 
   private isReady: boolean = false;
   private twilioMessageBuffer: string[] = [];
@@ -44,14 +47,35 @@ export class CallOrchestrator {
           const data = JSON.parse(msgStr);
           if (data.event === 'start') {
             const dialedNumber = data.start.customParameters?.dialedNumber || 'unknown';
-            // normalize dialedNumber by adding + if it starts with 48
+            const outboundTaskId = data.start.customParameters?.outboundTaskId;
+            this.callerPhone = data.start.customParameters?.callerPhone || "";
+
+            // --- SZYBKA ŚCIEŻKA: tylko tenant lookup (1-2 zapytania), potem natychmiast initAsync ---
+            let tenant = null;
+            if (outboundTaskId) {
+              const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId }, include: { tenant: true } });
+              if (task && task.tenant) {
+                tenant = task.tenant;
+              }
+            }
+            
+            if (!tenant) {
               let normalizedDialed = dialedNumber;
               if (normalizedDialed !== 'unknown' && !normalizedDialed.startsWith('+')) {
                 normalizedDialed = '+' + normalizedDialed;
               }
-              let tenant = await prisma.tenant.findFirst({ where: { assignedPhoneNumber: normalizedDialed } });
+              tenant = await prisma.tenant.findFirst({ where: { assignedPhoneNumber: normalizedDialed } });
+            }
+            
             if (!tenant) tenant = await prisma.tenant.findFirst();
+
+            // Uruchom Gemini NATYCHMIAST — asystent może się przywitać
             await this.initAsync(tenant);
+
+            // --- LAZY INJECTION: kontekst Caller ID wstrzykujemy ASYNCHRONICZNIE po starcie ---
+            if (tenant && this.callerPhone) {
+              this.injectCallerContext(tenant.id).catch(e => console.error('[CallerID] Błąd lazy injection:', e));
+            }
           }
         } catch(e) {}
       } else {
@@ -89,6 +113,37 @@ export class CallOrchestrator {
     });
   }
 
+  /**
+   * Lazy Injection: wstrzykuje kontekst Caller ID i historię SMS do sesji Gemini
+   * BEZ blokowania inicjalizacji połączenia. Uruchamiane asynchronicznie po initAsync.
+   */
+  private async injectCallerContext(tenantId: string) {
+    const [recentQueue, knownCustomer] = await Promise.all([
+      prisma.outboundQueue.findMany({
+        where: { targetPhone: this.callerPhone, status: 'done', scheduledFor: { gt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } },
+        orderBy: { scheduledFor: 'desc' }, take: 3
+      }),
+      prisma.customer.findFirst({ where: { phone: this.callerPhone, tenantId } })
+    ]);
+
+    let contextText = '';
+    if (recentQueue.length > 0) {
+      contextText += '[HISTORIA KONTAKTU]\n' + recentQueue.map((q: any) => `[${q.scheduledFor.toISOString()}] Wysłano ${q.channel.toUpperCase()}: "${(q.payload as any).text}"`).join('\n') + '\n';
+    }
+
+    if (knownCustomer) {
+      contextText += `\n[SYSTEM INFO] To jest połączenie od TWOJEGO STAŁEGO KLIENTA. Został rozpoznany po numerze telefonu (Caller ID). Jego imię to: ${knownCustomer.name}, a numer to: ${knownCustomer.phone}.\n1) Powitaj go serdecznie po imieniu w pierwszym zdaniu.\n2) ZAKAZ pytania o imię i numer telefonu w trakcie całej rozmowy (masz już te dane). (ZIGNORUJ PUNKT 6 Z INSTRUKCJI)\n3) ZAKAZ pytania skąd klient dowiedział się o salonie. (ZIGNORUJ PUNKT 0 Z INSTRUKCJI)`;
+    } else {
+      contextText += `\n[SYSTEM INFO] Klient dzwoni z numeru: ${this.callerPhone}. Kiedy przejdziesz do punktu 6 (Dane klienta), ZANIM zapytasz o numer telefonu, ZAPYTAJ NAJPIERW CZY PODAJE INNY NUMER CZY MAMY UŻYĆ TEGO Z KTÓREGO DZWONI (podaj mu ten numer). Jeśli się zgodzi na ten z którego dzwoni, użyj go.`;
+    }
+
+    // Wstrzyknij do sesji Gemini jako inputText (bez przerywania audio)
+    if (contextText && this.geminiClient) {
+      this.geminiClient.sendInputText(contextText);
+      console.log('[CallerID] Kontekst wstrzyknięty do sesji Gemini');
+    }
+  }
+
   private async initAsync(tenant: any) {
     try {
       if (tenant) {
@@ -115,7 +170,7 @@ export class CallOrchestrator {
       bookingMode: this.bookingMode,
       tenantName: this.tenantName,
       botName: this.botName,
-      toneOfVoice: this.toneOfVoice,
+      toneOfVoice: this.toneOfVoice, contextHistory: this.contextHistory,
       tenantId: this.tenantId
     });
 
@@ -148,7 +203,7 @@ export class CallOrchestrator {
                const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId } });
                if (task) {
                   const payload = typeof task.payload === 'object' && task.payload !== null ? task.payload as any : {};
-                  contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie!`;
+                  contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. Numer telefonu klienta to: ${task.targetPhone}. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie!`;
                   // Oznacz task jako zakończony
                   await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                }
@@ -270,7 +325,13 @@ export class CallOrchestrator {
         case 'checkAvailability':
           return { availableSlots: await bookingService.checkAvailability(tenantId, args.date, args.serviceName, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights) };
         case 'bookAppointment':
-          return await bookingService.bookAppointment(tenantId, args.customerName, args.customerPhone, args.serviceName, args.startTime, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights);
+          return await bookingService.bookAppointment(tenantId, args.customerName, args.customerPhone, args.serviceName, args.startTime, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights, args.promoCode, this.callerPhone);
+        case 'confirmAppointment':
+          return await bookingService.confirmAppointment(tenantId, args.customerPhone);
+        case 'cancelAppointment':
+          return await bookingService.cancelAppointment(tenantId, args.customerPhone);
+        case 'requestHumanContact':
+          return await bookingService.requestHumanContact(tenantId, args.customerPhone, args.reason);
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
       }

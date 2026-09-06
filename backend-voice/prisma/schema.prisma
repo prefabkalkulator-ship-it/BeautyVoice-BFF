@@ -26,6 +26,15 @@ model Tenant {
   fcmTokens           String[]
   createdAt           DateTime       @default(now())
   reviewLink          String? // Link do opinii Google
+  reviewLink1         String? // Uniwersalny link do opinii 1
+  reviewLink2         String? // Uniwersalny link do opinii 2
+  
+  riskLevel           String         @default("LOW") // LOW, HIGH
+  moderationNotes     String?
+  isSuspended         Boolean        @default(false)
+  
+  contactEmail        String?
+  emailPublicForAi    Boolean        @default(false)
   
   services            Service[]
   faqEntries      FaqEntry[]
@@ -124,10 +133,13 @@ model Appointment {
   customerId    String?
   customerName  String
   customerPhone String
+  callerPhone   String?      // Oryginalny numer z ktorego dzwoniono
   startTime     DateTime
   endTime       DateTime
   status        String       @default("confirmed") // confirmed, cancelled
-    promoCode     String?
+  promoCode     String?
+  npsScore      Int?
+  surveySent    Boolean      @default(false)
   
   tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   service       Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)

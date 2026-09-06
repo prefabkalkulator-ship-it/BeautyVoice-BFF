@@ -11,16 +11,31 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Otrzymano wiadomość w tle: ', payload);
-  const notificationTitle = payload.notification.title;
+  const notificationTitle = payload.data?.title || 'BeautyVoice';
+  const phone = payload.data?.phone;
+  
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/vite.svg'
+    body: payload.data?.body,
+    icon: '/EVA_favicon_192.png',
+    data: {
+      url: payload.data?.click_action || '/',
+      phone: phone
+    },
+    actions: phone ? [{ action: 'call', title: 'Zadzwoń' }] : []
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  if (event.action === 'call' && event.notification.data.phone) {
+    const phone = event.notification.data.phone.replace('+', '%2B');
+    clients.openWindow('/dashboard?call=' + phone);
+  } else {
+    clients.openWindow(event.notification.data.url);
+  }
 });

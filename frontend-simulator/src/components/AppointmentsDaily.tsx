@@ -1,7 +1,9 @@
+import { useNavigate } from 'react-router-dom';
 import React, { useState } from 'react';
 import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus, Gift, CheckCircle, Tag, User, Phone, Clock, Star } from 'lucide-react';
 
 export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading }: any) {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -76,6 +78,7 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
       serviceId: services[0]?.id || '',
       staffId: staffId || (staffList.length > 0 ? staffList[0].id : '')
     });
+    setSelectedAppt(null);
     setIsEditing(false);
     setIsModalOpen(true);
   };
@@ -259,7 +262,24 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
               </button>
             </div>
             
-            <form onSubmit={saveAppointment} className="p-6 space-y-5">
+            
+              <div className="px-6 pt-4 pb-2 border-b border-surface-100 bg-surface-50">
+                <p className="text-xs font-medium text-surface-500 mb-2 uppercase tracking-wider">Marketing AI</p>
+                <div className="flex flex-wrap gap-2">
+                  {!isEditing ? (
+                    <>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Uruchom kampanię Last Minute na datę " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Stwórz kampanię informacyjną z tagiem #uśpieni celującą w termin " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij prośbę o potwierdzenie rezerwacji do klienta " + formData.customerPhone + " na datę " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <form onSubmit={saveAppointment} className="p-6 space-y-5">
               {(selectedAppt?.status === 'confirmed_by_client' || selectedAppt?.promoCode) && (
                 <div className="bg-green-50 rounded-xl p-4 border border-green-200 space-y-2 mb-4">
                   {selectedAppt?.status === 'confirmed_by_client' && (
@@ -288,7 +308,26 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
                   <input type="text" required value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-surface-700 mb-1">Telefon</label>
+                  <div className="flex items-center gap-2 mb-1">
+                    <label className="block text-sm font-medium text-surface-700">Telefon</label>
+                    {selectedAppt?.callerPhone && (
+                      <div className="group/tooltip outline-none" tabIndex={0}>
+                        <div className="w-5 h-5 rounded-full bg-gold-100 text-gold-600 flex items-center justify-center text-xs font-bold cursor-pointer border border-gold-300">
+                          i
+                        </div>
+                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 p-5 bg-[#36454F] text-white text-base rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible group-focus-within/tooltip:opacity-100 group-focus-within/tooltip:visible transition-all z-[100] text-center shadow-2xl border border-surface-600">
+                          <p className="text-sm text-surface-200 mb-1">Rezerwacji dokonano z numeru:</p>
+                          <p className="font-bold text-xl mb-3 tracking-wide">{selectedAppt.callerPhone}</p>
+                          <a 
+                            href={`tel:${selectedAppt.callerPhone.replace(/\s/g, '')}`} 
+                            className="flex items-center justify-center gap-2 w-full bg-gold-500 hover:bg-gold-600 text-white py-2.5 rounded-lg font-medium text-sm transition-colors text-center shadow-lg"
+                          >
+                            📞 Zadzwoń
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <input type="text" required value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
