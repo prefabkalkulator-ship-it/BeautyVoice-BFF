@@ -4,7 +4,6 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { requestForToken, onMessageListener } from '../firebase';
 import toast, { Toaster } from 'react-hot-toast';
-import OnboardingBanner from '../components/OnboardingBanner';
 
 export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -176,7 +175,6 @@ export default function DashboardLayout() {
             </div>
           </div>
         )}
-        <OnboardingBanner />
         <Outlet />
       </main>
 
