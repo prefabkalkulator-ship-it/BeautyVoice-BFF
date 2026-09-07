@@ -183,6 +183,68 @@ export default function Guide() {
       )
     },
 
+    // 2b. JĘZYKI ASYSTENTA
+    {
+      id: 'faq-languages',
+      category: 'faq',
+      question: 'W jakich językach potrafi rozmawiać asystent EVA?',
+      summary: 'Domyślnym językiem jest polski, ale asystent natychmiast płynnie przełącza się na język klienta (np. angielski, ukraiński, rosyjski, niemiecki).',
+      actionPath: '/dashboard/faq',
+      actionLabel: 'Baza Wiedzy',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Asystent głosowy EVA został zaprojektowany z myślą o firmach obsługujących zarówno klientów lokalnych, jak i zagranicznych:
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Domyślny język polski:</strong> Każde połączenie rozpoczyna się w języku polskim, zgodnie z lokalizacją i profilem Twojej firmy.</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Wielojęzyczność w locie (Multilingual AI):</strong> Jeśli klient zada pytanie po angielsku, ukraińsku, rosyjsku, niemiecku lub w innym języku, EVA natychmiast przełącza się na język rozmówcy i kontynuuje całą rozmowę bez opóźnień.</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Pełna obsługa rezerwacji:</strong> Cudzoziemiec otrzyma odpowiedź na pytania o ofertę, dojazd czy cennik, a asystent bez problemu zarezerwuje termin w kalendarzu.</span>
+            </div>
+          </div>
+        </div>
+      )
+    },
+
+    // 2c. KONTAKT Z CZŁOWIEKIEM
+    {
+      id: 'faq-human-contact',
+      category: 'faq',
+      question: 'Czy klient może poprosić o kontakt z człowiekiem?',
+      summary: 'Tak. Asystent informuje klienta, że przekaże sprawę do recepcji, a w tej samej chwili wysyła powiadomienie Push na telefon personelu z numerem dzwoniącego i powodem rozmowy.',
+      actionPath: '/dashboard/settings',
+      actionLabel: 'Ustawienia Powiadomień',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Oczywiście! Jeśli dzwoniący klient poprosi o rozmowę z żywym człowiekiem (właścicielem, recepcjonistą) lub sprawa wymaga indywidualnej decyzji:
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Uprzejma reakcja asystenta:</strong> EVA odpowiada naturalnym głosem: <em>„Dobrze, przekazuję prośbę do recepcji, wkrótce ktoś z personelu skontaktuje się z Tobą telefonicznie. Do usłyszenia!”</em>.</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Błyskawiczny Push na telefon (FCM):</strong> System w tej samej chwili wysyła powiadomienie push na telefony personelu lub właściciela zarejestrowane w aplikacji, zawierające numer telefonu dzwoniącego oraz powód kontaktu.</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Oddzwonienie 1 kliknięciem:</strong> Możesz od razu kliknąć w powiadomienie i oddzwonić do klienta, mając pełny kontekst jego sprawy. Żadne ważne zapytanie nie przepada!</span>
+            </div>
+          </div>
+        </div>
+      )
+    },
+
     // 3. USŁUGI
     {
       id: 'services-duration',
