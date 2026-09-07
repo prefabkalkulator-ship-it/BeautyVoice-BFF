@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CheckCircle2, Circle, ArrowRight, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowRight, Sparkles, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
 
 interface StepStatus {
   id: string;
@@ -120,8 +120,17 @@ export default function OnboardingBanner() {
 
   if (loading) return null;
 
+  const isGuidePage = location.pathname.includes('/dashboard/guide');
+
+  // Po wykonaniu wszystkich 5 kroków pasek pozostaje WYŁĄCZNIE w zakładce "Instrukcja".
+  // Na pozostałych podstronach znika automatycznie i nie zajmuje miejsca.
+  // Jeśli jakikolwiek krok nie został wykonany (!allDone), pasek asystuje wszędzie.
+  if (allDone && !isGuidePage) {
+    return null;
+  }
+
   return (
-    <div className="mb-8 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-3xl p-4 sm:p-5 shadow-xs">
+    <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-3xl p-4 sm:p-5 shadow-xs">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shadow-md shadow-gold-500/20 shrink-0">
@@ -154,6 +163,16 @@ export default function OnboardingBanner() {
               className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-surface-900 text-white hover:bg-surface-800 hover:text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer"
             >
               Przejdź do: {nextStep.title.split('. ')[1]} <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!isGuidePage && (
+            <button
+              onClick={() => navigate('/dashboard/guide')}
+              className="inline-flex items-center gap-1 text-xs text-gold-900 hover:text-white hover:bg-gold-600 font-semibold px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-gold-100 border border-gold-300 transition cursor-pointer"
+              title="Otwórz pełną instrukcję"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span className="hidden md:inline">Instrukcja</span>
             </button>
           )}
           <button

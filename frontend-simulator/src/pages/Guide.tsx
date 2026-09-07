@@ -5,7 +5,6 @@ import {
   CheckCircle2, AlertCircle, Copy, Check
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import OnboardingBanner from '../components/OnboardingBanner';
 
 interface GuideItem {
   id: string;
@@ -303,9 +302,6 @@ export default function Guide() {
           Wszystko, co musisz wiedzieć o konfiguracji, działaniu asystenta EVA oraz obsłudze połączeń w Twojej firmie.
         </p>
       </div>
-
-      {/* Pasek postępu 5 kroków wdrożenia */}
-      <OnboardingBanner />
 
       {/* Wyszukiwarka */}
       <div className="mb-6 relative">
