@@ -22,6 +22,7 @@ export default function Guide() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({
     'onboarding-order': true,
+    'faq-training': true,
     'call-forwarding': true
   });
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -39,9 +40,9 @@ export default function Guide() {
   const categories = [
     { id: 'all', label: 'Wszystkie tematy', icon: BookOpen },
     { id: 'start', label: '1. Pierwsze kroki', icon: Sparkles },
-    { id: 'services', label: '2. Usługi i Cennik', icon: ClipboardList },
-    { id: 'faq', label: '3. Baza Wiedzy EVA', icon: HelpCircle },
-    { id: 'team', label: '4. Zespół i Pracownicy', icon: Users },
+    { id: 'faq', label: '2. Baza Wiedzy (Czat AI)', icon: HelpCircle },
+    { id: 'services', label: '3. Usługi i Cennik', icon: ClipboardList },
+    { id: 'team', label: '4. Zespół i Grafiki', icon: Users },
     { id: 'timeoff', label: '5. Dni Wolne', icon: Calendar },
     { id: 'forwarding', label: 'Przekierowania GSM', icon: PhoneCall },
     { id: 'subscription', label: 'Abonament i Minuty', icon: CreditCard }
@@ -53,30 +54,30 @@ export default function Guide() {
       id: 'onboarding-order',
       category: 'start',
       question: 'W jakiej kolejności powinienem skonfigurować konto?',
-      summary: 'Optymalna ścieżka: Profil i Godziny → Usługi → Baza Wiedzy → Zespół → Dni Wolne.',
+      summary: 'Optymalna ścieżka: Profil → Baza Wiedzy (AI wykryje usługi) → Usługi → Zespół i Grafiki → Dni Wolne.',
       actionPath: '/dashboard/settings',
       actionLabel: 'Przejdź do Ustawień',
       answer: (
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
-            Aby wirtualny asystent EVA mógł bezbłędnie umawiać klientów na wizyty i odpowiadać na pytania, 
-            kluczowe jest zachowanie logicznej kolejności konfiguracji:
+            Aby wirtualny asystent EVA mógł bezbłędnie umawiać klientów na terminy i odpowiadać na pytania, 
+            najwygodniejsza kolejność konfiguracji wygląda następująco:
           </p>
-          <ol className="list-decimal pl-5 space-y-2">
+          <ol className="list-decimal pl-5 space-y-2.5">
             <li>
-              <strong>Profil Firmy i Godziny Pracy (Ustawienia Firmy):</strong> Wpisz nazwę, branżę, opis oraz harmonogram otwarcia salonu. Dzięki temu asystent wie, kiedy salon przyjmuje klientów.
+              <strong>Profil Firmy (Ustawienia Firmy):</strong> Wpisz nazwę działalności, branżę, opis oraz dane kontaktowe (email, telefon).
             </li>
             <li>
-              <strong>Usługi i Cennik (Usługi):</strong> Wprowadź wszystkie zabiegi/usługi wraz z ich ceną i czasem trwania (np. 45 min).
+              <strong>Baza Wiedzy EVA (Baza Wiedzy → Ucz mnie):</strong> Wklej zasady firmy, wgraj dokument lub podyktuj głosem cennik. <u>Czat AI sam przetworzy materiały na Pytania & Odpowiedzi oraz automatycznie wykryje i doda usługi z cenami!</u>
             </li>
             <li>
-              <strong>Baza Wiedzy (Baza Wiedzy):</strong> Dodaj odpowiedzi na często zadawane pytania (lokalizacja, parking, płatność kartą, przeciwwskazania).
+              <strong>Usługi i Cennik (Usługi):</strong> Przejrzyj wykryte przez AI usługi, uzupełnij brakujące pozycje i upewnij się, że czasy trwania są odpowiednie.
             </li>
             <li>
-              <strong>Zarządzanie Zespołem (Ustawienia Firmy → Zespół):</strong> Dodaj pracowników i <u>przypisz im zdefiniowane w kroku 2 usługi</u>. (Pracownik musi wiedzieć, które zabiegi wykonuje).
+              <strong>Zarządzanie Zespołem i Grafiki Pracy (Ustawienia Firmy → Zespół):</strong> Dodaj pracowników, ustal ich indywidualne grafiki pracy (godziny w wybrane dni) oraz przypisz im świadczone usługi. <em>Godziny otwarcia Twojej firmy wynikają z grafików pracowników – firma działa od rozpoczęcia pracy najwcześniejszego pracownika do zakończenia najpóźniejszego.</em>
             </li>
             <li>
-              <strong>Dni Wolne i Święta (Dni Wolne):</strong> Oznacz dni zamknięcia salonu lub urlopy zespołu, aby asystent nie zapisywał w tym czasie klientów.
+              <strong>Dni Wolne i Święta (Dni Wolne):</strong> Oznacz dni zamknięcia firmy lub urlopy personelu, aby asystent nie proponował klientom terminów w tym czasie.
             </li>
           </ol>
         </div>
@@ -85,7 +86,7 @@ export default function Guide() {
     {
       id: 'call-forwarding',
       category: 'forwarding',
-      question: 'Jak włączyć przekierowanie rozmów z mojego telefonu firmowego na numer asystenta?',
+      question: 'Jak włączyć przekierowanie rozmów z telefonu firmowego na numer asystenta?',
       summary: 'Użyj standardowych bezpłatnych kodów GSM operatora (*21* lub *61*).',
       actionPath: '/dashboard/subscription',
       actionLabel: 'Sprawdź Twój numer asystenta',
@@ -102,13 +103,13 @@ export default function Guide() {
                 Wariant A: Zawsze Asystent (100% połączeń)
               </div>
               <p className="text-xs text-surface-600 mb-2">
-                Każde połączenie przychodzące odbiera natychmiast asystentka EVA (świetne w trakcie pracy z klientem):
+                Każde połączenie przychodzące odbiera natychmiast asystentka EVA (świetne, gdy pracujesz lub jesteś zajęty):
               </p>
               <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-surface-200 font-mono font-bold text-sm">
                 <span>*21*+48459568507#</span>
                 <button
                   onClick={() => copyToClipboard('*21*+48459568507#', 'fwd-21')}
-                  className="text-gold-600 hover:text-gold-800 p-1"
+                  className="text-gold-700 hover:text-gold-950 p-1"
                   title="Kopiuj kod"
                 >
                   {copiedCode === 'fwd-21' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
@@ -121,13 +122,13 @@ export default function Guide() {
                 Wariant B: Przy braku odbioru (po 15 sek.)
               </div>
               <p className="text-xs text-surface-600 mb-2">
-                Telefon dzwoni u Ciebie, a jeśli nie odbierzesz w 15 sekund, połączenie przejmuje EVA:
+                Telefon dzwoni u Ciebie, a jeśli nie odbierzesz w ciągu 15 sekund, rozmowę automatycznie przejmuje EVA:
               </p>
               <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-surface-200 font-mono font-bold text-sm">
                 <span>*61*+48459568507**15#</span>
                 <button
                   onClick={() => copyToClipboard('*61*+48459568507**15#', 'fwd-61')}
-                  className="text-gold-600 hover:text-gold-800 p-1"
+                  className="text-gold-700 hover:text-gold-950 p-1"
                   title="Kopiuj kod"
                 >
                   {copiedCode === 'fwd-61' ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
@@ -136,8 +137,8 @@ export default function Guide() {
             </div>
           </div>
 
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-blue-600 mt-0.5" />
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-blue-700 mt-0.5" />
             <div>
               <strong>Jak wyłączyć przekierowanie?</strong> Wystarczy wklepać na telefonie kod <code className="font-mono font-bold">#21#</code> lub <code className="font-mono font-bold">#61#</code> i zatwierdzić zieloną słuchawką. Przekierowanie zostanie natychmiast wyłączone.
             </div>
@@ -146,80 +147,91 @@ export default function Guide() {
       )
     },
 
-    // 2. USŁUGI
-    {
-      id: 'services-duration',
-      category: 'services',
-      question: 'Dlaczego czas trwania usługi jest tak ważny dla asystenta?',
-      summary: 'Asystent EVA rezerwuje precyzyjny blok czasu w kalendarzu, zapobiegając nakładaniu się wizyt.',
-      actionPath: '/dashboard/services',
-      actionLabel: 'Zarządzaj Usługami',
-      answer: (
-        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
-          <p>
-            Podczas rozmowy telefonicznej asystent EVA sprawdza w ułamku sekundy kalendarz salonu. Jeśli klient pyta np. o godzinę 14:00, 
-            asystent sprawdza, czy od 14:00 do 14:00 + [czas trwania usługi] pracownik jest wolny.
-          </p>
-          <ul className="list-disc pl-5 space-y-1.5">
-            <li><strong>Dokładność:</strong> Wpisuj rzeczywisty czas wykonania zabiegu (np. 60 min).</li>
-            <li><strong>Cena:</strong> Podaj cenę regularną (lub zakres), aby asystent mógł ją podać klientowi pytającemu o cennik.</li>
-            <li><strong>Opis:</strong> Krótki opis w usłudze pomoże asystentowi doradzić klientowi, który waha się między dwoma zabiegami.</li>
-          </ul>
-        </div>
-      )
-    },
-
-    // 3. BAZA WIEDZY
+    // 2. BAZA WIEDZY
     {
       id: 'faq-training',
       category: 'faq',
-      question: 'Jak najlepiej uczyć asystenta odpowiedzi na pytania?',
-      summary: 'Dodawaj zwięzłe pary pytanie-odpowiedź lub wgraj dokument z opisem salonu.',
+      question: 'Jak najlepiej uczyć asystenta w Bazie Wiedzy?',
+      summary: 'Użyj uniwersalnego czatu AI (tekst, pliki, zdjęcia ulotki lub nagranie głosu). AI samo utworzy FAQ oraz wykryje usługi z cennika.',
       actionPath: '/dashboard/faq',
       actionLabel: 'Przejdź do Bazy Wiedzy',
       answer: (
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
-            Baza wiedzy to „mózg” Twojego asystenta. Im lepsze odpowiedzi tam umieścisz, tym naturalniej i pewniej asystent rozmawia z klientem.
+            W zakładce <strong>Baza Wiedzy → Ucz mnie</strong> masz do dyspozycji uniwersalny czat ze sztuczną inteligencją. 
+            Nie musisz ręcznie przepisywać dokumentów ani mozolnie dodawać każdej usługi pojedynczo!
           </p>
           <div className="space-y-2">
             <div className="flex items-start gap-2 text-xs">
               <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-              <span><strong>Najważniejsze tematy:</strong> Gdzie zaparkować, czy można płacić BLIK-iem/kartą, czy przyjmujecie z dziećmi, jak przygotować się do wizyty.</span>
+              <span><strong>Wygodne wprowadzanie:</strong> Możesz napisać wiadomość, załączyć dokument PDF/Word, zrobić zdjęcie ulotki/cennika lub kliknąć mikrofon i podyktować zasady firmy głosem.</span>
             </div>
             <div className="flex items-start gap-2 text-xs">
               <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-              <span><strong>Naturalny język:</strong> Pisz prostym językiem, np. „Tak, mamy darmowy parking dla klientów z tyłu budynku za szlabanem”.</span>
+              <span><strong>Automatyczne wykrywanie usług:</strong> Sztuczna inteligencja przeanalizuje tekst i samodzielnie uzupełni cennik usług w zakładce Usługi wraz z cenami i czasami trwania.</span>
             </div>
             <div className="flex items-start gap-2 text-xs">
               <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
-              <span><strong>Bezpieczeństwo:</strong> Jeśli klient zapyta o coś, czego nie ma w bazie, asystent grzecznie poinformuje, że przekaże pytanie właścicielowi i poprosi o kontakt.</span>
+              <span><strong>Generowanie pytań i odpowiedzi:</strong> System utworzy zwięzłe reguły FAQ (dojazd, parking, formy płatności, polityka odwołań, zalecenia).</span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <span><strong>Bezpieczeństwo rozmowy:</strong> W zakładce „Baza Wyuczona” możesz w każdej chwili przejrzeć wyuczone odpowiedzi. Jeśli klient zapyta o coś, czego asystent nie ma w bazie, grzecznie poinformuje, że przekaże sprawę właścicielowi firmy.</span>
             </div>
           </div>
         </div>
       )
     },
 
-    // 4. ZESPÓŁ
+    // 3. USŁUGI
+    {
+      id: 'services-duration',
+      category: 'services',
+      question: 'Dlaczego czas trwania usługi jest kluczowy dla asystenta?',
+      summary: 'Asystent EVA rezerwuje precyzyjny blok czasu w kalendarzu wybranego pracownika, zapobiegając nakładaniu się terminów.',
+      actionPath: '/dashboard/services',
+      actionLabel: 'Zarządzaj Usługami',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Podczas rozmowy telefonicznej asystent sprawdza dostępność pracowników w ułamku sekundy. Jeśli klient pyta o wolny termin, 
+            EVA sprawdza, czy dany pracownik ma wolne okienko trwające dokładnie tyle, ile wynosi zdefiniowany czas trwania usługi.
+          </p>
+          <ul className="list-disc pl-5 space-y-1.5">
+            <li><strong>Dokładny czas trwania:</strong> Wpisuj rzeczywisty czas realizacji (np. 30 min, 1 godzina, 2 godziny).</li>
+            <li><strong>Cena:</strong> Podaj cenę regularną lub minimalną – asystent poda ją klientowi dopytującemu o koszty.</li>
+            <li><strong>Uniwersalność:</strong> Usługi działają dla każdej branży – może to być zabieg kosmetyczny, wymiana opon, konsultacja weterynaryjna, wynajem sprzętu czy naprawa.</li>
+          </ul>
+        </div>
+      )
+    },
+
+    // 4. ZESPÓŁ I GRAFIKI
     {
       id: 'team-assignment',
       category: 'team',
-      question: 'Dlaczego muszę przypisać usługi do konkretnych pracowników?',
-      summary: 'Asystent musi wiedzieć, który pracownik wykonuje jakie zabiegi, by nie zapisać klienta do niewłaściwej osoby.',
+      question: 'Jak działają grafiki pracy pracowników i przypisywanie usług?',
+      summary: 'Godziny działania Twojej firmy wynikają bezpośrednio z grafików pracowników. Każdy pracownik ma własne godziny i przypisane usługi.',
       actionPath: '/dashboard/settings',
       actionLabel: 'Skonfiguruj Zespół',
       answer: (
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
-            W salonach wieloosobowych (lub gabinetach z kilkoma specjalistami) każdy pracownik ma swoje specjalizacje (np. Stylistka Paznokci, Fryzjer Kolorysta, Kosmetolog).
+            W aplikacji nie ma jednego sztywnego harmonogramu otwarcia całej firmy. 
+            <strong>Terminy rezerwacji wynikają z indywidualnych grafików pracy poszczególnych pracowników lub stanowisk</strong>, 
+            konfigurowanych w oknie „Dodaj / Edytuj pracownika”.
           </p>
-          <p>
-            Gdy klient dzwoni i mówi: <em>„Chcę zapisać się na manicure hybrydowy na piątek”</em>, asystent sprawdza grafik 
-            <strong>wyłącznie tych pracowników, którzy mają przypisaną usługę „Manicure hybrydowy”</strong>.
-          </p>
-          <p className="text-xs bg-amber-50 p-3 rounded-xl border border-amber-200 text-amber-900 font-medium">
-            Wskazówka: Z tego powodu najpierw zdefiniuj usługi w zakładce „Usługi”, a dopiero potem przejdź do dodawania pracowników w Ustawieniach!
-          </p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>
+              <strong>Elastyczne grafiki:</strong> Pracownik A może pracować w poniedziałki 8:00–16:00, a Pracownik B 12:00–20:00. Asystent wie, że w poniedziałek firma obsługuje klientów łącznie od 8:00 do 20:00.
+            </li>
+            <li>
+              <strong>Przypisanie usług:</strong> Pracownikowi zaznaczasz tylko te usługi, które wykonuje. Asystent nigdy nie umówi klienta na daną usługę do pracownika, który jej nie świadczy.
+            </li>
+            <li>
+              <strong>Tryb Solo:</strong> Jeśli prowadzisz działalność samodzielnie, wybierz profil „Solo” – asystent będzie zarządzał Twoim pojedynczym kalendarzem.
+            </li>
+          </ul>
         </div>
       )
     },
@@ -228,18 +240,19 @@ export default function Guide() {
     {
       id: 'timeoff-rules',
       category: 'timeoff',
-      question: 'Jak działają Dni Wolne i blokady w kalendarzu?',
-      summary: 'Dodanie dnia wolnego uniemożliwia asystentowi umówienie wizyty w wybranym dniu.',
+      question: 'Jak zablokować możliwość rezerwacji w święta i podczas urlopów?',
+      summary: 'Wprowadź dzień wolny dla całej firmy lub dla konkretnego pracownika.',
       actionPath: '/dashboard/timeoff',
       actionLabel: 'Zarządzaj Dniami Wolnymi',
       answer: (
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
-            Zakładka <strong>Dni Wolne</strong> służy do wprowadzania świąt, urlopów pracowniczych, przerw technicznych czy remontów.
+            Zakładka <strong>Dni Wolne</strong> służy do wyznaczania dni, w których asystent nie może zaproponować klientowi terminu.
           </p>
           <ul className="list-disc pl-5 space-y-1.5">
-            <li><strong>Cały salon:</strong> Oznacz dzień jako wolny dla całego salonu – asystent nie zaproponuje klientowi tego dnia żadnego terminu.</li>
-            <li><strong>Pojedynczy pracownik:</strong> Możesz wybrać konkretnego pracownika, który ma urlop – wówczas inni pracownicy nadal mogą przyjmować rezerwacje na swoje usługi.</li>
+            <li><strong>Święta państwowe:</strong> Przycisk „Święta” pozwala 1 kliknięciem dodać wszystkie oficjalne dni ustawowo wolne od pracy w Polsce.</li>
+            <li><strong>Urlop pracownika:</strong> Możesz przypisać dzień wolny do konkretnej osoby – pozostali pracownicy będą wtedy normalnie dostępni do rezerwacji.</li>
+            <li><strong>Dni zamknięcia firmy:</strong> Jeśli firma jest nieczynna w określony dzień, pozostaw pole pracownika puste – cały kalendarz zostanie zablokowany.</li>
           </ul>
         </div>
       )
@@ -257,12 +270,12 @@ export default function Guide() {
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
             Minuty w pakiecie darmowym (100 minut w Standard, 300 minut w Premium) są zużywane tylko podczas 
-            faktycznego trwania rozmowy telefonicznej klienta z asystentem.
+            faktycznego trwania połączenia telefonicznego klienta z asystentem.
           </p>
           <ul className="list-disc pl-5 space-y-1.5">
-            <li>Średnia rozmowa umawiająca wizytę trwa ok. <strong>1 - 1.5 minuty</strong>. Oznacza to, że pakiet 300 minut pozwala obsłużyć nawet 200–300 rozmów telefonicznych w miesiącu!</li>
+            <li>Średnia rozmowa umawiająca termin trwa ok. <strong>1 - 1.5 minuty</strong>. Pakiet 300 minut pozwala obsłużyć 200–300 połączeń miesięcznie bez dodatkowych opłat.</li>
             <li>W zakładce <strong>Subskrypcja</strong> zawsze widzisz bieżący stan zużycia minut w formacie <code className="font-mono font-bold">minuty_użyte / minuty_w_pakiecie</code>.</li>
-            <li>Jeśli planujesz przerwę w działalności (np. dłuższy urlop w salonie), w zakładce Subskrypcja możesz jednym kliknięciem <strong>Zawiesić konto na 30 dni</strong> bez utraty żadnych danych.</li>
+            <li>W dowolnym momencie możesz <strong>Zawiesić konto na 30 dni</strong> (np. podczas przestoju lub dłuższego urlopu) bez utraty zgromadzonych danych.</li>
           </ul>
         </div>
       )
@@ -281,12 +294,12 @@ export default function Guide() {
     <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       {/* Nagłówek */}
       <div className="mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-100 text-gold-800 text-xs font-semibold mb-3 border border-gold-200">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-100 text-gold-900 text-xs font-semibold mb-3 border border-gold-300">
           <BookOpen className="w-3.5 h-3.5" /> Centrum Wiedzy i Instrukcja
         </div>
         <h1 className="text-3xl font-serif text-surface-900">Instrukcja Użytkownika</h1>
         <p className="text-surface-600 mt-2 text-sm sm:text-base">
-          Wszystko, co musisz wiedzieć o konfiguracji, działaniu asystenta EVA oraz obsłudze połączeń.
+          Wszystko, co musisz wiedzieć o konfiguracji, działaniu asystenta EVA oraz obsłudze połączeń w Twojej firmie.
         </p>
       </div>
 
@@ -299,8 +312,8 @@ export default function Guide() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Wyszukaj instrukcję (np. przekierowanie, cennik, pracownicy, minuty)..."
-          className="block w-full pl-11 pr-4 py-3.5 bg-white border border-surface-200 rounded-2xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 shadow-sm text-sm"
+          placeholder="Wyszukaj instrukcję (np. przekierowanie, cennik, grafiki, minuty, uczenie)..."
+          className="block w-full pl-11 pr-4 py-3.5 bg-white border border-surface-200 rounded-2xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 shadow-xs text-sm"
         />
       </div>
 
@@ -313,10 +326,10 @@ export default function Guide() {
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 isSelected
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-white border border-surface-200 text-surface-700 hover:bg-surface-100 hover:text-surface-900'
+                  ? 'bg-surface-900 text-white shadow-xs'
+                  : 'bg-white border border-surface-200 text-surface-700 hover:bg-surface-900 hover:text-white'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -334,7 +347,7 @@ export default function Guide() {
             <p className="text-surface-600 font-medium text-sm">Nie znaleziono instrukcji pasujących do zapytania.</p>
             <button
               onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
-              className="mt-3 text-xs text-gold-600 hover:underline font-semibold"
+              className="mt-3 text-xs text-gold-700 hover:underline font-semibold"
             >
               Wyczyść filtry
             </button>
@@ -346,7 +359,7 @@ export default function Guide() {
               <div
                 key={item.id}
                 id={item.id}
-                className="bg-white rounded-3xl border border-surface-200 shadow-xs overflow-hidden transition-all hover:border-surface-300"
+                className="bg-white rounded-3xl border border-surface-200 shadow-2xs overflow-hidden transition-all hover:border-surface-300"
               >
                 <button
                   onClick={() => toggleItem(item.id)}
@@ -373,7 +386,7 @@ export default function Guide() {
                       <div className="mt-5 pt-4 border-t border-surface-200/60 flex justify-end">
                         <button
                           onClick={() => navigate(item.actionPath!)}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-semibold hover:bg-surface-800 transition shadow-xs"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-surface-900 text-white hover:bg-surface-800 hover:text-white rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
                         >
                           {item.actionLabel || 'Przejdź do konfiguracji'} <ArrowRight className="w-3.5 h-3.5" />
                         </button>

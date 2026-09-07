@@ -135,16 +135,16 @@ export default function Services() {
             <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Usługi i Cennik</h2>
             <PageHelpButton 
               title="Jak działają Usługi i Cennik?"
-              description="To tutaj definiujesz zabiegi, które asystent EVA proponuje klientom dzwoniącym do Twojego salonu."
+              description="To tutaj definiujesz usługi, które asystent EVA proponuje klientom dzwoniącym do Twojej firmy."
               tips={[
                 "Czas trwania usługi jest kluczowy – asystent blokuje dokładnie ten czas w kalendarzu, zapobiegając nakładaniu się rezerwacji.",
                 "Cena podawana jest klientowi, gdy pyta o koszt zabiegu podczas rozmowy.",
                 "Pamiętaj: po dodaniu usług przejdź do Ustawień Firmy i przypisz je do konkretnych pracowników w sekcji Zespół!"
               ]}
               nextStepRecommendation={{
-                text: "Przejdź do Bazy Wiedzy lub przypisz usługi do pracowników",
-                path: "/dashboard/faq",
-                actionLabel: "Baza Wiedzy EVA"
+                text: "Przypisz usługi do pracowników i sprawdź ich grafiki w Ustawieniach",
+                path: "/dashboard/settings",
+                actionLabel: "Przejdź do Zespołu"
               }}
               guideSectionId="services-duration"
             />

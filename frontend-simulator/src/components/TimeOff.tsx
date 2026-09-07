@@ -57,7 +57,7 @@ export default function TimeOff() {
       { date: year + '-12-26', reason: 'Drugi dzień Świąt' }
     ];
 
-    if (!confirm('Czy na pewno wygenerować oficjalne święta państwowe dla całego salonu na ten rok?')) return;
+    if (!confirm('Czy na pewno wygenerować oficjalne święta państwowe dla całej firmy na ten rok?')) return;
     
     setLoading(true);
     for (const h of holidays) {
@@ -81,9 +81,9 @@ export default function TimeOff() {
             <h1 className="text-3xl font-serif text-surface-900">Dni Wolne i Urlopy</h1>
             <PageHelpButton
               title="Dni Wolne i Święta w Kalendarzu"
-              description="Dni wolne gwarantują, że asystent EVA nie zaproponuje klientowi wizyty w terminach, kiedy salon lub pracownik jest nieobecny."
+              description="Dni wolne gwarantują, że asystent EVA nie zaproponuje klientowi terminu w dniach, kiedy firma lub dany pracownik jest nieobecny."
               tips={[
-                "Przycisk 'Święta' pozwala 1 kliknięciem wygenerować wszystkie oficjalne święta państwowe w Polsce dla całego salonu.",
+                "Przycisk 'Święta' pozwala 1 kliknięciem wygenerować wszystkie oficjalne święta państwowe w Polsce dla całej firmy.",
                 "Jeśli urlop bierze tylko jeden pracownik, wskaż go w formularzu – reszta salonu nadal będzie mogła przyjmować klientów.",
                 "Gdy skończysz konfigurację, przetestuj asystenta lub włącz przekierowanie na telefonie!"
               ]}
@@ -95,7 +95,7 @@ export default function TimeOff() {
               guideSectionId="timeoff-rules"
             />
           </div>
-          <p className="text-surface-500">Zarządzaj dniami zamknięcia salonu oraz urlopami pracowników.</p>
+          <p className="text-surface-500">Zarządzaj dniami zamknięcia firmy oraz urlopami pracowników.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={generateHolidays} className="bg-white border border-surface-200 text-surface-900 px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-surface-50 transition-colors">

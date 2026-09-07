@@ -152,10 +152,10 @@ export default function Settings() {
             <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Ustawienia Firmy</h2>
             <PageHelpButton
               title="Konfiguracja Firmy i Zespołu"
-              description="Tutaj ustalisz dane salonu, godziny otwarcia oraz dodasz pracowników świadczących usługi."
+              description="Tutaj ustalisz dane firmy, profil działalności oraz dodasz pracowników świadczących usługi."
               tips={[
                 "Najważniejsze: zdefiniuj usługi w zakładce 'Usługi' PRZED dodawaniem pracowników, aby móc przypisać im zabiegi!",
-                "Godziny pracy salonu określają, w jakich ramach czasowych asystent proponuje wolne terminy.",
+                "Godziny pracy Twojej firmy wynikają bezpośrednio z indywidualnych grafików pracy pracowników ustawianych w oknie 'Edytuj pracownika' – asystent proponuje terminy od godziny rozpoczęcia pracy najwcześniejszego pracownika do zakończenia najpóźniejszego.",
                 "Jeśli działasz jednoosobowo, wybierz profil 'Solo'. Jeśli masz pracowników, wybierz 'Zespół'."
               ]}
               nextStepRecommendation={{

@@ -28,10 +28,10 @@ export default function PageHelpButton({
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gold-300/80 bg-gold-50/70 text-gold-800 hover:bg-gold-100 hover:border-gold-400 text-xs font-semibold transition-all shadow-xs"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gold-400 bg-gold-50/90 text-gold-900 hover:bg-gold-600 hover:text-white hover:border-gold-600 text-xs font-semibold transition-all shadow-xs"
         title="Wskazówki i pomoc"
       >
-        <HelpCircle className="w-4 h-4 text-gold-600" />
+        <HelpCircle className="w-4 h-4 text-gold-700 hover:text-white" />
         <span>Instrukcja i pomoc</span>
       </button>
 
@@ -40,7 +40,7 @@ export default function PageHelpButton({
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-surface-200 relative">
             <button
               onClick={() => setIsOpen(false)}
-              className="absolute top-5 right-5 p-2 rounded-full text-surface-400 hover:text-surface-700 hover:bg-surface-100 transition-colors"
+              className="absolute top-5 right-5 p-2 rounded-full text-surface-400 hover:text-surface-900 hover:bg-surface-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -84,7 +84,7 @@ export default function PageHelpButton({
                     setIsOpen(false);
                     navigate(nextStepRecommendation.path);
                   }}
-                  className="shrink-0 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-xl hover:bg-surface-800 transition flex items-center gap-1"
+                  className="shrink-0 px-3 py-1.5 bg-surface-900 text-white hover:bg-surface-800 hover:text-white text-xs font-medium rounded-xl transition flex items-center gap-1 shadow-xs"
                 >
                   {nextStepRecommendation.actionLabel} <ArrowRight className="w-3 h-3" />
                 </button>
@@ -97,7 +97,7 @@ export default function PageHelpButton({
                   setIsOpen(false);
                   navigate('/dashboard/guide' + (guideSectionId ? `#${guideSectionId}` : ''));
                 }}
-                className="inline-flex items-center gap-1.5 text-gold-700 hover:text-gold-900 font-semibold transition-colors"
+                className="inline-flex items-center gap-1.5 text-gold-700 hover:text-gold-950 font-semibold transition-colors"
               >
                 <BookOpen className="w-4 h-4 text-gold-600" />
                 Otwórz pełne Centrum Pomocy
@@ -105,7 +105,7 @@ export default function PageHelpButton({
 
               <button
                 onClick={() => setIsOpen(false)}
-                className="px-4 py-2 bg-surface-100 text-surface-800 rounded-xl hover:bg-surface-200 font-medium transition"
+                className="px-4 py-2 bg-surface-900 text-white rounded-xl hover:bg-surface-800 hover:text-white font-medium transition shadow-xs"
               >
                 Rozumiem
               </button>

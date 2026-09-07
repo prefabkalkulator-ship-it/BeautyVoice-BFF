@@ -211,19 +211,19 @@ export default function Faq() {
               title="Jak uczyć asystenta w Bazie Wiedzy?"
               description="Baza wiedzy to zbiór informacji, którymi posługuje się EVA podczas rozmowy z Twoimi klientami."
               tips={[
-                "Wklejaj zasady salonu: metody płatności, politykę spóźnień, parking, dojazd czy przeciwwskazania do zabiegów.",
+                "Wklejaj zasady firmy: metody płatności, politykę spóźnień, parking, dojazd czy warunki realizacji usług.",
                 "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zwięzłe pytania i odpowiedzi.",
                 "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć i ręcznie poprawić dowolną odpowiedź."
               ]}
               nextStepRecommendation={{
-                text: "Przypisz usługi do pracowników w Ustawieniach",
-                path: "/dashboard/settings",
-                actionLabel: "Przejdź do Zespołu"
+                text: "Przejdź do Usług i Cennika, aby zweryfikować wykryte przez AI pozycje",
+                path: "/dashboard/services",
+                actionLabel: "Przejdź do Usług"
               }}
               guideSectionId="faq-training"
             />
           </div>
-          <p className="text-surface-500 mt-1">Ucz swoją asystentkę zasad działania Twojego salonu.</p>
+          <p className="text-surface-500 mt-1">Ucz swoją asystentkę zasad działania Twojej firmy.</p>
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto bg-surface-100 p-1 rounded-xl">
           <button 
