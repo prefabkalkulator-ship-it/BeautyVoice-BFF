@@ -292,10 +292,11 @@ export default function Subscription() {
                   <span className="text-3xl font-bold text-white">399 zł</span>
                   <span className="text-surface-400 text-sm">/mc</span>
                 </div>
-                <ul className="space-y-3 mb-8 text-sm">
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">300 darmowych minut</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Centrala na 5 kanałów</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Własny Sender ID SMS</span></li>
+                <ul className="space-y-2.5 mb-8 text-sm">
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">300 darmowych minut (5 kanałów)</span></li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Wypełnianie okienek (Last Minute)</span></li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Badanie zadowolenia & Baza 90+ dni</span></li>
+                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Potwierdzanie wizyt (SMS / Telefon AI)</span></li>
                 </ul>
                 <button 
                   onClick={() => setStep(2)}
