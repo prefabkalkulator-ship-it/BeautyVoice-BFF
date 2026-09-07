@@ -27,7 +27,7 @@ export default function LandingPage() {
           <div className="text-center max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gold-50 border border-gold-100 text-gold-700 text-sm font-medium">
               <Star className="w-4 h-4" />
-              <span>Twój salon otwarty 24/7</span>
+              <span>Twoja firma otwarta 24/7</span>
             </div>
             <h1 className="text-4xl sm:text-6xl font-serif text-surface-900 tracking-tight leading-[1.1]">
               Twój wirtualny pracownik <span className="text-gold-500 italic block mt-2">odbiera telefony za Ciebie</span>
@@ -54,7 +54,7 @@ export default function LandingPage() {
               {
                 icon: <Clock className="w-6 h-6" />,
                 title: 'Dostępność 24/7',
-                desc: 'Nigdy więcej nieodebranych połączeń. EVA pracuje poza godzinami otwarcia salonu i w weekendy.'
+                desc: 'Nigdy więcej nieodebranych połączeń. EVA pracuje poza standardowymi godzinami pracy i w weekendy.'
               },
               {
                 icon: <Calendar className="w-6 h-6" />,

@@ -25,14 +25,16 @@ export default function OnboardingBanner() {
   const [hasTimeOff, setHasTimeOff] = useState(false);
 
   useEffect(() => {
-    const dismissed = localStorage.getItem('onboarding_dismissed');
-    if (dismissed === 'true') {
-      setIsDismissed(true);
-    }
-    const collapsed = localStorage.getItem('onboarding_collapsed');
-    if (collapsed === 'true') {
-      setIsCollapsed(true);
-    }
+    const syncState = () => {
+      const dismissed = localStorage.getItem('onboarding_dismissed') === 'true';
+      setIsDismissed(dismissed);
+      const collapsed = localStorage.getItem('onboarding_collapsed') === 'true';
+      setIsCollapsed(collapsed);
+    };
+
+    syncState();
+    window.addEventListener('onboarding_state_changed', syncState);
+    return () => window.removeEventListener('onboarding_state_changed', syncState);
   }, []);
 
   useEffect(() => {
@@ -75,8 +77,6 @@ export default function OnboardingBanner() {
 
     checkStatus();
   }, [location.pathname]);
-
-  if (isDismissed || loading) return null;
 
   // Kolejność: Profil → Baza wiedzy → Usługi → Zespół → Dni wolne
   const steps: StepStatus[] = [
@@ -124,23 +124,72 @@ export default function OnboardingBanner() {
   const handleDismiss = () => {
     setIsDismissed(true);
     localStorage.setItem('onboarding_dismissed', 'true');
+    window.dispatchEvent(new Event('onboarding_state_changed'));
+  };
+
+  const handleRestore = () => {
+    setIsDismissed(false);
+    localStorage.removeItem('onboarding_dismissed');
+    window.dispatchEvent(new Event('onboarding_state_changed'));
   };
 
   const handleToggleCollapse = () => {
     const next = !isCollapsed;
     setIsCollapsed(next);
     localStorage.setItem('onboarding_collapsed', next ? 'true' : 'false');
+    window.dispatchEvent(new Event('onboarding_state_changed'));
   };
 
+  if (loading) return null;
+
+  // Widok zminimalizowany po zamknięciu (pozwala błyskawicznie otworzyć pasek z powrotem!)
+  if (isDismissed) {
+    return (
+      <div className="mb-6 bg-gradient-to-r from-amber-500/5 via-gold-500/10 to-amber-500/5 border border-gold-300/80 rounded-2xl p-3 sm:px-4 sm:py-3 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-150">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-gold-100 text-gold-800 flex items-center justify-center shrink-0">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-surface-900 flex flex-wrap items-center gap-2">
+              Kolejność wdrożenia asystenta EVA
+              <span className="text-[11px] font-sans font-semibold px-2 py-0.5 rounded-full bg-gold-100 text-gold-900 border border-gold-200">
+                {completedCount} z {steps.length} kroków
+              </span>
+              {allDone && (
+                <span className="text-[11px] font-sans font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-900 border border-green-200">
+                  Gotowe!
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-surface-500 mt-0.5">
+              Pasek pierwszych kroków został ukryty. Kliknij obok, aby go ponownie otworzyć.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button
+            onClick={handleRestore}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-surface-900 text-white hover:bg-surface-800 text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-gold-300" />
+            Otwórz pasek wdrożenia (5 kroków)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-3xl p-5 shadow-xs">
-      <div className="flex items-center justify-between gap-4">
+    <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-3xl p-4 sm:p-5 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shadow-md shadow-gold-500/20 shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-serif font-bold text-surface-900 text-base flex items-center gap-2">
+            <h3 className="font-serif font-bold text-surface-900 text-base flex flex-wrap items-center gap-2">
               Kolejność wdrożenia asystenta EVA
               <span className="text-xs font-sans font-semibold px-2.5 py-0.5 rounded-full bg-gold-100 text-gold-900 border border-gold-300">
                 {completedCount} z {steps.length} kroków
@@ -154,18 +203,18 @@ export default function OnboardingBanner() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 self-end sm:self-auto shrink-0">
           {!allDone && (
             <button
               onClick={() => navigate(nextStep.path)}
-              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 bg-surface-900 text-white hover:bg-surface-800 hover:text-white text-xs font-semibold rounded-xl transition shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-surface-900 text-white hover:bg-surface-800 hover:text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer"
             >
               Przejdź do: {nextStep.title.split('. ')[1]} <ArrowRight className="w-3.5 h-3.5" />
             </button>
           )}
           <button
             onClick={() => navigate('/dashboard/guide')}
-            className="inline-flex items-center gap-1 text-xs text-gold-900 hover:text-white hover:bg-gold-600 font-semibold px-3 py-2 rounded-xl bg-gold-100 border border-gold-300 transition"
+            className="inline-flex items-center gap-1 text-xs text-gold-900 hover:text-white hover:bg-gold-600 font-semibold px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-gold-100 border border-gold-300 transition cursor-pointer"
             title="Otwórz pełną instrukcję"
           >
             <BookOpen className="w-4 h-4" />
@@ -173,15 +222,15 @@ export default function OnboardingBanner() {
           </button>
           <button
             onClick={handleToggleCollapse}
-            className="p-2 text-surface-500 hover:text-surface-900 rounded-xl hover:bg-white/80 transition"
+            className="p-1.5 sm:p-2 text-surface-500 hover:text-surface-900 rounded-xl hover:bg-white/80 transition cursor-pointer"
             title={isCollapsed ? 'Rozwiń' : 'Zwiń'}
           >
             {isCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
           </button>
           <button
             onClick={handleDismiss}
-            className="p-2 text-surface-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition"
-            title="Zamknij przewodnik"
+            className="p-1.5 sm:p-2 text-surface-500 hover:text-red-600 rounded-xl hover:bg-red-50 transition cursor-pointer"
+            title="Ukryj przewodnik"
           >
             <X className="w-5 h-5" />
           </button>

@@ -88,6 +88,9 @@ export default function Auth() {
       if (!res.ok) {
         throw new Error(data.error || 'Nie udało się wysłać kodu SMS');
       }
+      setResetSmsCode('');
+      setNewPin('');
+      setConfirmNewPin('');
       setSuccessMsg('Kod weryfikacyjny został wysłany SMS-em na Twój numer telefonu.');
       setForgotStep(2);
     } catch (err: any) {
@@ -144,7 +147,7 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen bg-surface-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 selection:bg-gold-200 relative">
-      <Link to="/" className="absolute top-6 right-6 p-2 rounded-full text-surface-400 hover:text-surface-900 hover:bg-surface-200 transition-colors">
+      <Link to="/" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2 rounded-full text-surface-400 hover:text-surface-900 hover:bg-surface-200 transition-colors z-10">
         <X className="w-6 h-6" />
       </Link>
 
@@ -240,7 +243,7 @@ export default function Auth() {
                 </div>
               </form>
             ) : (
-              <form className="space-y-5" onSubmit={handleVerifyOtpAndReset}>
+              <form className="space-y-5" onSubmit={handleVerifyOtpAndReset} autoComplete="off">
                 <div>
                   <label className="block text-sm font-medium text-surface-700">Kod weryfikacyjny SMS (6 cyfr)</label>
                   <div className="mt-2 relative rounded-xl shadow-sm">
@@ -249,12 +252,17 @@ export default function Auth() {
                     </div>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      name="otp-sms-code"
+                      id="otp-sms-code"
+                      autoComplete="one-time-code"
                       required
                       maxLength={6}
                       value={resetSmsCode}
-                      onChange={(e) => setResetSmsCode(e.target.value)}
+                      onChange={(e) => setResetSmsCode(e.target.value.replace(/\D/g, ''))}
                       className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono text-center tracking-widest text-lg"
-                      placeholder="123456"
+                      placeholder="******"
                     />
                   </div>
                 </div>
@@ -267,10 +275,14 @@ export default function Auth() {
                     </div>
                     <input
                       type="password"
+                      inputMode="numeric"
+                      name="new-security-pin"
+                      id="new-security-pin"
+                      autoComplete="new-password"
                       required
                       value={newPin}
-                      onChange={(e) => setNewPin(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-widest text-center"
                       placeholder="****"
                     />
                   </div>
@@ -284,10 +296,14 @@ export default function Auth() {
                     </div>
                     <input
                       type="password"
+                      inputMode="numeric"
+                      name="confirm-security-pin"
+                      id="confirm-security-pin"
+                      autoComplete="new-password"
                       required
                       value={confirmNewPin}
-                      onChange={(e) => setConfirmNewPin(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                      onChange={(e) => setConfirmNewPin(e.target.value.replace(/\D/g, ''))}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-widest text-center"
                       placeholder="****"
                     />
                   </div>

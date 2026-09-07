@@ -1,6 +1,6 @@
 import PageHelpButton from './common/PageHelpButton';
 import { useState, useEffect } from 'react';
-import { Calendar, Trash2, Plus, Sparkles } from 'lucide-react';
+import { Calendar, Trash2, Plus, Sparkles, X } from 'lucide-react';
 
 export default function TimeOff() {
   const [timeOffs, setTimeOffs] = useState<any[]>([]);
@@ -84,7 +84,7 @@ export default function TimeOff() {
               description="Dni wolne gwarantują, że asystent EVA nie zaproponuje klientowi terminu w dniach, kiedy firma lub dany pracownik jest nieobecny."
               tips={[
                 "Przycisk 'Święta' pozwala 1 kliknięciem wygenerować wszystkie oficjalne święta państwowe w Polsce dla całej firmy.",
-                "Jeśli urlop bierze tylko jeden pracownik, wskaż go w formularzu – reszta salonu nadal będzie mogła przyjmować klientów.",
+                "Jeśli urlop bierze tylko jeden pracownik, wskaż go w formularzu – reszta zespołu nadal będzie mogła przyjmować rezerwacje.",
                 "Gdy skończysz konfigurację, przetestuj asystenta lub włącz przekierowanie na telefonie!"
               ]}
               nextStepRecommendation={{
@@ -122,7 +122,7 @@ export default function TimeOff() {
                     <div className="text-xs text-surface-500">
                       {new Date(t.startDate).toLocaleDateString()} - {new Date(t.endDate).toLocaleDateString()} 
                       <span className="mx-2">•</span> 
-                      <span className="font-medium text-surface-700">{!t.staffId ? 'CAŁY SALON' : (t.staff?.name || 'Pracownik')}</span>
+                      <span className="font-medium text-surface-700">{!t.staffId ? 'CAŁA FIRMA / OBIEKT' : (t.staff?.name || 'Pracownik')}</span>
                     </div>
                   </div>
                 </div>
@@ -134,14 +134,23 @@ export default function TimeOff() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-900/40 backdrop-blur-sm px-4">
-          <div className="glass-card rounded-2xl p-6 relative w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-serif text-surface-900 mb-4">Dodaj Dzień Wolny</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-surface-900/40 backdrop-blur-sm">
+          <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6 relative w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="text-xl font-serif text-surface-900">Dodaj Dzień Wolny</h3>
+              <button 
+                onClick={() => setIsModalOpen(false)} 
+                className="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-xl -mr-1 -mt-1 cursor-pointer transition-colors"
+                title="Zamknij"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-surface-500 mb-1">Kogo dotyczy?</label>
                 <select value={form.staffId} onChange={e => setForm({...form, staffId: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2">
-                  <option value="">Cały salon (zamknięte)</option>
+                  <option value="">Cała firma (zamknięte)</option>
                   {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>

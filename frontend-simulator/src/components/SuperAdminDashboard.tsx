@@ -183,7 +183,7 @@ export function SuperAdminDashboard() {
       <div className={`w-full md:w-2/3 h-screen overflow-y-auto p-4 md:p-6 bg-gray-50 ${showListOnMobile ? 'hidden md:block' : 'block'}`}>
         {!selectedTenant ? (
           <div className="h-full flex items-center justify-center text-gray-400 text-xl hidden md:flex">
-            Wybierz salon z listy po lewej
+            Wybierz firmę z listy po lewej
           </div>
         ) : (
           <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm">
@@ -224,7 +224,7 @@ export function SuperAdminDashboard() {
                 <button 
                   onClick={(e) => {
                     e.preventDefault();
-                    const msg = window.prompt("Wpisz treść wiadomości SMS do właściciela salonu:");
+                    const msg = window.prompt("Wpisz treść wiadomości SMS do właściciela firmy:");
                     if (msg) handleAction(selectedTenant.id, "sms", { message: msg });
                   }}
                   className="px-4 py-3 sm:py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded shadow transition text-sm sm:text-base text-center"

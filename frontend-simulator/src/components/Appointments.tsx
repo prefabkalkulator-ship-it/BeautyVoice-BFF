@@ -490,21 +490,24 @@ export default function Appointments() {
       )}
 
       {selectedAppt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-900/40 backdrop-blur-sm px-4">
-          <div className="glass-card rounded-2xl p-6 relative overflow-hidden group w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setSelectedAppt(null)}
-              className="absolute top-4 right-4 p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-gold-50 p-2.5 rounded-xl text-gold-600">
-                <Calendar className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-surface-900/40 backdrop-blur-sm">
+          <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6 relative group w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="bg-gold-50 p-2.5 rounded-xl text-gold-600 shrink-0">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <h3 className="font-serif text-xl text-surface-900 leading-tight">
+                  {selectedAppt.id === 'new' ? 'Nowa Rezerwacja' : 'Szczegóły Rezerwacji'}
+                </h3>
               </div>
-              <h3 className="font-serif text-xl text-surface-900">
-                {selectedAppt.id === 'new' ? 'Nowa Wizyta' : 'Szczegóły Wizyty'}
-              </h3>
+              <button 
+                onClick={() => setSelectedAppt(null)}
+                className="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg transition-colors shrink-0 -mr-1 -mt-1 cursor-pointer"
+                title="Zamknij"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             
             <div className="mb-6 -mt-2">

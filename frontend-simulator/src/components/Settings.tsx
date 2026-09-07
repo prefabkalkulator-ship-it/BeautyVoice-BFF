@@ -370,12 +370,14 @@ export default function Settings() {
       )}
 
       {isStaffModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-900/40 backdrop-blur-sm px-4">
-          <div className="glass-card rounded-2xl p-6 relative w-full max-w-md shadow-2xl">
-            <button onClick={() => setIsStaffModalOpen(false)} className="absolute top-4 right-4 p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl font-serif text-surface-900 mb-4">{currentStaff ? (businessProfile === 'facility' ? 'Edytuj zasób' : 'Edytuj pracownika') : (businessProfile === 'facility' ? 'Dodaj zasób / obiekt' : 'Dodaj pracownika')}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-surface-900/40 backdrop-blur-sm">
+          <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6 relative w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="text-xl font-serif text-surface-900">{currentStaff ? (businessProfile === 'facility' ? 'Edytuj zasób' : 'Edytuj pracownika') : (businessProfile === 'facility' ? 'Dodaj zasób / obiekt' : 'Dodaj pracownika')}</h3>
+              <button onClick={() => setIsStaffModalOpen(false)} className="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-lg shrink-0 -mr-1 -mt-1 cursor-pointer transition-colors" title="Zamknij">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             
             <div className="space-y-4">
               <div>

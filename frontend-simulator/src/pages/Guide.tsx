@@ -293,7 +293,7 @@ export default function Guide() {
   return (
     <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       {/* Nagłówek */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-100 text-gold-900 text-xs font-semibold mb-3 border border-gold-300">
           <BookOpen className="w-3.5 h-3.5" /> Centrum Wiedzy i Instrukcja
         </div>
@@ -301,6 +301,35 @@ export default function Guide() {
         <p className="text-surface-600 mt-2 text-sm sm:text-base">
           Wszystko, co musisz wiedzieć o konfiguracji, działaniu asystenta EVA oraz obsłudze połączeń w Twojej firmie.
         </p>
+      </div>
+
+      {/* Karta przywracania paska pierwszych kroków na pulpicie */}
+      <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-gold-50/90 via-amber-50/70 to-gold-50/90 border border-gold-300/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shadow-md shadow-gold-500/20 shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-surface-900">
+              Pasek 5 kroków wdrożenia na pulpicie
+            </h3>
+            <p className="text-xs text-surface-600 mt-0.5">
+              Jeśli zamknąłeś lub zminimalizowałeś pasek na pulpicie, możesz go tutaj w każdej chwili przywrócić.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            localStorage.removeItem('onboarding_dismissed');
+            localStorage.removeItem('onboarding_collapsed');
+            window.dispatchEvent(new Event('onboarding_state_changed'));
+            navigate('/dashboard');
+          }}
+          className="shrink-0 px-4 py-2 bg-surface-900 text-white hover:bg-surface-800 text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-gold-300" />
+          Przywróć pasek na pulpicie
+        </button>
       </div>
 
       {/* Wyszukiwarka */}
