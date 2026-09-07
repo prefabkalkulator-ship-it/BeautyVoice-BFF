@@ -21,6 +21,7 @@ export default function Auth() {
   const [successMsg, setSuccessMsg] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -29,10 +30,15 @@ export default function Auth() {
     setForgotStep(1);
     setError('');
     setSuccessMsg('');
+    setTermsAccepted(false);
   }, [location]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLogin && !termsAccepted) {
+      setError('Aby założyć konto, wymagana jest akceptacja Regulaminu B2B.');
+      return;
+    }
     setLoading(true);
     setError('');
 
@@ -412,9 +418,35 @@ export default function Auth() {
                 </div>
               </div>
 
+              {!isLogin && (
+                <div className="flex items-start gap-2.5 pt-1 text-left">
+                  <input
+                    type="checkbox"
+                    id="authTermsAccepted"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-surface-300 text-gold-600 focus:ring-gold-500 cursor-pointer shrink-0"
+                    required
+                  />
+                  <label htmlFor="authTermsAccepted" className="text-xs text-surface-600 leading-relaxed cursor-pointer select-none">
+                    Oświadczam, że zapoznałem(-am) się i akceptuję{' '}
+                    <a
+                      href="https://veritas-app.com/eva/regulamin"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-gold-600 hover:text-gold-700 underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Regulamin Świadczenia Usług B2B
+                    </a>{' '}
+                    oraz zawartą w nim Umowę Powierzenia Przetwarzania Danych (DPA).
+                  </label>
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (!isLogin && !termsAccepted)}
                 className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-surface-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-surface-900 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
@@ -436,12 +468,6 @@ export default function Auth() {
                 {isLogin ? 'Nie masz konta? Zarejestruj się' : 'Masz już konto? Zaloguj się'}
               </button>
             </div>
-          )}
-          
-          {!isLogin && !isForgotPin && (
-            <p className="mt-6 text-center text-xs text-surface-400">
-              Klikając "Załóż konto", akceptujesz nasz Regulamin oraz Politykę Prywatności.
-            </p>
           )}
         </div>
       </div>

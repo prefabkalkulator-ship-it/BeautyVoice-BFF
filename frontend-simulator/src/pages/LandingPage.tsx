@@ -83,7 +83,24 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-surface-200 bg-white py-12">
         <div className="max-w-7xl mx-auto px-6 text-center text-surface-500 text-sm">
-          <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="flex flex-wrap items-center justify-center gap-6 mb-6 text-xs text-surface-600">
+            <a href="https://veritas-app.com/eva" target="_blank" rel="noreferrer" className="hover:text-gold-600 transition-colors">
+              O projekcie EVA
+            </a>
+            <span className="text-surface-300">•</span>
+            <Link to="/dashboard/guide" className="hover:text-gold-600 transition-colors">
+              Instrukcja Wdrożenia
+            </Link>
+            <span className="text-surface-300">•</span>
+            <a href="https://veritas-app.com/eva/regulamin" target="_blank" rel="noreferrer" className="hover:text-gold-600 transition-colors">
+              Regulamin B2B i RODO
+            </a>
+            <span className="text-surface-300">•</span>
+            <a href="tel:+48343433088" className="hover:text-gold-600 transition-colors font-medium">
+              Infolinia DEMO AI: +48 34 343 30 88
+            </a>
+          </div>
+          <div className="flex items-center justify-center gap-2 mb-3">
             <div className="w-6 h-6 rounded-md bg-surface-100 text-surface-400 flex items-center justify-center">
               <Zap className="w-4 h-4" />
             </div>

@@ -346,7 +346,7 @@ export default function Subscription() {
                   className="mt-1 w-5 h-5 rounded border-surface-300 text-primary focus:ring-primary cursor-pointer"
                 />
                 <span className="text-sm text-surface-700 leading-relaxed group-hover:text-surface-900 transition-colors">
-                  Akceptuję <a href="/terms" target="_blank" className="text-primary hover:underline font-medium" onClick={e => e.stopPropagation()}>Regulamin B2B oraz zawartą w nim Umowę Powierzenia Przetwarzania Danych</a> i upoważniam operatora do cyklicznego obciążania mojej karty.
+                  Akceptuję <a href="https://veritas-app.com/eva/regulamin" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium" onClick={e => e.stopPropagation()}>Regulamin B2B oraz zawartą w nim Umowę Powierzenia Przetwarzania Danych</a> i upoważniam operatora do cyklicznego obciążania mojej karty.
                 </span>
               </label>
 

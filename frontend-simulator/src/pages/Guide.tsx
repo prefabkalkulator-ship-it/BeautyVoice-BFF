@@ -279,6 +279,39 @@ export default function Guide() {
           </ul>
         </div>
       )
+    },
+    // 7. REGULAMIN I DPA (PRAWO)
+    {
+      id: 'terms-and-dpa',
+      category: 'subscription',
+      question: 'Gdzie znajdę Regulamin Świadczenia Usług B2B i Umowę Powierzenia Danych (DPA)?',
+      summary: 'Zasady świadczenia usług B2B, odpowiedzialność za ruch telefoniczny, zgody SMS oraz warunki RODO.',
+      actionPath: 'https://veritas-app.com/eva/regulamin',
+      actionLabel: 'Otwórz Regulamin B2B',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Platforma EVA działa w relacji <strong>Business-to-Business (B2B)</strong>. Korzystając z asystenta głosowego oraz numeru technicznego, 
+            Twoja firma zachowuje pełną kontrolę i zgodność z przepisami prawa telekomunikacyjnego oraz RODO.
+          </p>
+          <ul className="list-disc pl-5 space-y-1.5">
+            <li><strong>Relacja powierzenia (DPA):</strong> Twoja firma jest Administratorem Danych Osobowych (ADO) swoich klientów, a nasza platforma jest Podmiotem Przetwarzającym (Procesorem).</li>
+            <li><strong>Bezpieczeństwo numeru technicznego:</strong> Numer techniczny służy wyłącznie do odbioru przekierowanych połączeń – nie może być wykorzystywany do telemarketingu (cold calling) ani spamu.</li>
+            <li><strong>Powiadomienia SMS:</strong> Wiadomości z potwierdzeniem rezerwacji są wysyłane transakcyjnie w imieniu Twojej firmy.</li>
+          </ul>
+          <div className="pt-2">
+            <a 
+              href="https://veritas-app.com/eva/regulamin" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="inline-flex items-center gap-1.5 font-semibold text-gold-600 hover:text-gold-700 underline text-xs"
+            >
+              <span>Przeczytaj pełny Regulamin Świadczenia Usług B2B</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      )
     }
   ];
 
@@ -385,7 +418,13 @@ export default function Guide() {
                     {item.actionPath && (
                       <div className="mt-5 pt-4 border-t border-surface-200/60 flex justify-end">
                         <button
-                          onClick={() => navigate(item.actionPath!)}
+                          onClick={() => {
+                            if (item.actionPath?.startsWith('http')) {
+                              window.open(item.actionPath, '_blank', 'noopener,noreferrer');
+                            } else {
+                              navigate(item.actionPath!);
+                            }
+                          }}
                           className="inline-flex items-center gap-2 px-4 py-2 bg-surface-900 text-white hover:bg-surface-800 hover:text-white rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
                         >
                           {item.actionLabel || 'Przejdź do konfiguracji'} <ArrowRight className="w-3.5 h-3.5" />
