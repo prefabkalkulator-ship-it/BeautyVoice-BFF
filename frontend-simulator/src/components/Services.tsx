@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Tag, Clock, DollarSign, Pencil, Check, X, Trash2 } from 'lucide-react';
+import PageHelpButton from './common/PageHelpButton';
 
 interface ServiceItem {
   id: string;
@@ -130,7 +131,24 @@ export default function Services() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Usługi i Cennik</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Usługi i Cennik</h2>
+            <PageHelpButton 
+              title="Jak działają Usługi i Cennik?"
+              description="To tutaj definiujesz zabiegi, które asystent EVA proponuje klientom dzwoniącym do Twojego salonu."
+              tips={[
+                "Czas trwania usługi jest kluczowy – asystent blokuje dokładnie ten czas w kalendarzu, zapobiegając nakładaniu się rezerwacji.",
+                "Cena podawana jest klientowi, gdy pyta o koszt zabiegu podczas rozmowy.",
+                "Pamiętaj: po dodaniu usług przejdź do Ustawień Firmy i przypisz je do konkretnych pracowników w sekcji Zespół!"
+              ]}
+              nextStepRecommendation={{
+                text: "Przejdź do Bazy Wiedzy lub przypisz usługi do pracowników",
+                path: "/dashboard/faq",
+                actionLabel: "Baza Wiedzy EVA"
+              }}
+              guideSectionId="services-duration"
+            />
+          </div>
           <p className="text-surface-500 mt-1">Zarządzaj usługami, które EVA oferuje klientom.</p>
         </div>
         <button 

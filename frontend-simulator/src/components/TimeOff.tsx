@@ -1,3 +1,4 @@
+import PageHelpButton from './common/PageHelpButton';
 import { useState, useEffect } from 'react';
 import { Calendar, Trash2, Plus, Sparkles } from 'lucide-react';
 
@@ -76,7 +77,24 @@ export default function TimeOff() {
     <div className="space-y-6">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-serif text-surface-900 mb-2">Dni Wolne i Urlopy</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-3xl font-serif text-surface-900">Dni Wolne i Urlopy</h1>
+            <PageHelpButton
+              title="Dni Wolne i Święta w Kalendarzu"
+              description="Dni wolne gwarantują, że asystent EVA nie zaproponuje klientowi wizyty w terminach, kiedy salon lub pracownik jest nieobecny."
+              tips={[
+                "Przycisk 'Święta' pozwala 1 kliknięciem wygenerować wszystkie oficjalne święta państwowe w Polsce dla całego salonu.",
+                "Jeśli urlop bierze tylko jeden pracownik, wskaż go w formularzu – reszta salonu nadal będzie mogła przyjmować klientów.",
+                "Gdy skończysz konfigurację, przetestuj asystenta lub włącz przekierowanie na telefonie!"
+              ]}
+              nextStepRecommendation={{
+                text: "Sprawdź instrukcję kodów przekierowań GSM",
+                path: "/dashboard/guide#call-forwarding",
+                actionLabel: "Przekierowania GSM"
+              }}
+              guideSectionId="timeoff-rules"
+            />
+          </div>
           <p className="text-surface-500">Zarządzaj dniami zamknięcia salonu oraz urlopami pracowników.</p>
         </div>
         <div className="flex gap-2">

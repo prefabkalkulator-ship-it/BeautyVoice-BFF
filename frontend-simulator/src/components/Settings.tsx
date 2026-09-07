@@ -1,3 +1,4 @@
+import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState } from 'react';
 import { Save, Plus, X, User } from 'lucide-react';
 
@@ -147,7 +148,24 @@ export default function Settings() {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
-        <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Ustawienia Firmy</h2>
+        <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Ustawienia Firmy</h2>
+            <PageHelpButton
+              title="Konfiguracja Firmy i Zespołu"
+              description="Tutaj ustalisz dane salonu, godziny otwarcia oraz dodasz pracowników świadczących usługi."
+              tips={[
+                "Najważniejsze: zdefiniuj usługi w zakładce 'Usługi' PRZED dodawaniem pracowników, aby móc przypisać im zabiegi!",
+                "Godziny pracy salonu określają, w jakich ramach czasowych asystent proponuje wolne terminy.",
+                "Jeśli działasz jednoosobowo, wybierz profil 'Solo'. Jeśli masz pracowników, wybierz 'Zespół'."
+              ]}
+              nextStepRecommendation={{
+                text: "Ustaw dni wolne i święta",
+                path: "/dashboard/timeoff",
+                actionLabel: "Przejdź do Dni Wolnych"
+              }}
+              guideSectionId="team-assignment"
+            />
+          </div>
         <p className="text-surface-500 mt-1">Konfiguruj profil działalności i zespół pracowników.</p>
       </div>
 

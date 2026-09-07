@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users } from 'lucide-react';
+import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users, BookOpen } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { requestForToken, onMessageListener } from '../firebase';
 import toast, { Toaster } from 'react-hot-toast';
+import OnboardingBanner from '../components/OnboardingBanner';
 
 export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -80,6 +81,7 @@ export default function DashboardLayout() {
     { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Firmy', icon: Settings },
     { id: 'timeoff', path: '/dashboard/timeoff', label: 'Dni Wolne', icon: CalendarDays },
     { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
+    { id: 'guide', path: '/dashboard/guide', label: 'Instrukcja', icon: BookOpen },
   ];
 
   const handleLogout = () => {
@@ -174,6 +176,7 @@ export default function DashboardLayout() {
             </div>
           </div>
         )}
+        <OnboardingBanner />
         <Outlet />
       </main>
 

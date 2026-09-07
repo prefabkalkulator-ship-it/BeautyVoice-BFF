@@ -11,6 +11,7 @@ import Simulator from './components/Simulator';
 import Settings from './components/Settings';
 import TimeOff from './components/TimeOff';
 import Subscription from './pages/Subscription';
+import Guide from './pages/Guide';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
 
 import './index.css';
@@ -34,6 +35,7 @@ function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="timeoff" element={<TimeOff />} />
           <Route path="subscription" element={<Subscription />} />
+          <Route path="guide" element={<Guide />} />
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />

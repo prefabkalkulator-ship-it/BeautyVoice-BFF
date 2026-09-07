@@ -1,3 +1,4 @@
+import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState, useRef } from 'react';
 import { HelpCircle, ChevronDown, ChevronUp, Pencil, Sparkles, Loader2, X, ShieldAlert, Mic, Square, Plus, Database, Trash2, Check } from 'lucide-react';
 
@@ -204,7 +205,24 @@ export default function Faq() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Wiedza dla EVA</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Wiedza dla EVA</h2>
+            <PageHelpButton
+              title="Jak uczyć asystenta w Bazie Wiedzy?"
+              description="Baza wiedzy to zbiór informacji, którymi posługuje się EVA podczas rozmowy z Twoimi klientami."
+              tips={[
+                "Wklejaj zasady salonu: metody płatności, politykę spóźnień, parking, dojazd czy przeciwwskazania do zabiegów.",
+                "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zwięzłe pytania i odpowiedzi.",
+                "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć i ręcznie poprawić dowolną odpowiedź."
+              ]}
+              nextStepRecommendation={{
+                text: "Przypisz usługi do pracowników w Ustawieniach",
+                path: "/dashboard/settings",
+                actionLabel: "Przejdź do Zespołu"
+              }}
+              guideSectionId="faq-training"
+            />
+          </div>
           <p className="text-surface-500 mt-1">Ucz swoją asystentkę zasad działania Twojego salonu.</p>
         </div>
         <div className="flex items-center gap-3 self-start md:self-auto bg-surface-100 p-1 rounded-xl">

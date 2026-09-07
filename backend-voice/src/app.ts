@@ -1,3 +1,4 @@
+import { SMSService } from './services/sms/SMSService';
 import express from 'express';
 import cors from 'cors';
 import { webhookController } from './controllers/WebhookController';
@@ -781,7 +782,7 @@ app.post('/api/stripe/bypass', async (req, res) => {
     if (!tenant) return res.status(400).json({ error: 'Brak salonu w bazie' });
 
     const planName = (req.body?.planName || 'premium').toLowerCase();
-    const minutesIncluded = planName === 'standard' ? 100 : 400;
+    const minutesIncluded = planName === 'standard' ? 100 : 300;
 
     const sub = await prisma.subscription.upsert({
       where: { tenantId: tenant.id },
@@ -933,6 +934,93 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// --- RESET KODU PIN PRZEZ SMS ---
+const pinResetStore = new Map<string, { code: string; expiresAt: number; tenantId: string }>();
+
+app.post('/api/auth/forgot-pin/send-otp', async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Podaj numer telefonu' });
+    }
+    const clean = phoneNumber.replace(/[\s\-()]/g, '');
+    const variants = [phoneNumber, clean];
+    if (!clean.startsWith('+')) variants.push('+' + clean);
+    if (clean.startsWith('+48')) variants.push(clean.replace('+48', ''));
+    else if (!clean.startsWith('+')) variants.push('+48' + clean);
+
+    const tenant = await prisma.tenant.findFirst({
+      where: { phoneNumber: { in: variants } }
+    });
+    if (!tenant) {
+      return res.status(404).json({ error: 'Nie znaleziono konta dla podanego numeru telefonu.' });
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    pinResetStore.set(tenant.id, {
+      code,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      tenantId: tenant.id
+    });
+
+    console.log(`🔑 [PIN Reset] Wygenerowano kod dla ${tenant.name} (${tenant.phoneNumber}): ${code}`);
+    await SMSService.sendSMS(
+      tenant.phoneNumber,
+      `Twój kod do zresetowania PIN w BeautyVoice to: ${code}. Kod jest ważny 10 minut.`
+    );
+
+    res.json({ success: true, message: 'Kod weryfikacyjny został wysłany SMS-em.' });
+  } catch (err: any) {
+    console.error('Error sending reset OTP:', err);
+    res.status(500).json({ error: 'Błąd podczas wysyłania kodu SMS: ' + err.message });
+  }
+});
+
+app.post('/api/auth/forgot-pin/verify-otp', async (req, res) => {
+  try {
+    const { phoneNumber, code, newPin } = req.body;
+    if (!phoneNumber || !code || !newPin) {
+      return res.status(400).json({ error: 'Wymagany numer telefonu, kod SMS oraz nowy PIN.' });
+    }
+    if (newPin.length < 4) {
+      return res.status(400).json({ error: 'Kod PIN musi mieć co najmniej 4 cyfry.' });
+    }
+    const clean = phoneNumber.replace(/[\s\-()]/g, '');
+    const variants = [phoneNumber, clean];
+    if (!clean.startsWith('+')) variants.push('+' + clean);
+    if (clean.startsWith('+48')) variants.push(clean.replace('+48', ''));
+    else if (!clean.startsWith('+')) variants.push('+48' + clean);
+
+    const tenant = await prisma.tenant.findFirst({
+      where: { phoneNumber: { in: variants } }
+    });
+    if (!tenant) {
+      return res.status(404).json({ error: 'Nie znaleziono konta.' });
+    }
+
+    const session = pinResetStore.get(tenant.id);
+    if (!session || session.code !== code.trim()) {
+      return res.status(400).json({ error: 'Nieprawidłowy kod weryfikacyjny SMS.' });
+    }
+    if (Date.now() > session.expiresAt) {
+      pinResetStore.delete(tenant.id);
+      return res.status(400).json({ error: 'Kod weryfikacyjny wygasł. Poproś o nowy kod.' });
+    }
+
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { pinCode: newPin }
+    });
+    pinResetStore.delete(tenant.id);
+
+    console.log(`✅ [PIN Reset] Pomyślnie zmieniono PIN dla tenanta ${tenant.name}`);
+    res.json({ success: true, tenantId: tenant.id, message: 'Kod PIN został pomyślnie zaktualizowany.' });
+  } catch (err: any) {
+    console.error('Error verifying reset OTP:', err);
+    res.status(500).json({ error: 'Błąd podczas zmiany PIN: ' + err.message });
+  }
+});
+
 app.post('/api/tenant/wipe', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
@@ -1001,7 +1089,7 @@ app.post('/api/subscription/change-plan', async (req, res) => {
     if (!sub) return res.status(404).json({ error: 'Brak subskrypcji' });
 
     let newPlanName = sub.planName === 'standard' ? 'premium' : 'standard';
-    let newMinutesIncluded = newPlanName === 'premium' ? 400 : 100;
+    let newMinutesIncluded = newPlanName === 'premium' ? 300 : 100;
 
     const updatedSub = await prisma.subscription.update({
       where: { tenantId: tenant.id },
