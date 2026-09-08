@@ -16,18 +16,13 @@ export class CallOrchestrator {
   private vadService!: VADService;
   private geminiClient!: GeminiClient;
   
-  // Paced Egress Jitter Buffer (500ms) & Barge-In State
+  // Adaptive Jitter Buffer (200ms) & Barge-In State
   private agentSpeaking: boolean = false;
   private isTurnCanceled: boolean = false;
-  private isTurnActive: boolean = false;
-  private isTurnCompleteReceived: boolean = false;
-  private egressIdleTicks: number = 0;
-  private egressQueue: Uint8Array[] = [];
-  private egressQueueBytes: number = 0;
-  private isEgressPlaying: boolean = false;
-  private egressTimer: NodeJS.Timeout | null = null;
-  private readonly PREBUFFER_THRESHOLD_MS: number = 500; // 500ms poduszka rozbiegowa (4000 bajtów 8kHz mulaw)
-  private activeAudioController: AbortController | null = null;
+  private isTurnStreaming: boolean = false;
+  private turnAudioQueue: Uint8Array[] = [];
+  private turnBufferedDurationMs: number = 0;
+  private readonly PREBUFFER_THRESHOLD_MS: number = 200; // 200ms poduszka rozbiegowa (1600 bajtów 8kHz mulaw)
   
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
@@ -93,11 +88,6 @@ export class CallOrchestrator {
 
             // Uruchom Gemini NATYCHMIAST — asystent może się przywitać
             await this.initAsync(tenant);
-
-            // --- LAZY INJECTION: kontekst Caller ID wstrzykujemy ASYNCHRONICZNIE po starcie ---
-            if (tenant && this.callerPhone) {
-              this.injectCallerContext(tenant.id).catch(e => console.error('[CallerID] Błąd lazy injection:', e));
-            }
           }
         } catch(e) {
           console.error('❌ [CallOrchestrator] Błąd obsługi zdarzenia start:', e);
@@ -108,7 +98,6 @@ export class CallOrchestrator {
     });
 
     this.twilioWs.on('close', async () => {
-      this.stopEgressPlayback();
       if (this.geminiClient) this.geminiClient.close();
       if (this.callStartTime && this.tenantId) {
         const durationMs = Date.now() - this.callStartTime;
@@ -138,36 +127,6 @@ export class CallOrchestrator {
     });
   }
 
-  /**
-   * Lazy Injection: wstrzykuje kontekst Caller ID i historię SMS do sesji Gemini
-   * BEZ blokowania inicjalizacji połączenia. Uruchamiane asynchronicznie po initAsync.
-   */
-  private async injectCallerContext(tenantId: string) {
-    const [recentQueue, knownCustomer] = await Promise.all([
-      prisma.outboundQueue.findMany({
-        where: { targetPhone: this.callerPhone, status: 'done', scheduledFor: { gt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } },
-        orderBy: { scheduledFor: 'desc' }, take: 3
-      }),
-      prisma.customer.findFirst({ where: { phone: this.callerPhone, tenantId } })
-    ]);
-
-    let contextText = '';
-    if (recentQueue.length > 0) {
-      contextText += '[HISTORIA KONTAKTU]\n' + recentQueue.map((q: any) => `[${q.scheduledFor.toISOString()}] Wysłano ${q.channel.toUpperCase()}: "${(q.payload as any).text}"`).join('\n') + '\n';
-    }
-
-    if (knownCustomer) {
-      contextText += `\n[SYSTEM INFO] To jest połączenie od TWOJEGO STAŁEGO KLIENTA. Został rozpoznany po numerze telefonu (Caller ID). Jego imię to: ${knownCustomer.name}, a numer to: ${knownCustomer.phone}.\n1) Powitaj go serdecznie po imieniu w pierwszym zdaniu.\n2) ZAKAZ pytania o imię i numer telefonu w trakcie całej rozmowy (masz już te dane). (ZIGNORUJ PUNKT 6 Z INSTRUKCJI)\n3) ZAKAZ pytania skąd klient dowiedział się o salonie. (ZIGNORUJ PUNKT 0 Z INSTRUKCJI)`;
-    } else {
-      contextText += `\n[SYSTEM INFO] Klient dzwoni z numeru: ${this.callerPhone}. Kiedy przejdziesz do punktu 6 (Dane klienta), ZANIM zapytasz o numer telefonu, ZAPYTAJ NAJPIERW CZY PODAJE INNY NUMER CZY MAMY UŻYĆ TEGO Z KTÓREGO DZWONI (podaj mu ten numer). Jeśli się zgodzi na ten z którego dzwoni, użyj go.`;
-    }
-
-    // Wstrzyknij do sesji Gemini jako inputText (bez przerywania audio)
-    if (contextText && this.geminiClient) {
-      this.geminiClient.sendInputText(contextText);
-      console.log('[CallerID] Kontekst wstrzyknięty do sesji Gemini');
-    }
-  }
 
   private async initAsync(tenant: any) {
     try {
@@ -234,28 +193,30 @@ export class CallOrchestrator {
                   // Oznacz task jako zakończony
                   await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                }
-            } else if (callerPhone !== 'unknown' && this.geminiClient) {
-              // INBOUND CALL LOGIC
+            } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
+              // INBOUND CALL LOGIC: jedno spójne sprawdzenie stałego klienta i ostatniej wizyty
               try {
-                if (this.tenantId) {
-                  const lastAppt = await prisma.appointment.findFirst({
+                const [knownCustomer, lastAppt] = await Promise.all([
+                  prisma.customer.findFirst({ where: { phone: callerPhone, tenantId: this.tenantId } }),
+                  prisma.appointment.findFirst({
                     where: { customerPhone: callerPhone, tenantId: this.tenantId },
                     orderBy: { startTime: 'desc' },
                     include: { service: true }
-                  });
-                  
-                  if (lastAppt) {
-                    contextText = `Dzwoni stała klientka ${lastAppt.customerName} z numeru ${callerPhone}. Jej ostatnia wizyta to ${lastAppt.service.name}.`;
-                  } else {
-                    contextText = `Dzwoni nowy numer: ${callerPhone}.`;
-                  }
+                  })
+                ]);
+
+                if (knownCustomer) {
+                  const visitInfo = lastAppt ? ` Jej ostatnia wizyta to ${lastAppt.service.name}.` : '';
+                  contextText = `To jest połączenie od TWOJEJ STAŁEJ KLIENTKI: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj ją ciepło po imieniu w pierwszym zdaniu. ZAKAZ pytania o imię i numer (masz już te dane). ZAKAZ pytania skąd wie o salonie.`;
+                } else {
+                  contextText = `Klient dzwoni z numeru: ${callerPhone}.`;
                 }
               } catch (err) {
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
               }
             }
             if (this.geminiClient) this.geminiClient.sendInitialGreeting(contextText);
-          }, 1000);
+          }, 800);
           break;
         case 'media':
           const payloadBase64 = data.media.payload;
@@ -276,11 +237,12 @@ export class CallOrchestrator {
   }
 
   private handleGeminiTurnComplete() {
-    this.isTurnCompleteReceived = true;
-    // Jeśli tura była krótsza niż 500ms (np. "Tak" lub krótkie zdanie), uwalniamy odtwarzanie
-    if (!this.isEgressPlaying && this.egressQueueBytes > 0 && !this.isTurnCanceled) {
-      this.startEgressPlayback();
+    // Jeśli tura była krótsza niż 200ms (np. pojedyncze "Tak"), uwalniamy bufor
+    if (!this.isTurnStreaming && this.turnAudioQueue.length > 0 && !this.isTurnCanceled) {
+      this.flushTurnBufferToTwilio();
     }
+    this.isTurnStreaming = false;
+    this.agentSpeaking = false;
   }
 
   private executeBargeInMechanism() {
@@ -288,32 +250,20 @@ export class CallOrchestrator {
     console.log('🛑 [Barge-in] Wykryto przerwanie! Natychmiastowe zatrzymanie mowy asystenta.');
     
     this.isTurnCanceled = true;
-    this.stopEgressPlayback();
-    this.egressQueue = [];
-    this.egressQueueBytes = 0;
-    this.isTurnActive = false;
-    this.isTurnCompleteReceived = false;
-    this.egressIdleTicks = 0;
+    this.agentSpeaking = false;
+    this.isTurnStreaming = false;
+    this.turnAudioQueue = [];
+    this.turnBufferedDurationMs = 0;
     
     // Błyskawiczne wyczyszczenie bufora odtwarzacza w Twilio
     this.twilioWs.send(JSON.stringify({
       event: 'clear',
       streamSid: this.streamSid
     }));
-
-    if (this.activeAudioController) {
-      this.activeAudioController.abort();
-      this.activeAudioController = null;
-    }
-    // Celowo NIE wysyłamy sendTurnComplete(), aby nie wznawiać syntezy starej tury
   }
 
   private async orchestrateToolCallWithFiller(toolCall: any) {
-    this.activeAudioController = new AbortController();
-    
     try {
-      const fillerPromise = this.streamFillerAudio(this.activeAudioController.signal);
-
       const functionResponses = [];
       for (const functionCall of toolCall.functionCalls) {
         const actionResult = await this.executeBusinessAction(functionCall);
@@ -325,29 +275,9 @@ export class CallOrchestrator {
       }
 
       this.geminiClient.sendToolResponse(functionResponses);
-      
-      await fillerPromise;
-
     } catch (err: any) {
-      if (err.message === 'Aborted') {
-        console.log('>>> [Filler] Człowiek wtrącił się podczas sprawdzania danych.');
-      }
-    } finally {
-      this.activeAudioController = null;
+      console.error('[ToolCall] Błąd wykonania narzędzia:', err);
     }
-  }
-
-  private async streamFillerAudio(signal: AbortSignal) {
-    this.agentSpeaking = true;
-    for (let i = 0; i < 100; i++) {
-      if (signal.aborted) throw new Error('Aborted');
-      
-      const chunk = Buffer.alloc(160, 255); 
-      this.sendMediaMessage(chunk.toString('base64'));
-      
-      await new Promise(r => setTimeout(r, 20));
-    }
-    this.agentSpeaking = false;
   }
 
   private async executeBusinessAction(functionCall: any) {
@@ -388,14 +318,14 @@ export class CallOrchestrator {
     
     // 1. Sprawdzamy lokalny Silero VAD pod kątem wtrącenia użytkownika (Barge-in)
     await this.vadService.processAudio(float32Array, (speechProb) => {
-      if (this.agentSpeaking || this.isEgressPlaying || this.egressQueueBytes > 0) {
+      if (this.agentSpeaking || this.isTurnStreaming || this.turnAudioQueue.length > 0) {
         console.log(`🗣️ [VAD Barge-in] Wykryto mowę użytkownika (prob: ${speechProb.toFixed(2)}) w trakcie wypowiedzi asystenta!`);
         this.executeBargeInMechanism();
       }
     });
 
     // Jeśli poprzednia tura została anulowana, a użytkownik mówi (i bot milczy), resetujemy flagę
-    if (this.isTurnCanceled && !this.agentSpeaking && !this.isEgressPlaying) {
+    if (this.isTurnCanceled && !this.agentSpeaking && !this.isTurnStreaming) {
       this.isTurnCanceled = false;
     }
 
@@ -411,104 +341,43 @@ export class CallOrchestrator {
         return;
       }
 
-      this.isTurnActive = true;
-      this.egressIdleTicks = 0;
       this.agentSpeaking = true;
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
-      this.egressQueue.push(outMulawBuffer);
-      this.egressQueueBytes += outMulawBuffer.length;
+      const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
 
-      const bufferedMs = this.egressQueueBytes / 8;
-      // Kiedy osiągniemy próg 500ms poduszki rozbiegowej, rozpoczynamy płynne taktowanie do Twilio
-      if (!this.isEgressPlaying && bufferedMs >= this.PREBUFFER_THRESHOLD_MS) {
-        this.startEgressPlayback();
+      if (this.isTurnStreaming) {
+        // Faza ciągłego strumieniowania: Twilio ma już poduszkę rozbiegową, wysyłamy od razu!
+        this.sendMediaMessage(Buffer.from(outMulawBuffer).toString('base64'));
+      } else {
+        // Faza bufora rozbiegowego (Adaptive Jitter Buffer): gromadzimy pierwsze 200ms
+        this.turnAudioQueue.push(outMulawBuffer);
+        this.turnBufferedDurationMs += durationMs;
+
+        if (this.turnBufferedDurationMs >= this.PREBUFFER_THRESHOLD_MS) {
+          this.flushTurnBufferToTwilio();
+        }
       }
     } catch (err) {
       console.error('[Egress] Błąd transformacji audio:', err);
     }
   }
 
-  private startEgressPlayback() {
-    if (this.isEgressPlaying || this.isTurnCanceled) return;
-    this.isEgressPlaying = true;
-    this.agentSpeaking = true;
+  private flushTurnBufferToTwilio() {
+    if (this.turnAudioQueue.length === 0 || this.isTurnCanceled) return;
 
-    // Początkowy pakiet rozbiegowy (160ms = 1280 bajtów), by Twilio natychmiast napełniło sprzętowy bufor
-    const initialBurst = this.popEgressBytes(1280);
-    if (initialBurst) {
-      this.sendMediaMessage(Buffer.from(initialBurst).toString('base64'));
+    // Łączymy wszystkie zbuforowane klatki w jedną spójną poduszkę dźwiękową (200ms)
+    const totalBytes = this.turnAudioQueue.reduce((acc, buf) => acc + buf.length, 0);
+    const combinedBuffer = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const buf of this.turnAudioQueue) {
+      combinedBuffer.set(buf, offset);
+      offset += buf.length;
     }
 
-    // Równomiernie taktowane wysyłanie co 40ms po 320 bajtów (dokładnie 40ms przy 8000Hz mulaw)
-    this.egressTimer = setInterval(() => {
-      this.tickEgress();
-    }, 40);
-  }
-
-  private tickEgress() {
-    if (this.isTurnCanceled) {
-      this.stopEgressPlayback();
-      return;
-    }
-
-    if (this.egressQueueBytes === 0) {
-      // Jeśli Gemini zakończyło generowanie (turnComplete) i kolejka została całkowicie opróżniona -> koniec tury
-      if (this.isTurnCompleteReceived) {
-        this.stopEgressPlayback();
-        return;
-      }
-      // Jeśli tura nadal trwa, ale kolejka chwilowo jest pusta (chwilowa przerwa między tokenami Gemini):
-      this.egressIdleTicks++;
-      if (this.egressIdleTicks > 37) { // 37 * 40ms ~ 1500ms ciszy -> timeout bezpieczeństwa
-        this.stopEgressPlayback();
-      }
-      return;
-    }
-
-    this.egressIdleTicks = 0;
-    const chunk = this.popEgressBytes(320); // 40ms
-    if (chunk) {
-      this.sendMediaMessage(Buffer.from(chunk).toString('base64'));
-    }
-  }
-
-  private stopEgressPlayback() {
-    if (this.egressTimer) {
-      clearInterval(this.egressTimer);
-      this.egressTimer = null;
-    }
-    this.isEgressPlaying = false;
-    this.agentSpeaking = false;
-    this.isTurnActive = false;
-    this.isTurnCompleteReceived = false;
-    this.egressIdleTicks = 0;
-    this.isTurnCanceled = false; // Gotowość na nową turę
-  }
-
-  private popEgressBytes(count: number): Uint8Array | null {
-    if (this.egressQueueBytes === 0) return null;
-
-    const bytesToTake = Math.min(count, this.egressQueueBytes);
-    const result = new Uint8Array(bytesToTake);
-    let bytesCopied = 0;
-
-    while (bytesCopied < bytesToTake && this.egressQueue.length > 0) {
-      const first = this.egressQueue[0];
-      const needed = bytesToTake - bytesCopied;
-
-      if (first.length <= needed) {
-        result.set(first, bytesCopied);
-        bytesCopied += first.length;
-        this.egressQueue.shift();
-      } else {
-        result.set(first.subarray(0, needed), bytesCopied);
-        bytesCopied += needed;
-        this.egressQueue[0] = first.subarray(needed);
-      }
-    }
-
-    this.egressQueueBytes -= bytesCopied;
-    return result;
+    this.sendMediaMessage(Buffer.from(combinedBuffer).toString('base64'));
+    this.isTurnStreaming = true;
+    this.turnAudioQueue = [];
+    this.turnBufferedDurationMs = 0;
   }
 
   private sendMediaMessage(payloadBase64: string) {
