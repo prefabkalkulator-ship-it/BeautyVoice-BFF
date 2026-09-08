@@ -35,7 +35,9 @@ app.post('/api/vapi-llm/chat/completions', (req, res) => webhookController.handl
 // --- API dla PWA Dashboard ---
 import { prisma } from './prisma';
 
-app.get('/api/fix-db', async (req, res) => {
+import { adminAuthMiddleware } from './middleware/adminAuth';
+
+app.get('/api/fix-db', adminAuthMiddleware, async (req, res) => {
   const tenants = await prisma.tenant.findMany({ include: { subscription: true } });
   res.json({ tenants });
 });
@@ -776,7 +778,7 @@ app.post('/api/stripe/create-checkout-session', (req, res) => stripeController.c
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => stripeController.webhook(req, res));
 
 // Endpoint na potrzeby deweloperskie / mockowania płatności (Faza 8)
-app.post('/api/stripe/bypass', async (req, res) => {
+app.post('/api/stripe/bypass', adminAuthMiddleware, async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(400).json({ error: 'Brak salonu w bazie' });
@@ -956,6 +958,14 @@ app.post('/api/auth/forgot-pin/send-otp', async (req, res) => {
       return res.status(404).json({ error: 'Nie znaleziono konta dla podanego numeru telefonu.' });
     }
 
+    // Rate Limiting ochrona przed spamem SMS
+    const { RateLimiterService } = await import('./services/security/RateLimiterService');
+    const clientIp = ((req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.ip || req.socket.remoteAddress || '').trim();
+    const rateCheck = RateLimiterService.checkSmsLimit(tenant.phoneNumber, clientIp);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({ error: rateCheck.reason });
+    }
+
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     pinResetStore.set(tenant.id, {
       code,
@@ -968,6 +978,7 @@ app.post('/api/auth/forgot-pin/send-otp', async (req, res) => {
       tenant.phoneNumber,
       `Twój kod do zresetowania PIN w BeautyVoice to: ${code}. Kod jest ważny 10 minut.`
     );
+    RateLimiterService.recordSmsSent(tenant.phoneNumber, clientIp);
 
     res.json({ success: true, message: 'Kod weryfikacyjny został wysłany SMS-em.' });
   } catch (err: any) {
@@ -1025,6 +1036,13 @@ app.post('/api/tenant/wipe', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
+
+    // Weryfikacja PINu salonu lub tokena admina przed usunięciem
+    const { pinCode } = req.body;
+    if (tenant.pinCode && (!pinCode || String(pinCode).trim() !== tenant.pinCode)) {
+      return res.status(403).json({ error: 'Nieprawidłowy kod PIN salonu. Wymagane potwierdzenie kodem PIN do usunięcia konta.' });
+    }
+
     await prisma.tenant.delete({ where: { id: tenant.id } });
     res.json({ success: true, message: 'Dane usunięto bezpowrotnie.' });
   } catch (err) {
@@ -1104,14 +1122,13 @@ app.post('/api/tenant/provision-number', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Nie znaleziono konta' });
 
-    const fakeNumber = "+48459568507";
-    
-    await prisma.tenant.update({
-      where: { id: tenant.id },
-      data: { assignedPhoneNumber: fakeNumber, termsAcceptedAt: new Date() }
-    });
+    if (tenant.assignedPhoneNumber) {
+      return res.json({ success: true, number: tenant.assignedPhoneNumber });
+    }
 
-    res.json({ success: true, number: fakeNumber });
+    return res.status(400).json({ 
+      error: 'Wirtualny numer telefonu nie został jeszcze przydzielony. Zgłoś wniosek pilotażowy w zakładce Subskrypcja, a administrator skonfiguruje numer dla Twojej firmy.' 
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1368,16 +1385,19 @@ import { betaController } from './controllers/BetaController';
 app.post('/api/beta/apply', (req, res) => betaController.apply(req, res));
 app.get('/api/beta/status', (req, res) => betaController.getStatus(req, res));
 
-// Trasy SuperAdmina
-app.get('/api/admin/tenants', (req, res) => adminController.getTenants(req, res));
-app.get('/api/admin/tenants/:id', (req, res) => adminController.getTenantDetails(req, res));
-app.post('/api/admin/tenants/:id/suspend', (req, res) => adminController.suspendTenant(req, res));
-app.post('/api/admin/tenants/:id/approve', (req, res) => adminController.approveTenant(req, res));
-app.post('/api/admin/tenants/:id/adjust-minutes', (req, res) => adminController.adjustMinutes(req, res));
-app.post('/api/admin/tenants/:id/sms', (req, res) => adminController.sendSmsNotification(req, res));
-app.post('/api/admin/tenants/:id/subscription/status', (req, res) => adminController.setSubscriptionStatus(req, res));
-app.post('/api/admin/fcm-token', (req, res) => adminController.registerAdminDevice(req, res));
-app.get('/api/admin/beta-applications', (req, res) => adminController.getBetaApplications(req, res));
-app.post('/api/admin/beta-applications/:id/approve', (req, res) => adminController.approveBetaApplication(req, res));
+// Trasa logowania SuperAdmina (weryfikacja PINu 5742 z .env)
+app.post('/api/admin/login', (req, res) => adminController.login(req, res));
+
+// Trasy SuperAdmina (chronione przez adminAuthMiddleware)
+app.get('/api/admin/tenants', adminAuthMiddleware, (req, res) => adminController.getTenants(req, res));
+app.get('/api/admin/tenants/:id', adminAuthMiddleware, (req, res) => adminController.getTenantDetails(req, res));
+app.post('/api/admin/tenants/:id/suspend', adminAuthMiddleware, (req, res) => adminController.suspendTenant(req, res));
+app.post('/api/admin/tenants/:id/approve', adminAuthMiddleware, (req, res) => adminController.approveTenant(req, res));
+app.post('/api/admin/tenants/:id/adjust-minutes', adminAuthMiddleware, (req, res) => adminController.adjustMinutes(req, res));
+app.post('/api/admin/tenants/:id/sms', adminAuthMiddleware, (req, res) => adminController.sendSmsNotification(req, res));
+app.post('/api/admin/tenants/:id/subscription/status', adminAuthMiddleware, (req, res) => adminController.setSubscriptionStatus(req, res));
+app.post('/api/admin/fcm-token', adminAuthMiddleware, (req, res) => adminController.registerAdminDevice(req, res));
+app.get('/api/admin/beta-applications', adminAuthMiddleware, (req, res) => adminController.getBetaApplications(req, res));
+app.post('/api/admin/beta-applications/:id/approve', adminAuthMiddleware, (req, res) => adminController.approveBetaApplication(req, res));
 
 

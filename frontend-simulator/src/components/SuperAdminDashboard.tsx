@@ -8,6 +8,61 @@ export function SuperAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [authPin, setAuthPin] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Sprawdzenie zapisanego tokenu w localStorage
+  useEffect(() => {
+    const savedToken = localStorage.getItem('adminToken');
+    if (savedToken) {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const adminFetch = async (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('adminToken');
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string> || {}),
+      'Authorization': `Bearer ${token || ''}`
+    };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      localStorage.removeItem('adminToken');
+      setIsAuthenticated(false);
+      alert('Sesja SuperAdmina wygasła lub brak uprawnień. Zaloguj się ponownie.');
+    }
+    return res;
+  };
+
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!authPin.trim()) return;
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: authPin.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nieprawidłowy kod PIN');
+      }
+      localStorage.setItem('adminToken', data.token);
+      setIsAuthenticated(true);
+      setAuthPin('');
+    } catch (err: any) {
+      setLoginError(err.message || 'Błąd logowania');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    setIsAuthenticated(false);
+  };
   
   // Tab: 'tenants' | 'beta'
   const [activeTab, setActiveTab] = useState<'tenants' | 'beta'>('tenants');
@@ -39,7 +94,7 @@ export function SuperAdminDashboard() {
 
   const fetchTenants = async () => {
     try {
-      const res = await fetch(`/api/admin/tenants`);
+      const res = await adminFetch(`/api/admin/tenants`);
       if (res.ok) {
         const data = await res.json();
         setTenants(data);
@@ -53,7 +108,7 @@ export function SuperAdminDashboard() {
 
   const fetchBetaApplications = async () => {
     try {
-      const res = await fetch('/api/admin/beta-applications');
+      const res = await adminFetch('/api/admin/beta-applications');
       if (res.ok) {
         const data = await res.json();
         setBetaApplications(data);
@@ -65,7 +120,7 @@ export function SuperAdminDashboard() {
 
   const fetchTenantDetails = async (id: string) => {
     try {
-      const res = await fetch(`/api/admin/tenants/${id}`);
+      const res = await adminFetch(`/api/admin/tenants/${id}`);
       if (res.ok) {
         setSelectedTenant(await res.json());
         setShowListOnMobile(false);
@@ -84,7 +139,7 @@ export function SuperAdminDashboard() {
         setIsEnablingPush(false);
         return;
       }
-      const res = await fetch('/api/admin/fcm-token', {
+      const res = await adminFetch('/api/admin/fcm-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -125,7 +180,7 @@ export function SuperAdminDashboard() {
 
     setIsApproving(true);
     try {
-      const res = await fetch(`/api/admin/beta-applications/${tenantId}/approve`, {
+      const res = await adminFetch(`/api/admin/beta-applications/${tenantId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -166,7 +221,7 @@ export function SuperAdminDashboard() {
     const confirmPrompt = actionLabels[action] || action;
     if (!window.confirm(`Czy na pewno chcesz wykonać operację: "${confirmPrompt}"?`)) return;
     try {
-      const res = await fetch(`/api/admin/tenants/${id}/${action}`, {
+      const res = await adminFetch(`/api/admin/tenants/${id}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -188,23 +243,37 @@ export function SuperAdminDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="bg-white p-8 rounded-lg shadow-xl w-96 text-center">
-          <h2 className="text-2xl font-bold mb-4 text-red-600">Super Admin EVA</h2>
-          <p className="text-xs text-gray-500 mb-4">Zarządzanie platformą i weryfikacja salonów</p>
-          <input 
-            type="password" 
-            placeholder="Wprowadź kod PIN" 
-            className="w-full border p-2 rounded mb-4"
-            value={authPin}
-            onChange={e => setAuthPin(e.target.value)}
-          />
-          <button 
-            className="w-full bg-red-600 text-white py-2 rounded font-bold hover:bg-red-700 transition"
-            onClick={() => { if (authPin === '7777') setIsAuthenticated(true); else alert('Błędny PIN'); }}
-          >
-            Zaloguj
-          </button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center border border-gray-200">
+          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-xl">
+            🛡️
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-1">Super Admin EVA</h2>
+          <p className="text-xs text-gray-500 mb-6">Wprowadź kod PIN administratora platformy</p>
+
+          {loginError && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-xs border border-red-200">
+              {loginError}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input 
+              type="password" 
+              autoFocus
+              placeholder="Kod PIN (np. 5742)" 
+              className="w-full border border-gray-300 p-3 rounded-xl text-center text-lg tracking-widest font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500 transition"
+              value={authPin}
+              onChange={e => setAuthPin(e.target.value)}
+            />
+            <button 
+              type="submit"
+              disabled={isLoggingIn || !authPin.trim()}
+              className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition shadow-lg shadow-red-600/20 disabled:opacity-50"
+            >
+              {isLoggingIn ? 'Logowanie...' : 'Zaloguj się'}
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -267,7 +336,7 @@ export function SuperAdminDashboard() {
           </button>
         </div>
 
-        {/* Przycisk włączania powiadomień Push */}
+        {/* Przycisk włączania powiadomień Push i wylogowanie */}
         <div className="flex items-center gap-2">
           {pushStatus ? (
             <span className="text-xs text-green-400 font-medium">{pushStatus}</span>
@@ -277,9 +346,16 @@ export function SuperAdminDashboard() {
               disabled={isEnablingPush}
               className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition disabled:opacity-50"
             >
-              🔔 Włącz Push na tym telefonie
+              🔔 Włącz Push
             </button>
           )}
+
+          <button
+            onClick={handleLogout}
+            className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+          >
+            🚪 Wyloguj
+          </button>
         </div>
       </header>
 

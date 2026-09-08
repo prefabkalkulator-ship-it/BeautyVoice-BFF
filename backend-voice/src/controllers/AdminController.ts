@@ -1,7 +1,25 @@
 import { Request, Response } from 'express';
 import { prisma } from '../prisma';
+import { createAdminToken } from '../middleware/adminAuth';
 
 export class AdminController {
+  
+  public async login(req: Request, res: Response) {
+    try {
+      const { pin } = req.body;
+      const expectedPin = process.env.SUPERADMIN_PIN || '5742';
+
+      if (!pin || String(pin).trim() !== expectedPin) {
+        return res.status(401).json({ error: 'Nieprawidłowy kod PIN administratora.' });
+      }
+
+      const token = createAdminToken();
+      console.log('🔑 [SuperAdmin] Pomyślne logowanie administratora!');
+      return res.json({ success: true, token, expiresInDays: 7 });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
   
   public async getTenants(req: Request, res: Response) {
     try {
