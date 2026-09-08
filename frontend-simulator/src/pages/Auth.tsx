@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Phone, Building2, ArrowRight, Loader2, X, Lock, KeyRound, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Phone, Building2, ArrowRight, Loader2, X, Lock, KeyRound, CheckCircle2, ArrowLeft, Sparkles } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 export default function Auth() {
