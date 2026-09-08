@@ -1,8 +1,7 @@
-import alawmulaw from 'alawmulaw';
-import wavefile from 'wavefile';
-
-const { mulaw } = alawmulaw;
-const { WaveFile } = wavefile;
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { mulaw } = require('alawmulaw');
+const { WaveFile } = require('wavefile');
 
 export class AudioPipeline {
   static decodeTwilioMulawTo16kHz(payloadBase64: string): Float32Array {

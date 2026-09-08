@@ -95,7 +95,9 @@ export class CallOrchestrator {
               this.injectCallerContext(tenant.id).catch(e => console.error('[CallerID] Błąd lazy injection:', e));
             }
           }
-        } catch(e) {}
+        } catch(e) {
+          console.error('❌ [CallOrchestrator] Błąd obsługi zdarzenia start:', e);
+        }
       } else {
         await this.handleTwilioMessage(msgStr);
       }
