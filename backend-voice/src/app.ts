@@ -1360,8 +1360,15 @@ const upcomingList = await prisma.appointment.findMany({
     res.send("OK");
   });
 
-// --- API dla Super-Administratora ---
+// --- API dla Super-Administratora i Pilotażu Beta ---
 import { adminController } from './controllers/AdminController';
+import { betaController } from './controllers/BetaController';
+
+// Trasy pilotażowe (Beta Onboarding)
+app.post('/api/beta/apply', (req, res) => betaController.apply(req, res));
+app.get('/api/beta/status', (req, res) => betaController.getStatus(req, res));
+
+// Trasy SuperAdmina
 app.get('/api/admin/tenants', (req, res) => adminController.getTenants(req, res));
 app.get('/api/admin/tenants/:id', (req, res) => adminController.getTenantDetails(req, res));
 app.post('/api/admin/tenants/:id/suspend', (req, res) => adminController.suspendTenant(req, res));
@@ -1369,5 +1376,8 @@ app.post('/api/admin/tenants/:id/approve', (req, res) => adminController.approve
 app.post('/api/admin/tenants/:id/adjust-minutes', (req, res) => adminController.adjustMinutes(req, res));
 app.post('/api/admin/tenants/:id/sms', (req, res) => adminController.sendSmsNotification(req, res));
 app.post('/api/admin/tenants/:id/subscription/status', (req, res) => adminController.setSubscriptionStatus(req, res));
+app.post('/api/admin/fcm-token', (req, res) => adminController.registerAdminDevice(req, res));
+app.get('/api/admin/beta-applications', (req, res) => adminController.getBetaApplications(req, res));
+app.post('/api/admin/beta-applications/:id/approve', (req, res) => adminController.approveBetaApplication(req, res));
 
 

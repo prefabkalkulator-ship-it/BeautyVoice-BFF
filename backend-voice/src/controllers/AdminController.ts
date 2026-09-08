@@ -125,7 +125,126 @@ export class AdminController {
       res.status(500).json({ error: e.message });
     }
   }
+
+  public async registerAdminDevice(req: Request, res: Response) {
+    try {
+      const { token, label } = req.body;
+      if (!token) return res.status(400).json({ error: 'Token FCM jest wymagany' });
+
+      await prisma.adminDevice.upsert({
+        where: { token },
+        create: {
+          token,
+          label: label || 'PWA SuperAdmin'
+        },
+        update: {
+          label: label || 'PWA SuperAdmin',
+          updatedAt: new Date()
+        }
+      });
+
+      console.log(`📱 [AdminController] Zarejestrowano urządzenie SuperAdmina do powiadomień Push!`);
+      res.json({ success: true, message: 'Urządzenie zarejestrowane pomyślnie' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async getBetaApplications(req: Request, res: Response) {
+    try {
+      const applications = await prisma.tenant.findMany({
+        where: {
+          betaStatus: { not: 'none' }
+        },
+        include: {
+          subscription: true
+        },
+        orderBy: {
+          betaRequestedAt: 'desc'
+        }
+      });
+      res.json(applications);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async approveBetaApplication(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const { assignedPhoneNumber, pinCode, minutesIncluded } = req.body;
+
+      if (!assignedPhoneNumber || !assignedPhoneNumber.trim()) {
+        return res.status(400).json({ error: 'Należy podać zakupiony numer wirtualny (np. +48...)' });
+      }
+
+      const cleanNumber = assignedPhoneNumber.trim().replace(/\s+/g, '');
+
+      // Sprawdź czy numer nie jest już zajęty przez inny salon
+      const existing = await prisma.tenant.findFirst({
+        where: {
+          assignedPhoneNumber: cleanNumber,
+          id: { not: id }
+        }
+      });
+
+      if (existing) {
+        return res.status(400).json({ error: `Numer ${cleanNumber} jest już przypisany do salonu: ${existing.name}` });
+      }
+
+      // Generowanie 4-cyfrowego PINu jeśli nie podano
+      const finalPin = (pinCode && pinCode.trim()) ? pinCode.trim() : Math.floor(1000 + Math.random() * 9000).toString();
+      const minutes = minutesIncluded ? parseInt(minutesIncluded, 10) : 300;
+
+      const tenant = await prisma.tenant.update({
+        where: { id },
+        data: {
+          assignedPhoneNumber: cleanNumber,
+          pinCode: finalPin,
+          betaStatus: 'approved',
+          betaApprovedAt: new Date(),
+          termsAcceptedAt: new Date()
+        }
+      });
+
+      await prisma.subscription.upsert({
+        where: { tenantId: id },
+        create: {
+          tenantId: id,
+          planName: 'beta_pilot',
+          status: 'active',
+          minutesIncluded: minutes,
+          minutesUsed: 0
+        },
+        update: {
+          planName: 'beta_pilot',
+          status: 'active',
+          minutesIncluded: minutes
+        }
+      });
+
+      // Wysłanie powitalnego SMS z danymi do logowania
+      const { SMSService } = await import('../services/sms/SMSService');
+      const smsBody = `Twój asystent EVA dla salonu ${tenant.name} jest gotowy! Dedykowany numer: ${cleanNumber}. Twój kod PIN do panelu: ${finalPin}. Zaloguj się: https://beautyvoice-bff.web.app/dashboard`;
+      
+      const smsSent = await SMSService.sendSMS(tenant.phoneNumber, smsBody);
+
+      console.log(`🎉 [Beta Approval] Aktywowano salon ${tenant.name}, przypisano numer ${cleanNumber}, PIN: ${finalPin}. SMS wysłany: ${smsSent}`);
+
+      res.json({
+        success: true,
+        tenant,
+        assignedPhoneNumber: cleanNumber,
+        pinCode: finalPin,
+        smsSent
+      });
+    } catch (e: any) {
+      console.error('[AdminController] approveBetaApplication error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  }
 }
 
 export const adminController = new AdminController();
+
 

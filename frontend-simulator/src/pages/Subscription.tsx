@@ -1,34 +1,116 @@
 import React, { useState, useEffect } from 'react';
-import { Check, CreditCard, Sparkles, PhoneCall, Loader2, ArrowRight } from 'lucide-react';
+import { 
+  Check, 
+  Sparkles, 
+  PhoneCall, 
+  Loader2, 
+  ArrowRight, 
+  ShieldCheck, 
+  Clock, 
+  Send, 
+  RefreshCw, 
+  AlertCircle,
+  Gift
+} from 'lucide-react';
 
 export default function Subscription() {
-  const [step, setStep] = useState(1);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [cardConnected, setCardConnected] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [provisionedNumber, setProvisionedNumber] = useState(null);
   const [subStatus, setSubStatus] = useState('none');
   const [subDetails, setSubDetails] = useState<any>(null);
   const [tenant, setTenant] = useState<any>(null);
-  const [showWipeModal, setShowWipeModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Pola formularza Beta
+  const [salonName, setSalonName] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [notes, setNotes] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+
+  const fetchStatus = async () => {
+    try {
+      const tid = localStorage.getItem('tenantId');
+      const r = await fetch(`/api/beta/status${tid ? `?tenantId=${tid}` : ''}`);
+      if (r.ok) {
+        const d = await r.json();
+        setTenant(d);
+        if (d.name) setSalonName(d.name);
+        if (d.betaContactPerson) setContactPerson(d.betaContactPerson);
+        if (d.betaContactEmail || d.contactEmail) setContactEmail(d.betaContactEmail || d.contactEmail || '');
+        if (d.phoneNumber) setContactPhone(d.phoneNumber);
+
+        if (d.subscription && d.subscription.status && d.subscription.status !== 'none') {
+          setSubStatus(d.subscription.status);
+          setSubDetails(d.subscription);
+        } else {
+          setSubStatus('none');
+        }
+      }
+    } catch (err) {
+      console.error('Błąd pobierania statusu subskrypcji:', err);
+    }
+  };
 
   useEffect(() => {
-    fetch('/api/subscription')
-      .then(r => r.json())
-      .then(d => {
-        if (d && d.status && d.status !== 'none') {
-          setSubStatus(d.status);
-          setSubDetails(d);
-        }
-      });
-    fetch('/api/tenant')
-      .then(r => r.json())
-      .then(t => {
-        if (t) setTenant(t);
-      });
+    fetchStatus();
   }, []);
+
+  const handleApplyBeta = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!termsAccepted) {
+      setError('Musisz zaakceptować regulamin, aby przesłać zgłoszenie.');
+      return;
+    }
+    if (!contactPhone.trim()) {
+      setError('Podaj numer telefonu komórkowego.');
+      return;
+    }
+    if (!contactEmail.trim()) {
+      setError('Podaj adres e-mail.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const tid = localStorage.getItem('tenantId');
+      const res = await fetch('/api/beta/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: tid || tenant?.id,
+          salonName: salonName.trim(),
+          contactPerson: contactPerson.trim(),
+          contactPhone: contactPhone.trim(),
+          contactEmail: contactEmail.trim(),
+          notes: notes.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Wystąpił problem podczas wysyłania wniosku.');
+      }
+
+      setSuccessMessage('Wniosek został pomyślnie wysłany! Administrator wkrótce skonfiguruje Twój dedykowany numer i wyśle PIN aktywacyjny SMS-em.');
+      await fetchStatus();
+    } catch (err: any) {
+      setError(err.message || 'Wystąpił błąd podczas wysyłania wniosku.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchStatus();
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
 
   const handlePause = async () => {
     if (!confirm('Czy na pewno chcesz zawiesić subskrypcję na 30 dni?')) return;
@@ -63,112 +145,24 @@ export default function Subscription() {
     setIsLoading(false);
   };
 
-  const handleCancel = async () => {
-    if (window.confirm('Czy na pewno chcesz usunąć konto i wszystkie dane? Ta operacja jest nieodwracalna!')) confirmWipe();
-  };
+  // --- WIDOK 1: Subskrypcja aktywna / zawieszona ---
+  if (subStatus !== 'none') {
+    const isPilot = subDetails?.planName === 'beta_pilot' || subDetails?.planName === 'pilot';
 
-  const confirmWipe = async () => {
-    setIsLoading(true);
-    try {
-      // First cancel the sub in stripe or locally
-      await fetch('/api/subscription/cancel', { method: 'POST' });
-      // Then wipe tenant
-      await fetch('/api/tenant/wipe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId: localStorage.getItem('tenantId') || '00000000-0000-0000-0000-000000000000' })
-      });
-      localStorage.removeItem('tenantId');
-      window.location.href = '/';
-    } catch (err) {
-      console.error(err);
-      setIsLoading(false);
-      setShowWipeModal(false);
-    }
-  };
-
-  const handleChangePlan = async () => {
-    setIsLoading(true);
-    const r = await fetch('/api/subscription/change-plan', { method: 'POST' });
-    const d = await r.json();
-    setSubDetails(d);
-    setIsLoading(false);
-    alert('Plan został zmieniony pomyślnie!');
-  };
-
-
-  const handleSimulateCard = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setCardConnected(true);
-      setStep(3);
-      setIsLoading(false);
-    }, 1000);
-  };
-
-  const handleProvision = async () => {
-    if (!termsAccepted) {
-      setError('Musisz zaakceptować regulamin, aby kontynuować.');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      const tenantId = localStorage.getItem('tenantId');
-      
-      const resTerms = await fetch('/api/tenant', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, termsAcceptedAt: new Date().toISOString() })
-      });
-      if (!resTerms.ok) throw new Error('Błąd zapisu regulaminu');
-
-      const resStripe = await fetch('/api/stripe/bypass', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId, planName: selectedPlan || 'premium' })
-      });
-      if (!resStripe.ok) throw new Error('Błąd płatności Stripe');
-
-      const resProv = await fetch('/api/tenant/provision-number', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId })
-      });
-      const dataProv = await resProv.json();
-      if (!resProv.ok) throw new Error(dataProv.error || 'Błąd generowania numeru');
-      
-      setProvisionedNumber(dataProv.number);
-
-      // Pobierz zaktualizowaną subskrypcję i dane tenanta
-      const rSub = await fetch('/api/subscription');
-      if (rSub.ok) {
-        const dSub = await rSub.json();
-        if (dSub && dSub.status && dSub.status !== 'none') {
-          setSubDetails(dSub);
-        }
-      }
-      const rTen = await fetch('/api/tenant');
-      if (rTen.ok) {
-        const dTen = await rTen.json();
-        if (dTen) setTenant(dTen);
-      }
-
-      setStep(4);
-    } catch (err: any) {
-      setError(err.message || 'Wystąpił błąd podczas aktywacji');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-
-   if (subStatus !== 'none') {
     return (
       <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-serif text-surface-900 mb-6">Zarządzanie Subskrypcją</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-serif text-surface-900">Zarządzanie Subskrypcją</h1>
+          <button 
+            onClick={handleManualRefresh} 
+            disabled={isRefreshing}
+            className="flex items-center gap-2 text-sm text-surface-600 hover:text-surface-900 bg-white px-3 py-1.5 rounded-lg border border-surface-200 transition"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Odśwież
+          </button>
+        </div>
+
         {tenant?.isSuspended && (
           <div className="mb-6 p-4 bg-red-50 border-2 border-red-500 rounded-2xl flex items-start gap-3">
             <span className="text-2xl">🚫</span>
@@ -176,33 +170,55 @@ export default function Subscription() {
               <h3 className="font-bold text-red-800 text-sm">Blokada Administracyjna (SuperAdmin)</h3>
               <p className="text-xs text-red-600 mt-1">
                 Twoje konto zostało zawieszone przez administratora platformy. Asystent głosowy i obsługa połączeń są wyłączone.
-                Nawet jeśli subskrypcja jest aktywna, połączenia nie będą odbierane do czasu odblokowania konta przez administratora.
               </p>
             </div>
           </div>
         )}
+
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
           <div className="mb-6">
-            <h2 className="text-xl font-medium text-surface-900">Aktualny plan: <span className="font-bold uppercase text-primary">{subDetails?.planName || 'Standard'}</span></h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-medium text-surface-900">
+                Aktualny plan: <span className="font-bold uppercase text-primary">
+                  {isPilot ? 'Program Pilotażowy (3 Miesiące Gratis)' : (subDetails?.planName || 'Standard')}
+                </span>
+              </h2>
+              {isPilot && (
+                <span className="bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                  <Sparkles className="w-3 h-3" /> Aktywny Pilotaż
+                </span>
+              )}
+            </div>
+
             <p className="text-surface-600 mt-2">Status: <strong className="uppercase">{subStatus}</strong></p>
-            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || 100}</strong></p>
+            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || 300}</strong></p>
+            
             {tenant?.assignedPhoneNumber && (
-              <p className="text-surface-600 mt-2">Dedykowany numer asystenta: <strong className="font-mono text-primary font-bold text-lg">{tenant.assignedPhoneNumber}</strong></p>
+              <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">Twój dedykowany numer do przekierowań:</p>
+                <div className="text-2xl font-mono font-bold text-emerald-950 mt-1">{tenant.assignedPhoneNumber}</div>
+                
+                <div className="mt-3 text-xs text-emerald-700 space-y-1">
+                  <div>• Przekierowanie natychmiastowe: <code className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded font-bold">*21*{tenant.assignedPhoneNumber}#</code></div>
+                  <div>• Przekierowanie gdy nie odbierasz (15s): <code className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded font-bold">*61*{tenant.assignedPhoneNumber}**15#</code></div>
+                </div>
+              </div>
             )}
+
             {subStatus === 'paused' && <p className="text-amber-600 mt-2">Zawieszono do: {new Date(subDetails?.pausedUntil).toLocaleDateString()}</p>}
             {subStatus === 'canceled' && <p className="text-red-600 mt-2">Subskrypcja wygasa z końcem okresu.</p>}
           </div>
 
           <div className="flex flex-wrap gap-4 mt-8 pt-6 border-t border-surface-100">
             {subStatus === 'active' && (
-              <>
-                <button onClick={handlePause} disabled={isLoading} className="px-6 py-2 bg-gold-100 text-gold-700 border border-gold-200 rounded-xl hover:bg-gold-200 transition disabled:opacity-50 font-medium">Zawieś na 30 dni</button>
-                <button onClick={handleChangePlan} disabled={isLoading} className="px-6 py-2 bg-surface-900 text-white rounded-xl hover:bg-surface-800 transition disabled:opacity-50 font-medium">Zmień plan</button>
-                <button onClick={handleCancel} disabled={isLoading} className="px-6 py-2 bg-red-50 text-red-700 border border-red-200 rounded-xl hover:bg-red-100 transition disabled:opacity-50 font-medium">Anuluj subskrypcję</button>
-              </>
+              <button onClick={handlePause} disabled={isLoading} className="px-6 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl hover:bg-amber-100 transition disabled:opacity-50 font-medium text-sm">
+                Zawieś asystenta na 30 dni
+              </button>
             )}
             {subStatus === 'paused' && (
-              <button onClick={handleResume} disabled={isLoading} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-surface-800 shadow-sm transition disabled:bg-surface-300 disabled:text-white disabled:opacity-100 font-medium">Wznów asystenta</button>
+              <button onClick={handleResume} disabled={isLoading} className="px-6 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-surface-800 shadow-sm transition disabled:opacity-50 font-medium text-sm">
+                Wznów asystenta
+              </button>
             )}
           </div>
         </div>
@@ -210,201 +226,246 @@ export default function Subscription() {
     );
   }
 
+  // --- WIDOK 2: Wniosek oczekuje na weryfikację przez SuperAdmina ---
+  if (tenant?.betaStatus === 'pending') {
+    return (
+      <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-amber-200 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600" />
+          
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <Clock className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                Weryfikacja w toku
+              </span>
+              <h2 className="text-2xl font-serif text-surface-900 mt-1">Twój wniosek pilotażowy jest przetwarzany</h2>
+            </div>
+          </div>
+
+          <p className="text-surface-600 leading-relaxed mb-6">
+            Dziękujemy za zgłoszenie do zamkniętego programu pilotażowego asystenta EVA. 
+            Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM.
+          </p>
+
+          <div className="bg-surface-50 rounded-2xl p-6 border border-surface-200 mb-6 space-y-3 text-sm">
+            <h4 className="font-semibold text-surface-900 mb-2">Szczegóły Twojego zgłoszenia:</h4>
+            <div className="flex justify-between border-b border-surface-200/60 pb-2">
+              <span className="text-surface-500">Salon:</span>
+              <span className="font-medium text-surface-900">{tenant?.name || salonName}</span>
+            </div>
+            <div className="flex justify-between border-b border-surface-200/60 pb-2">
+              <span className="text-surface-500">Telefon kontaktowy:</span>
+              <span className="font-mono font-medium text-surface-900">{tenant?.phoneNumber || contactPhone}</span>
+            </div>
+            <div className="flex justify-between border-b border-surface-200/60 pb-2">
+              <span className="text-surface-500">E-mail:</span>
+              <span className="font-medium text-surface-900">{tenant?.betaContactEmail || tenant?.contactEmail || contactEmail}</span>
+            </div>
+            {tenant?.betaRequestedAt && (
+              <div className="flex justify-between">
+                <span className="text-surface-500">Data wysłania:</span>
+                <span className="font-medium text-surface-900">{new Date(tenant.betaRequestedAt).toLocaleString('pl-PL')}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3 mb-6">
+            <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-800 leading-relaxed">
+              <strong>Co nastąpi dalej?</strong> Po przydzieleniu numeru przez administratora otrzymasz 
+              <strong> wiadomość SMS z kodem PIN</strong> oraz dedykowanym numerem telefonu. 
+              Subskrypcja na 3 miesiące z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty.
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center pt-4 border-t border-surface-100">
+            <span className="text-xs text-surface-500">Strona sprawdza status w tle</span>
+            <button 
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface-900 text-white rounded-xl hover:bg-surface-800 transition text-sm font-medium disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Sprawdź status teraz
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- WIDOK 3: Formularz Zgłoszeniowy do Programu Pilotażowego Beta (3 miesiące gratis) ---
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      <div className="mb-10">
-        <h1 className="text-3xl font-serif text-surface-900">Aktywacja Konta</h1>
-        <p className="text-surface-500 mt-2">Ukończ proces w 3 prostych krokach, aby uruchomić wirtualnego asystenta.</p>
+    <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      {/* Baner Pilotażowy */}
+      <div className="mb-8 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden">
+        <div className="absolute right-0 bottom-0 opacity-10 translate-x-8 translate-y-8">
+          <Gift className="w-64 h-64" />
+        </div>
+        <div className="relative z-10 max-w-2xl">
+          <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4">
+            <Sparkles className="w-3.5 h-3.5 text-amber-200" /> Zamknięty Program Pilotażowy
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-serif font-bold text-white mb-3">
+            Odbierz 3 Miesiące Asystenta EVA Całkowicie Za Darmo
+          </h1>
+          <p className="text-amber-100 text-sm sm:text-base leading-relaxed">
+            Dla pierwszych 3 salonów beauty przygotowaliśmy bezpłatny 3-miesięczny pakiet pilotażowy:
+            <strong> 300 darmowych minut</strong>, dedykowany numer wirtualny i pełną konfigurację bazy wiedzy. Bez podawania karty!
+          </p>
+        </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-8">
-        
-        {/* Lewy panel: Kroki */}
-        <div className="w-full md:w-1/3 space-y-6">
-          <div className={`p-5 rounded-2xl border transition-colors ${step >= 1 ? 'bg-white border-primary shadow-sm' : 'bg-surface-50 border-surface-200 opacity-60'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step >= 1 ? 'bg-primary text-primary-foreground' : 'bg-surface-200 text-surface-500'}`}>1</div>
-              <h3 className="font-semibold text-surface-900">Wybierz plan</h3>
-            </div>
-            <p className="text-sm text-surface-500 ml-11">Wybierz plan idealny dla Twojej firmy.</p>
-          </div>
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl border border-red-200 text-sm flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+          <span>{error}</span>
+        </div>
+      )}
 
-          <div className={`p-5 rounded-2xl border transition-colors ${step >= 2 ? 'bg-white border-primary shadow-sm' : 'bg-surface-50 border-surface-200 opacity-60'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step >= 2 ? 'bg-primary text-primary-foreground' : 'bg-surface-200 text-surface-500'}`}>2</div>
-              <h3 className="font-semibold text-surface-900">Podepnij kartę</h3>
-            </div>
-            <p className="text-sm text-surface-500 ml-11">Bezpieczna płatność obsługiwana przez Stripe.</p>
-          </div>
+      {successMessage && (
+        <div className="mb-6 p-4 bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-200 text-sm flex items-center gap-2">
+          <Check className="w-5 h-5 shrink-0 text-emerald-600" />
+          <span>{successMessage}</span>
+        </div>
+      )}
 
-          <div className={`p-5 rounded-2xl border transition-colors ${step >= 3 ? 'bg-white border-primary shadow-sm' : 'bg-surface-50 border-surface-200 opacity-60'}`}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${step >= 3 ? 'bg-primary text-primary-foreground' : 'bg-surface-200 text-surface-500'}`}>3</div>
-              <h3 className="font-semibold text-surface-900">Pobierz numer swojego asystenta</h3>
-            </div>
-            <p className="text-sm text-surface-500 ml-11">Podsumowanie i wygenerowanie numeru.</p>
-          </div>
+      <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
+        <div className="mb-6">
+          <h2 className="text-xl font-serif text-surface-900 mb-1">Formularz zgłoszenia do programu pilotażowego</h2>
+          <p className="text-sm text-surface-500">Wypełnij poniższe dane. Skontaktujemy się i natychmiast przydzielimy numer dla Twojej firmy.</p>
         </div>
 
-        {/* Prawy panel: Zawartość kroku */}
-        <div className="w-full md:w-2/3">
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 text-sm">
-              {error}
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="grid sm:grid-cols-2 gap-6">
-              {/* Standard */}
-              <div 
-                className={`bg-white rounded-3xl p-6 shadow-sm border-2 cursor-pointer transition-all hover:border-gold-300 ${selectedPlan === 'standard' ? 'border-primary ring-4 ring-primary/10' : 'border-surface-200'}`}
-                onClick={() => setSelectedPlan('standard')}
-              >
-                <h4 className="text-lg font-semibold text-surface-900 mb-1">Standard</h4>
-                <div className="mb-6">
-                  <span className="text-3xl font-bold text-surface-900">199 zł</span>
-                  <span className="text-surface-500 text-sm">/mc</span>
-                </div>
-                <ul className="space-y-3 mb-8 text-sm">
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-green-500 shrink-0 mt-0.5" /> <span className="text-surface-700">100 darmowych minut</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-green-500 shrink-0 mt-0.5" /> <span className="text-surface-700">1 techniczny numer GSM</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-green-500 shrink-0 mt-0.5" /> <span className="text-surface-700">Wybór z 3 głosów</span></li>
-                </ul>
-                <button 
-                  onClick={() => setStep(2)}
-                  className={`w-full py-2.5 rounded-xl font-medium transition-colors ${selectedPlan === 'standard' ? 'bg-primary text-primary-foreground hover:bg-surface-800' : 'bg-surface-100 text-surface-900'}`}
-                >
-                  Wybierz Standard
-                </button>
-              </div>
-
-              {/* Premium */}
-              <div 
-                className={`bg-surface-900 rounded-3xl p-6 shadow-xl border-2 cursor-pointer transition-all hover:border-gold-400 relative ${selectedPlan === 'premium' ? 'border-gold-500 ring-4 ring-gold-500/20' : 'border-surface-800'}`}
-                onClick={() => setSelectedPlan('premium')}
-              >
-                <div className="absolute -top-3 right-4 bg-gradient-to-r from-gold-400 to-gold-500 text-surface-900 text-[10px] font-bold uppercase py-1 px-2 rounded-full flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Premium
-                </div>
-                <h4 className="text-lg font-semibold text-white mb-1">Premium</h4>
-                <div className="mb-6">
-                  <span className="text-3xl font-bold text-white">399 zł</span>
-                  <span className="text-surface-400 text-sm">/mc</span>
-                </div>
-                <ul className="space-y-2.5 mb-8 text-sm">
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">300 darmowych minut (5 kanałów)</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Wypełnianie okienek (Last Minute)</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Badanie zadowolenia & Baza 90+ dni</span></li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-gold-500 shrink-0 mt-0.5" /> <span className="text-surface-300">Potwierdzanie wizyt (SMS / Telefon AI)</span></li>
-                </ul>
-                <button 
-                  onClick={() => setStep(2)}
-                  className={`w-full py-2.5 rounded-xl font-medium transition-colors ${selectedPlan === 'premium' ? 'bg-gradient-to-r from-gold-400 to-gold-500 text-surface-900 hover:from-gold-300 hover:to-gold-400' : 'bg-surface-800 text-white'}`}
-                >
-                  Wybierz Premium
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200 text-center py-12">
-              <CreditCard className="w-12 h-12 text-surface-300 mx-auto mb-4" />
-              <h3 className="text-xl font-serif text-surface-900 mb-2">Podepnij kartę płatniczą</h3>
-              <p className="text-surface-500 text-sm max-w-md mx-auto mb-8">Twoja karta nie zostanie obciążona przed akceptacją regulaminu w kolejnym kroku.</p>
-              <button 
-                onClick={handleSimulateCard}
-                disabled={isLoading}
-                className="bg-surface-900 text-white px-8 py-3 rounded-xl font-medium hover:bg-surface-800 flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Symuluj podpięcie karty'}
-              </button>
-              <button onClick={() => setStep(1)} className="mt-6 text-sm text-surface-500 hover:text-surface-900">Wróć do wyboru planu</button>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
-              <h3 className="text-xl font-serif text-surface-900 mb-6">Podsumowanie i Akceptacja</h3>
-              
-              <div className="bg-surface-50 rounded-xl p-4 border border-surface-100 mb-6 flex justify-between items-center">
-                <div>
-                  <div className="text-sm text-surface-500">Wybrany plan</div>
-                  <div className="font-bold text-surface-900 capitalize">Plan {selectedPlan}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-surface-500">Kwota do zapłaty</div>
-                  <div className="font-bold text-2xl text-primary">{selectedPlan === 'premium' ? '399 zł' : '199 zł'}</div>
-                </div>
-              </div>
-
-              <label className="flex items-start gap-3 mb-8 cursor-pointer group">
-                <input 
-                  type="checkbox" 
-                  checked={termsAccepted}
-                  onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="mt-1 w-5 h-5 rounded border-surface-300 text-primary focus:ring-primary cursor-pointer"
-                />
-                <span className="text-sm text-surface-700 leading-relaxed group-hover:text-surface-900 transition-colors">
-                  Akceptuję <a href="https://veritas-app.com/eva/regulamin" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium" onClick={e => e.stopPropagation()}>Regulamin B2B oraz zawartą w nim Umowę Powierzenia Przetwarzania Danych</a> i upoważniam operatora do cyklicznego obciążania mojej karty.
-                </span>
+        <form onSubmit={handleApplyBeta} className="space-y-6">
+          <div className="grid sm:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
+                Nazwa Twojego Salonu *
               </label>
+              <input 
+                type="text"
+                required
+                value={salonName}
+                onChange={e => setSalonName(e.target.value)}
+                placeholder="np. Studio Urody Glamour"
+                className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
+              />
+            </div>
 
-              <div className="flex justify-between items-center pt-6 border-t border-surface-100">
-                <button onClick={() => setStep(2)} className="text-sm text-surface-500 hover:text-surface-900 font-medium">Wróć</button>
-                <button 
-                  onClick={handleProvision}
-                  disabled={!termsAccepted || isLoading}
-                  className="bg-primary text-primary-foreground px-8 py-3 rounded-xl font-medium hover:bg-surface-800 hover:text-white disabled:opacity-50 flex items-center gap-2 shadow-lg"
-                >
-                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Opłać i wygeneruj numer'}
-                </button>
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
+                Osoba Kontaktowa *
+              </label>
+              <input 
+                type="text"
+                required
+                value={contactPerson}
+                onChange={e => setContactPerson(e.target.value)}
+                placeholder="np. Anna Kowalska"
+                className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
+              />
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
+                Telefon Komórkowy (do odbioru SMS z kodem PIN) *
+              </label>
+              <input 
+                type="tel"
+                required
+                value={contactPhone}
+                onChange={e => setContactPhone(e.target.value)}
+                placeholder="np. +48 500 100 200"
+                className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm font-mono transition"
+              />
+              <p className="text-[11px] text-surface-500 mt-1">Wymagany telefon komórkowy (SMS nie działa na stacjonarnych).</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
+                Adres E-mail do kontaktu *
+              </label>
+              <input 
+                type="email"
+                required
+                value={contactEmail}
+                onChange={e => setContactEmail(e.target.value)}
+                placeholder="kontakt@twojsalon.pl"
+                className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
+              Krótko o Twoim salonie / oczekiwaniach (opcjonalnie)
+            </label>
+            <textarea 
+              rows={3}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="np. Salon fryzjerski, 3 stanowiska, chcemy żeby EVA odbierała telefony gdy strzyżemy klientów..."
+              className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
+            />
+          </div>
+
+          {/* Podsumowanie korzyści */}
+          <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-5">
+            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-3">Co wchodzi w Twój darmowy 3-miesięczny pakiet:</h4>
+            <div className="grid sm:grid-cols-3 gap-3 text-xs text-amber-800">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>300 darmowych minut</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Własny numer wirtualny</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Brak karty płatniczej</span>
               </div>
             </div>
-          )}
+          </div>
 
-          {step === 4 && (
-            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl p-8 shadow-sm border border-green-100 text-center">
-              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center text-white mx-auto mb-6 shadow-lg shadow-green-500/30">
-                <Check className="w-8 h-8" />
-              </div>
-              <h3 className="text-2xl font-serif text-green-900 mb-2">Subskrypcja aktywna!</h3>
-              <p className="text-green-700 mb-8">Twój wirtualny asystent otrzymał numer i jest gotowy do pracy.</p>
+          <label className="flex items-start gap-3 cursor-pointer group pt-2">
+            <input 
+              type="checkbox" 
+              checked={termsAccepted}
+              onChange={e => setTermsAccepted(e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-surface-300 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
+            />
+            <span className="text-xs sm:text-sm text-surface-600 leading-relaxed group-hover:text-surface-900 transition-colors">
+              Zapoznałem się i akceptuję{' '}
+              <a 
+                href="https://veritas-app.com/eva/regulamin" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="text-amber-700 underline font-medium hover:text-amber-800"
+                onClick={e => e.stopPropagation()}
+              >
+                Regulamin Usługi oraz Politykę Prywatności
+              </a>
+              . Wyrażam zgodę na przydzielenie testowego konta pilotażowego na okres 3 miesięcy.
+            </span>
+          </label>
 
-              <div className="bg-white rounded-2xl p-6 text-left shadow-sm border border-green-100">
-                <p className="text-sm text-surface-600 mb-2">Twój dedykowany numer do przekierowań:</p>
-                <div className="text-3xl font-mono font-bold text-surface-900 mb-6">{provisionedNumber}</div>
-                
-                <h4 className="font-medium text-surface-900 mb-3">Jak włączyć przekierowanie na telefonie firmowym?</h4>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="bg-surface-50 p-4 rounded-xl border border-surface-200">
-                    <div className="text-xs font-semibold text-surface-500 mb-1">Natychmiast (Zawsze asystent)</div>
-                    <div className="font-mono bg-surface-200 px-2 py-1 inline-block rounded text-sm text-surface-900 font-bold">*21*{provisionedNumber}#</div>
-                  </div>
-                  <div className="bg-surface-50 p-4 rounded-xl border border-surface-200">
-                    <div className="text-xs font-semibold text-surface-500 mb-1">Po 15 sek. (Brak odbioru)</div>
-                    <div className="font-mono bg-surface-200 px-2 py-1 inline-block rounded text-sm text-surface-900 font-bold">*61*{provisionedNumber}**15#</div>
-                  </div>
-                </div>
-                <p className="text-xs text-surface-500 mt-4">Możesz wyłączyć przekierowanie kodem <code className="font-mono">#21#</code> lub <code className="font-mono">#61#</code> w dowolnym momencie.</p>
-              </div>
-
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button 
-                  onClick={() => setSubStatus('active')}
-                  className="w-full sm:w-auto px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-surface-800 transition shadow-sm"
-                >
-                  Przejdź do zarządzania subskrypcją
-                </button>
-                <a href="/dashboard/settings" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-green-700 hover:text-green-800 font-medium py-3">
-                  Ustawienia firmy <ArrowRight className="w-4 h-4" />
-                </a>
-              </div>
-            </div>
-          )}
-
-        </div>
+          <div className="pt-4 border-t border-surface-100 flex justify-end">
+            <button 
+              type="submit"
+              disabled={isLoading || !termsAccepted}
+              className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition"
+            >
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              Wyślij zgłoszenie pilotażowe
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

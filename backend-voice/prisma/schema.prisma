@@ -35,6 +35,13 @@ model Tenant {
   
   contactEmail        String?
   emailPublicForAi    Boolean        @default(false)
+
+  betaStatus          String         @default("none") // none, pending, approved, rejected
+  betaContactPerson   String?
+  betaContactEmail    String?
+  betaNotes           String?        @db.Text
+  betaRequestedAt     DateTime?
+  betaApprovedAt      DateTime?
   
   services            Service[]
   faqEntries      FaqEntry[]
@@ -228,3 +235,12 @@ model OutboundQueue {
 
   tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
+
+model AdminDevice {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
