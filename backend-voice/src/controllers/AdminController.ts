@@ -207,11 +207,18 @@ export class AdminController {
       });
 
       if (existing) {
-        return res.status(400).json({ error: `Numer ${cleanNumber} jest już przypisany do salonu: ${existing.name}` });
+        return res.status(400).json({ error: `Numer ${cleanNumber} jest już przypisany do firmy: ${existing.name}` });
       }
 
-      // Generowanie 4-cyfrowego PINu jeśli nie podano
-      const finalPin = (pinCode && pinCode.trim()) ? pinCode.trim() : Math.floor(1000 + Math.random() * 9000).toString();
+      const existingTenant = await prisma.tenant.findUnique({ where: { id } });
+      if (!existingTenant) {
+        return res.status(404).json({ error: 'Nie znaleziono firmy' });
+      }
+
+      // Jeśli użytkownik ustalił już PIN przy rejestracji, zachowujemy go (chyba że admin celowo podał inny)
+      const finalPin = (pinCode && pinCode.trim()) 
+        ? pinCode.trim() 
+        : (existingTenant.pinCode || Math.floor(1000 + Math.random() * 9000).toString());
       const minutes = minutesIncluded ? parseInt(minutesIncluded, 10) : 300;
 
       const tenant = await prisma.tenant.update({
@@ -229,25 +236,25 @@ export class AdminController {
         where: { tenantId: id },
         create: {
           tenantId: id,
-          planName: 'beta_pilot',
+          planName: 'premium', // Udostępniamy od razu pełny pakiet Premium
           status: 'active',
           minutesIncluded: minutes,
           minutesUsed: 0
         },
         update: {
-          planName: 'beta_pilot',
+          planName: 'premium', // Udostępniamy od razu pełny pakiet Premium
           status: 'active',
           minutesIncluded: minutes
         }
       });
 
-      // Wysłanie powitalnego SMS z danymi do logowania
+      // Wysłanie powiadomienia SMS o aktywacji numeru
       const { SMSService } = await import('../services/sms/SMSService');
-      const smsBody = `Twój asystent EVA dla salonu ${tenant.name} jest gotowy! Dedykowany numer: ${cleanNumber}. Twój kod PIN do panelu: ${finalPin}. Zaloguj się: https://beautyvoice-bff.web.app/dashboard`;
+      const smsBody = `Twój asystent EVA dla firmy ${tenant.name} jest gotowy! Dedykowany numer: ${cleanNumber}. Zaloguj się do panelu swoim numerem telefonu i ustalonym PIN-em: https://beautyvoice-bff.web.app/dashboard`;
       
       const smsSent = await SMSService.sendSMS(tenant.phoneNumber, smsBody);
 
-      console.log(`🎉 [Beta Approval] Aktywowano salon ${tenant.name}, przypisano numer ${cleanNumber}, PIN: ${finalPin}. SMS wysłany: ${smsSent}`);
+      console.log(`🎉 [Beta Approval] Aktywowano firmę ${tenant.name}, przypisano numer ${cleanNumber}, PIN: ${finalPin}. SMS wysłany: ${smsSent}`);
 
       res.json({
         success: true,
@@ -259,6 +266,39 @@ export class AdminController {
     } catch (e: any) {
       console.error('[AdminController] approveBetaApplication error:', e);
       res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async deleteBetaApplication(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const deleteAccount = req.query.deleteAccount === 'true';
+
+      const tenant = await prisma.tenant.findUnique({ where: { id } });
+      if (!tenant) return res.status(404).json({ error: 'Nie znaleziono firmy' });
+
+      if (deleteAccount) {
+        await prisma.tenant.delete({ where: { id } });
+        console.log(`🗑️ [SuperAdmin] Całkowicie usunięto konto testowe ${tenant.name} (${id})`);
+        return res.json({ success: true, message: `Konto ${tenant.name} oraz wniosek zostały bezpowrotnie usunięte.` });
+      } else {
+        const updated = await prisma.tenant.update({
+          where: { id },
+          data: {
+            betaStatus: 'none',
+            betaRequestedAt: null,
+            betaApprovedAt: null,
+            betaContactPerson: null,
+            betaContactEmail: null,
+            betaNotes: null
+          }
+        });
+        console.log(`🗑️ [SuperAdmin] Usunięto wniosek pilotażowy dla ${tenant.name} (${id})`);
+        return res.json({ success: true, message: `Wniosek pilotażowy dla ${tenant.name} został pomyślnie usunięty.`, tenant: updated });
+      }
+    } catch (e: any) {
+      console.error('[AdminController] deleteBetaApplication error:', e);
+      return res.status(500).json({ error: e.message });
     }
   }
 }

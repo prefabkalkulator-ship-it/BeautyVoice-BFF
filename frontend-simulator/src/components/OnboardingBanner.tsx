@@ -45,8 +45,8 @@ export default function OnboardingBanner() {
         const staff = staffRes.status === 'fulfilled' && Array.isArray(staffRes.value) ? staffRes.value : [];
         const timeoffs = toRes.status === 'fulfilled' && Array.isArray(toRes.value) ? toRes.value : [];
 
-        // 1. Profil firmy
-        setHasProfile(Boolean(tenant && tenant.name && tenant.businessProfile));
+        // 1. Profil firmy: wymaga uzupełnienia danych kontaktowych e-mail w Ustawieniach Firmy
+        setHasProfile(Boolean(tenant && tenant.name && tenant.contactEmail && tenant.contactEmail.trim().length > 0));
         // 2. Baza wiedzy EVA
         setHasFaq(faqs.length > 0);
         // 3. Usługi i cennik

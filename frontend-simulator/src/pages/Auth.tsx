@@ -63,6 +63,10 @@ export default function Auth() {
       if (data.tenantId) {
         localStorage.setItem('tenantId', data.tenantId);
       }
+      const phoneToSave = data.phoneNumber || phoneNumber;
+      if (phoneToSave) {
+        localStorage.setItem('tenantPhone', phoneToSave);
+      }
       
       navigate('/dashboard/subscription');
       
@@ -140,6 +144,10 @@ export default function Auth() {
       if (data.tenantId) {
         localStorage.setItem('tenantId', data.tenantId);
       }
+      const phoneToSave = data.phoneNumber || phoneNumber;
+      if (phoneToSave) {
+        localStorage.setItem('tenantPhone', phoneToSave);
+      }
       setSuccessMsg('Kod PIN zmieniony pomyślnie! Logowanie...');
       setTimeout(() => {
         navigate('/dashboard/appointments');
@@ -182,7 +190,7 @@ export default function Auth() {
               {isLogin ? 'Zaloguj się' : 'Załóż konto'}
             </h2>
             <p className="mt-2 text-center text-sm text-surface-500">
-              {isLogin ? 'Wprowadź swój numer telefonu i kod PIN.' : 'Uzupełnij dane, wybierz plan abonamentowy i zatrudnij asystentkę od zaraz.'}
+              {isLogin ? 'Wprowadź swój numer telefonu i kod PIN.' : 'Uzupełnij dane i uruchom bezpłatny pakiet pilotażowy Premium.'}
             </p>
           </>
         )}
@@ -258,38 +266,29 @@ export default function Auth() {
                     </div>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      name="otp-sms-code"
-                      id="otp-sms-code"
-                      autoComplete="one-time-code"
                       required
                       maxLength={6}
                       value={resetSmsCode}
-                      onChange={(e) => setResetSmsCode(e.target.value.replace(/\D/g, ''))}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono text-center tracking-widest text-lg"
-                      placeholder="******"
+                      onChange={(e) => setResetSmsCode(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors font-mono tracking-widest text-center text-lg bg-white/50 focus:bg-white"
+                      placeholder="123456"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-surface-700">Nowy kod PIN (min. 4 cyfry)</label>
+                  <label className="block text-sm font-medium text-surface-700">Nowy 4-cyfrowy kod PIN</label>
                   <div className="mt-2 relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
                       <Lock className="h-5 w-5" />
                     </div>
                     <input
                       type="password"
-                      inputMode="numeric"
-                      name="new-security-pin"
-                      id="new-security-pin"
-                      autoComplete="new-password"
                       required
                       value={newPin}
-                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-widest text-center"
-                      placeholder="****"
+                      onChange={(e) => setNewPin(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                      placeholder="Wpisz nowy PIN"
                     />
                   </div>
                 </div>
@@ -302,15 +301,11 @@ export default function Auth() {
                     </div>
                     <input
                       type="password"
-                      inputMode="numeric"
-                      name="confirm-security-pin"
-                      id="confirm-security-pin"
-                      autoComplete="new-password"
                       required
                       value={confirmNewPin}
-                      onChange={(e) => setConfirmNewPin(e.target.value.replace(/\D/g, ''))}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-widest text-center"
-                      placeholder="****"
+                      onChange={(e) => setConfirmNewPin(e.target.value)}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                      placeholder="Powtórz nowy PIN"
                     />
                   </div>
                 </div>
@@ -322,26 +317,19 @@ export default function Auth() {
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                     <>
-                      Zapisz nowy PIN i zaloguj się
+                      Zapisz nowy kod PIN i zaloguj się
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
 
-                <div className="flex justify-between items-center text-xs text-surface-500 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => { setForgotStep(1); setError(''); }}
-                    className="hover:text-surface-900 underline"
-                  >
-                    Wyślij kod SMS ponownie
-                  </button>
+                <div className="text-center pt-2">
                   <button
                     type="button"
                     onClick={() => { setIsForgotPin(false); setError(''); setSuccessMsg(''); }}
-                    className="hover:text-surface-900 underline"
+                    className="inline-flex items-center gap-1.5 text-sm text-surface-600 hover:text-surface-900 font-medium transition-colors"
                   >
-                    Wróć do logowania
+                    <ArrowLeft className="w-4 h-4" /> Wróć do logowania
                   </button>
                 </div>
               </form>
@@ -351,10 +339,10 @@ export default function Auth() {
             <form className="space-y-6" onSubmit={handleSubmit}>
               {!isLogin && (
                 <div>
-                  <label className="block text-sm font-medium text-surface-700">Nazwa firmy</label>
+                  <label className="block text-sm font-medium text-surface-700">Nazwa firmy / salonu</label>
                   <div className="mt-2 relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
-                      <Building2 className="h-5 w-5" />
+                      <Sparkles className="h-5 w-5" />
                     </div>
                     <input
                       type="text"
@@ -387,7 +375,9 @@ export default function Auth() {
 
               <div>
                 <div className="flex justify-between items-center">
-                  <label className="block text-sm font-medium text-surface-700">Zabezpieczenie (PIN / NIP)</label>
+                  <label className="block text-sm font-medium text-surface-700">
+                    {isLogin ? 'Twój kod PIN' : 'Wymyśl 4-cyfrowy kod PIN do logowania'}
+                  </label>
                   {isLogin && (
                     <button
                       type="button"
@@ -413,9 +403,14 @@ export default function Auth() {
                     value={pinCode}
                     onChange={(e) => setPinCode(e.target.value)}
                     className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
-                    placeholder="****"
+                    placeholder={isLogin ? "Wpisz kod PIN" : "np. 1234"}
                   />
                 </div>
+                {!isLogin && (
+                  <p className="text-[11px] text-surface-500 mt-1.5">
+                    Twój kod PIN posłuży do bezpiecznego logowania do Twojego panelu.
+                  </p>
+                )}
               </div>
 
               {!isLogin && (

@@ -161,11 +161,50 @@ export function SuperAdminDashboard() {
     }
   };
 
+  // Stan kasowania wniosku pilotażowego
+  const [deletingApp, setDeletingApp] = useState<any | null>(null);
+  const [deleteEntireAccount, setDeleteEntireAccount] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const openApproveModal = (tenant: any) => {
     setApprovingTenantId(tenant.id);
     setAssignedNumberInput(tenant.assignedPhoneNumber || '+48');
-    setPinInput(Math.floor(1000 + Math.random() * 9000).toString());
+    // Jeśli firma ma już ustalony PIN przy rejestracji, zachowaj go!
+    setPinInput(tenant.pinCode || Math.floor(1000 + Math.random() * 9000).toString());
     setMinutesInput(300);
+  };
+
+  const openDeleteModal = (app: any) => {
+    setDeletingApp(app);
+    setDeleteEntireAccount(false);
+    setDeleteConfirmText('');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingApp) return;
+    setIsDeleting(true);
+    try {
+      const res = await adminFetch(`/api/admin/beta-applications/${deletingApp.id}?deleteAccount=${deleteEntireAccount}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Błąd usuwania wniosku: ${data.error || res.statusText}`);
+        return;
+      }
+      alert(`✅ ${data.message || 'Wniosek został pomyślnie usunięty.'}`);
+      setDeletingApp(null);
+      await fetchBetaApplications();
+      await fetchTenants();
+      if (selectedTenant && selectedTenant.id === deletingApp.id) {
+        setSelectedTenant(null);
+      }
+    } catch (err: any) {
+      alert(`Błąd połączenia: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const submitApproveBeta = async (tenantId: string) => {
@@ -174,7 +213,7 @@ export function SuperAdminDashboard() {
       return;
     }
 
-    if (!window.confirm(`Czy na pewno chcesz aktywować salon i wysłać SMS z PINem (${pinInput}) na numer klienta?`)) {
+    if (!window.confirm(`Czy na pewno chcesz aktywować pakiet Premium dla firmy i przypisać numer ${assignedNumberInput}? Klient otrzyma powiadomienie SMS o aktywacji.`)) {
       return;
     }
 
@@ -196,7 +235,7 @@ export function SuperAdminDashboard() {
         return;
       }
 
-      alert(`🎉 Sukces! Konto salonu zostało aktywowane z pakietem 300 minut.\n\nPrzypisany numer: ${data.assignedPhoneNumber}\nKod PIN: ${data.pinCode}\nSMS wysłany: ${data.smsSent ? 'TAK' : 'NIE'}`);
+      alert(`🎉 Sukces! Konto firmy zostało aktywowane z pakietem 300 minut.\n\nPrzypisany numer: ${data.assignedPhoneNumber}\nKod PIN: ${data.pinCode}\nSMS wysłany: ${data.smsSent ? 'TAK' : 'NIE'}`);
       setApprovingTenantId(null);
       await fetchBetaApplications();
       await fetchTenants();
@@ -261,7 +300,7 @@ export function SuperAdminDashboard() {
             <input 
               type="password" 
               autoFocus
-              placeholder="Kod PIN (np. 5742)" 
+              placeholder="Wprowadź kod PIN" 
               className="w-full border border-gray-300 p-3 rounded-xl text-center text-lg tracking-widest font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500 transition"
               value={authPin}
               onChange={e => setAuthPin(e.target.value)}
@@ -364,9 +403,9 @@ export function SuperAdminDashboard() {
         <div className="max-w-5xl mx-auto w-full p-4 sm:p-6 flex-1 overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">📥 Wnioski do Programu Pilotażowego (Beta 3M)</h1>
+              <h1 className="text-2xl font-bold text-gray-900">📥 Wnioski do Programu Pilotażowego (Premium)</h1>
               <p className="text-sm text-gray-500 mt-1">
-                Zgłoszenia salonów beauty ubiegających się o darmowy 3-miesięczny dostęp. Przypisz zakupiony w Zadarma numer i aktywuj konto.
+                Zgłoszenia firm ubiegających się o darmowy miesięczny pakiet Premium. Przypisz zakupiony w Zadarma numer i aktywuj konto.
               </p>
             </div>
             <button 
@@ -408,7 +447,7 @@ export function SuperAdminDashboard() {
                       </p>
                     </div>
 
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex items-center gap-2">
                       {app.betaStatus === 'pending' ? (
                         <button
                           onClick={() => openApproveModal(app)}
@@ -424,6 +463,13 @@ export function SuperAdminDashboard() {
                           ⚙️ Edytuj numer / PIN
                         </button>
                       )}
+                      <button
+                        onClick={() => openDeleteModal(app)}
+                        className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3.5 py-2 rounded-xl font-semibold text-xs transition flex items-center gap-1 shrink-0"
+                        title="Usuń wniosek pilotażowy"
+                      >
+                        🗑️ Usuń wniosek
+                      </button>
                     </div>
                   </div>
 
@@ -448,7 +494,7 @@ export function SuperAdminDashboard() {
 
                   {app.betaNotes && (
                     <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900 mb-4">
-                      <strong>Notatka od salonu:</strong> {app.betaNotes}
+                      <strong>Notatka od firmy:</strong> {app.betaNotes}
                     </div>
                   )}
 
@@ -471,10 +517,10 @@ export function SuperAdminDashboard() {
                   {approvingTenantId === app.id && (
                     <div className="mt-4 p-5 bg-gradient-to-br from-gray-900 to-gray-800 text-white rounded-2xl shadow-xl border border-gray-700">
                       <h3 className="font-bold text-base mb-2 text-amber-400">
-                        🚀 Aktywacja Pilotażu dla: {app.name}
+                        🚀 Aktywacja Pilotażu Premium dla: {app.name}
                       </h3>
                       <p className="text-xs text-gray-300 mb-4">
-                        Wpisz zakupiony w Zadarma numer telefonu. Po kliknięciu salon otrzyma darmowy pakiet oraz automatyczny SMS z kodem PIN.
+                        Wpisz zakupiony w Zadarma numer telefonu. Po kliknięciu firma otrzyma pełny pakiet Premium oraz automatyczny SMS z potwierdzeniem.
                       </p>
 
                       <div className="grid sm:grid-cols-3 gap-4 mb-4">
@@ -508,6 +554,11 @@ export function SuperAdminDashboard() {
                             onChange={e => setPinInput(e.target.value)}
                             className="w-full bg-gray-950 border border-gray-700 rounded-lg p-2 text-sm font-mono text-white focus:ring-2 focus:ring-amber-500"
                           />
+                          {app.pinCode && pinInput === app.pinCode && (
+                            <span className="text-[10px] text-emerald-400 mt-1 block">
+                              ✓ PIN ustalony przez firmę przy rejestracji
+                            </span>
+                          )}
                         </div>
 
                         <div>
@@ -537,13 +588,77 @@ export function SuperAdminDashboard() {
                           onClick={() => submitApproveBeta(app.id)}
                           className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold rounded-lg text-xs shadow-lg transition disabled:opacity-50"
                         >
-                          {isApproving ? 'Aktywowanie...' : '✅ Zatwierdź i Wyślij SMS z PINem'}
+                          {isApproving ? 'Aktywowanie...' : '✅ Zatwierdź i Aktywuj Pakiet'}
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* MODAL POTWIERDZENIA USUNIĘCIA WNIOSKU */}
+          {deletingApp && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-red-200">
+                <div className="w-12 h-12 bg-red-100 text-red-600 rounded-xl flex items-center justify-center mx-auto mb-4 text-2xl">
+                  🗑️
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 text-center mb-1">
+                  Usuwanie Wniosku Pilotażowego
+                </h3>
+                <p className="text-xs text-gray-600 text-center mb-4">
+                  Czy na pewno chcesz usunąć wniosek pilotażowy dla firmy:
+                  <strong className="block text-gray-900 mt-1 text-sm font-bold">{deletingApp.name}</strong>
+                  <span className="font-mono text-gray-500 text-xs">({deletingApp.phoneNumber})</span>
+                </p>
+
+                <div className="space-y-3 mb-5">
+                  <label className="flex items-start gap-2.5 p-3 bg-gray-50 rounded-xl border border-gray-200 cursor-pointer text-xs">
+                    <input 
+                      type="checkbox"
+                      checked={deleteEntireAccount}
+                      onChange={e => setDeleteEntireAccount(e.target.checked)}
+                      className="mt-0.5 rounded text-red-600 focus:ring-red-500 w-4 h-4"
+                    />
+                    <span className="text-gray-700">
+                      <strong>Usuń także całe konto testowe i dane firmy</strong> z bazy danych (trwałe usunięcie)
+                    </span>
+                  </label>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Wpisz <span className="font-mono text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">Potwierdź</span> aby odblokować przycisk:
+                    </label>
+                    <input 
+                      type="text"
+                      value={deleteConfirmText}
+                      onChange={e => setDeleteConfirmText(e.target.value)}
+                      placeholder="Potwierdź"
+                      className="w-full border border-gray-300 rounded-xl p-2.5 text-sm text-center font-semibold focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setDeletingApp(null); setDeleteConfirmText(''); }}
+                    className="px-4 py-2 text-xs text-gray-600 hover:text-gray-900 font-medium"
+                  >
+                    Anuluj
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting || (deleteConfirmText.trim().toLowerCase() !== 'potwierdź' && deleteConfirmText.trim().toLowerCase() !== 'potwierdz')}
+                    onClick={handleConfirmDelete}
+                    className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-md shadow-red-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    {isDeleting ? 'Usuwanie...' : 'Potwierdź usunięcie'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -553,7 +668,7 @@ export function SuperAdminDashboard() {
           {/* LSB: Lista Tenantów */}
           <div className={`w-full md:w-1/3 border-r bg-white flex flex-col h-full overflow-hidden ${!showListOnMobile ? 'hidden md:flex' : 'flex'}`}>
             <div className="p-4 bg-gray-800 text-white font-bold text-base flex justify-between items-center shrink-0">
-              <span>🛡️ Moderacja Salonów</span>
+              <span>🛡️ Moderacja Firm</span>
               <span className="text-xs font-normal bg-gray-700 px-2 py-0.5 rounded">Razem: {filteredTenants.length}</span>
             </div>
             
@@ -610,7 +725,7 @@ export function SuperAdminDashboard() {
           <div className={`w-full md:w-2/3 h-full overflow-y-auto p-4 md:p-6 bg-gray-50 ${showListOnMobile ? 'hidden md:block' : 'block'}`}>
             {!selectedTenant ? (
               <div className="h-full flex items-center justify-center text-gray-400 text-base hidden md:flex">
-                Wybierz salon z listy po lewej, aby zarządzać profilem
+                Wybierz firmę z listy po lewej, aby zarządzać profilem
               </div>
             ) : (
               <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border">

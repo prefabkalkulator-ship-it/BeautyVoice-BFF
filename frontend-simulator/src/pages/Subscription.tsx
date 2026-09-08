@@ -25,10 +25,9 @@ export default function Subscription() {
   // Pola formularza Beta
   const [salonName, setSalonName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
+  const [contactPhone, setContactPhone] = useState(localStorage.getItem('tenantPhone') || '');
   const [contactEmail, setContactEmail] = useState('');
   const [notes, setNotes] = useState('');
-  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -40,7 +39,10 @@ export default function Subscription() {
         if (d.name) setSalonName(d.name);
         if (d.betaContactPerson) setContactPerson(d.betaContactPerson);
         if (d.betaContactEmail || d.contactEmail) setContactEmail(d.betaContactEmail || d.contactEmail || '');
-        if (d.phoneNumber) setContactPhone(d.phoneNumber);
+        if (d.phoneNumber) {
+          setContactPhone(d.phoneNumber);
+          localStorage.setItem('tenantPhone', d.phoneNumber);
+        }
 
         if (d.subscription && d.subscription.status && d.subscription.status !== 'none') {
           setSubStatus(d.subscription.status);
@@ -60,10 +62,6 @@ export default function Subscription() {
 
   const handleApplyBeta = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!termsAccepted) {
-      setError('Musisz zaakceptować regulamin, aby przesłać zgłoszenie.');
-      return;
-    }
     if (!contactPhone.trim()) {
       setError('Podaj numer telefonu komórkowego.');
       return;
@@ -97,7 +95,7 @@ export default function Subscription() {
         throw new Error(data.error || 'Wystąpił problem podczas wysyłania wniosku.');
       }
 
-      setSuccessMessage('Wniosek został pomyślnie wysłany! Administrator wkrótce skonfiguruje Twój dedykowany numer i wyśle PIN aktywacyjny SMS-em.');
+      setSuccessMessage('Wniosek został pomyślnie wysłany! Administrator wkrótce skonfiguruje Twój dedykowany numer i aktywuje pakiet pilotażowy Premium.');
       await fetchStatus();
     } catch (err: any) {
       setError(err.message || 'Wystąpił błąd podczas wysyłania wniosku.');
@@ -180,12 +178,12 @@ export default function Subscription() {
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-medium text-surface-900">
                 Aktualny plan: <span className="font-bold uppercase text-primary">
-                  {isPilot ? 'Program Pilotażowy (3 Miesiące Gratis)' : (subDetails?.planName || 'Standard')}
+                  {isPilot ? 'Pakiet Pilotażowy Premium (Miesiąc Gratis)' : (subDetails?.planName || 'Standard')}
                 </span>
               </h2>
               {isPilot && (
                 <span className="bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-                  <Sparkles className="w-3 h-3" /> Aktywny Pilotaż
+                  <Sparkles className="w-3 h-3" /> Aktywny Pilotaż Premium
                 </span>
               )}
             </div>
@@ -246,23 +244,46 @@ export default function Subscription() {
           </div>
 
           <p className="text-surface-600 leading-relaxed mb-6">
-            Dziękujemy za zgłoszenie do zamkniętego programu pilotażowego asystenta EVA. 
+            Dziękujemy za zgłoszenie do programu pilotażowego Premium asystenta EVA. 
             Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM.
           </p>
+
+          {/* Baner motywacyjny: konfiguracja w 5 krokach */}
+          <div className="p-5 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-2xl mb-6 shadow-xs">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-bold text-surface-900 text-sm mb-1">
+                  💡 Nie trać czasu podczas oczekiwania na numer!
+                </h4>
+                <p className="text-xs text-surface-600 leading-relaxed mb-3">
+                  Możesz już teraz w pełni przygotować asystenta EVA w 5 prostych krokach. Sprawdź pasek <strong>„Kolejność wdrożenia asystenta EVA”</strong> widoczny u góry ekranu i skonfiguruj profil firmy, usługi, godziny pracy oraz bazę wiedzy (FAQ).
+                </p>
+                <a 
+                  href="/dashboard/settings" 
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-900 hover:bg-surface-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+                >
+                  Przejdź do konfiguracji firmy <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
 
           <div className="bg-surface-50 rounded-2xl p-6 border border-surface-200 mb-6 space-y-3 text-sm">
             <h4 className="font-semibold text-surface-900 mb-2">Szczegóły Twojego zgłoszenia:</h4>
             <div className="flex justify-between border-b border-surface-200/60 pb-2">
-              <span className="text-surface-500">Salon:</span>
+              <span className="text-surface-500">Firma:</span>
               <span className="font-medium text-surface-900">{tenant?.name || salonName}</span>
             </div>
             <div className="flex justify-between border-b border-surface-200/60 pb-2">
               <span className="text-surface-500">Telefon kontaktowy:</span>
-              <span className="font-mono font-medium text-surface-900">{tenant?.phoneNumber || contactPhone}</span>
+              <span className="font-mono font-medium text-surface-900">{tenant?.phoneNumber || contactPhone || localStorage.getItem('tenantPhone') || '—'}</span>
             </div>
             <div className="flex justify-between border-b border-surface-200/60 pb-2">
               <span className="text-surface-500">E-mail:</span>
-              <span className="font-medium text-surface-900">{tenant?.betaContactEmail || tenant?.contactEmail || contactEmail}</span>
+              <span className="font-medium text-surface-900">{tenant?.betaContactEmail || tenant?.contactEmail || contactEmail || '—'}</span>
             </div>
             {tenant?.betaRequestedAt && (
               <div className="flex justify-between">
@@ -276,8 +297,8 @@ export default function Subscription() {
             <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
             <div className="text-xs text-blue-800 leading-relaxed">
               <strong>Co nastąpi dalej?</strong> Po przydzieleniu numeru przez administratora otrzymasz 
-              <strong> wiadomość SMS z kodem PIN</strong> oraz dedykowanym numerem telefonu. 
-              Subskrypcja na 3 miesiące z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty.
+              <strong> wiadomość SMS z powiadomieniem</strong> o aktywacji dedykowanego numeru EVA. 
+              Bezpłatny miesięczny pakiet pilotażowy Premium z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty. Do logowania używasz swojego numeru telefonu i kodu PIN ustalonego przy rejestracji.
             </div>
           </div>
 
@@ -310,12 +331,16 @@ export default function Subscription() {
             <Sparkles className="w-3.5 h-3.5 text-amber-200" /> Zamknięty Program Pilotażowy
           </div>
           <h1 className="text-3xl sm:text-4xl font-serif font-bold text-white mb-3">
-            Odbierz 3 Miesiące Asystenta EVA Całkowicie Za Darmo
+            Odbierz Miesięczny Pakiet Pilotażowy Premium Całkowicie Za Darmo
           </h1>
-          <p className="text-amber-100 text-sm sm:text-base leading-relaxed">
-            Dla pierwszych 3 salonów beauty przygotowaliśmy bezpłatny 3-miesięczny pakiet pilotażowy:
-            <strong> 300 darmowych minut</strong>, dedykowany numer wirtualny i pełną konfigurację bazy wiedzy. Bez podawania karty!
+          <p className="text-amber-100 text-sm sm:text-base leading-relaxed mb-3">
+            Dla pierwszych 5 użytkowników przygotowaliśmy bezpłatny miesięczny pakiet pilotażowy Premium:
+            <strong> 300 darmowych minut</strong>, dedykowany numer wirtualny, dostęp do modułu Marketing AI i pełną konfigurację bazy wiedzy. Bez podawania karty!
           </p>
+          <div className="inline-flex items-center gap-2 bg-amber-900/40 backdrop-blur-sm px-3.5 py-1.5 rounded-xl text-xs text-amber-200 border border-amber-400/30">
+            <span>🎁</span>
+            <span>Przetestuj pełnię możliwości EVA, podziel się swoją opinią i odbierz dodatkowe <strong>+100 darmowych minut</strong>!</span>
+          </div>
         </div>
       </div>
 
@@ -343,14 +368,14 @@ export default function Subscription() {
           <div className="grid sm:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-                Nazwa Twojego Salonu *
+                Nazwa Twojej Firmy *
               </label>
               <input 
                 type="text"
                 required
                 value={salonName}
                 onChange={e => setSalonName(e.target.value)}
-                placeholder="np. Studio Urody Glamour"
+                placeholder="np. Twoja Firma, Gabinet, Salon"
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
               />
             </div>
@@ -373,7 +398,7 @@ export default function Subscription() {
           <div className="grid sm:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-                Telefon Komórkowy (do odbioru SMS z kodem PIN) *
+                Telefon komórkowy kontaktowy *
               </label>
               <input 
                 type="tel"
@@ -383,7 +408,7 @@ export default function Subscription() {
                 placeholder="np. +48 500 100 200"
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm font-mono transition"
               />
-              <p className="text-[11px] text-surface-500 mt-1">Wymagany telefon komórkowy (SMS nie działa na stacjonarnych).</p>
+              <p className="text-[11px] text-surface-500 mt-1">Na ten numer otrzymasz powiadomienie SMS o aktywacji dedykowanego numeru EVA.</p>
             </div>
 
             <div>
@@ -395,7 +420,7 @@ export default function Subscription() {
                 required
                 value={contactEmail}
                 onChange={e => setContactEmail(e.target.value)}
-                placeholder="kontakt@twojsalon.pl"
+                placeholder="kontakt@twojafirma.pl"
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
               />
             </div>
@@ -403,21 +428,21 @@ export default function Subscription() {
 
           <div>
             <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-              Krótko o Twoim salonie / oczekiwaniach (opcjonalnie)
+              Krótko o Twojej firmie / oczekiwaniach (opcjonalnie)
             </label>
             <textarea 
               rows={3}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="np. Salon fryzjerski, 3 stanowiska, chcemy żeby EVA odbierała telefony gdy strzyżemy klientów..."
+              placeholder="np. Czym zajmuje się firma, ile osób liczy zespół, w jakich sytuacjach EVA ma odbierać połączenia..."
               className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
             />
           </div>
 
           {/* Podsumowanie korzyści */}
           <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-5">
-            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-3">Co wchodzi w Twój darmowy 3-miesięczny pakiet:</h4>
-            <div className="grid sm:grid-cols-3 gap-3 text-xs text-amber-800">
+            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-3">Co wchodzi w Twój bezpłatny pakiet Premium:</h4>
+            <div className="grid sm:grid-cols-4 gap-3 text-xs text-amber-800">
               <div className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>300 darmowych minut</span>
@@ -428,41 +453,26 @@ export default function Subscription() {
               </div>
               <div className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Marketing AI (SMS/Głos)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>Brak karty płatniczej</span>
               </div>
             </div>
           </div>
 
-          <label className="flex items-start gap-3 cursor-pointer group pt-2">
-            <input 
-              type="checkbox" 
-              checked={termsAccepted}
-              onChange={e => setTermsAccepted(e.target.checked)}
-              className="mt-1 w-5 h-5 rounded border-surface-300 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
-            />
-            <span className="text-xs sm:text-sm text-surface-600 leading-relaxed group-hover:text-surface-900 transition-colors">
-              Zapoznałem się i akceptuję{' '}
-              <a 
-                href="https://veritas-app.com/eva/regulamin" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-amber-700 underline font-medium hover:text-amber-800"
-                onClick={e => e.stopPropagation()}
-              >
-                Regulamin Usługi oraz Politykę Prywatności
-              </a>
-              . Wyrażam zgodę na przydzielenie testowego konta pilotażowego na okres 3 miesięcy.
-            </span>
-          </label>
-
-          <div className="pt-4 border-t border-surface-100 flex justify-end">
+          <div className="pt-4 border-t border-surface-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-surface-500 text-center sm:text-left">
+              Przesłanie formularza aktywuje zgłoszenie do miesięcznego pakietu pilotażowego Premium.
+            </p>
             <button 
               type="submit"
-              disabled={isLoading || !termsAccepted}
+              disabled={isLoading}
               className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition"
             >
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-              Wyślij zgłoszenie pilotażowe
+              Wyślij zgłoszenie do pakietu Premium
             </button>
           </div>
         </form>

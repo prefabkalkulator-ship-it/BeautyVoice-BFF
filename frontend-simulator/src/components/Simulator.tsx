@@ -78,50 +78,16 @@ export default function Simulator() {
     }, 200);
   }, []);
 
-
-  
-              
-  
-
   useEffect(() => {
-    if (location.state?.initialPrompt && !subLoading && sub?.planName === 'premium' && !isLoading) {
+    if (location.state?.initialPrompt && !subLoading && !isLoading) {
       const prompt = location.state.initialPrompt;
       navigate(location.pathname, { replace: true, state: {} });
       setTimeout(() => {
         handleSendDirect(prompt);
       }, 100);
     }
-  }, [location.state, subLoading, isLoading, navigate, sub]);
+  }, [location.state, subLoading, isLoading, navigate]);
 
-  if (subLoading) {
-    return (
-      <div className="flex items-center justify-center p-12 h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (sub?.planName !== 'premium') {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 text-center h-[70vh]">
-        <div className="w-20 h-20 bg-gold-50 rounded-full flex items-center justify-center mb-6 shadow-inner">
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gold-500"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        </div>
-        <h2 className="text-3xl font-serif text-surface-900 mb-4 tracking-tight">Marketing AI</h2>
-        <p className="text-surface-600 max-w-xl mx-auto mb-4 text-lg">Ta funkcja jest dostępna w pakiecie Premium. Otwórz potencjał zautomatyzowanych kampanii sprzedażowych i pozwól asystentce EVA generować zysk dla Ciebie.</p>
-        <ul className="text-left text-surface-600 space-y-2 mb-8 max-w-lg mx-auto">
-          <li className="flex items-start gap-2">✓ <span>Automatyczne SMSy i telefony, przypomnienia, wypełnianie luk w kalendarzu.</span></li>
-          <li className="flex items-start gap-2">✓ <span>Spersonalizowane akcje reklamowe do stałych (lojalnych) klientów.</span></li>
-          
-        </ul>
-        <a href="/dashboard/subscription" className="bg-primary text-primary-foreground px-8 py-3 rounded-xl font-medium shadow-md hover:shadow-lg hover:bg-primary/90 transition-all">
-          Rozszerz pakiet
-        </a>
-      </div>
-    );
-  }
-  
-  
   const updateActionCardArg = (msgId: string, k: string, v: string) => {
     setMessages(prev => prev.map(m => {
       if (m.id === msgId && (m as any).actionCard) {

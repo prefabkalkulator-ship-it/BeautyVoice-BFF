@@ -78,7 +78,7 @@ export class BetaController {
           await PushService.sendNotification(
             tokens,
             '🔔 Nowy wniosek pilotażowy EVA!',
-            `Salon ${updatedSalonName} (${formattedPhone}) prosi o aktywację EVA.`,
+            `Firma ${updatedSalonName} (${formattedPhone}) prosi o aktywację pakietu pilotażowego Premium.`,
             'https://beautyvoice-bff.web.app/superadmin',
             formattedPhone
           );
@@ -102,9 +102,10 @@ export class BetaController {
 
       return res.json({ 
         success: true, 
-        message: 'Wniosek został pomyślnie wysłany. Administrator wkrótce skonfiguruje Twój dedykowany numer i wyśle PIN aktywacyjny.',
+        message: 'Wniosek został pomyślnie wysłany. Administrator wkrótce skonfiguruje Twój dedykowany numer i aktywuje konto.',
         tenant: {
           id: updatedTenant.id,
+          phoneNumber: updatedTenant.phoneNumber,
           betaStatus: updatedTenant.betaStatus,
           betaRequestedAt: updatedTenant.betaRequestedAt
         }
@@ -134,12 +135,13 @@ export class BetaController {
       }
 
       if (!tenant) {
-        return res.status(404).json({ error: 'Nie znaleziono salonu.' });
+        return res.status(404).json({ error: 'Nie znaleziono firmy.' });
       }
 
       return res.json({
         id: tenant.id,
         name: tenant.name,
+        phoneNumber: tenant.phoneNumber,
         assignedPhoneNumber: tenant.assignedPhoneNumber,
         betaStatus: tenant.betaStatus,
         betaContactPerson: tenant.betaContactPerson,

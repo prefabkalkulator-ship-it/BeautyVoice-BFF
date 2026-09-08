@@ -68,11 +68,11 @@ export class EmailService {
     const subject = `🚀 Nowy wniosek pilotażowy EVA: ${data.tenantName}`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
-        <h2 style="color: #4f46e5; margin-top: 0;">🚀 Nowe zgłoszenie do programu pilotażowego Beta!</h2>
-        <p>Właściciel salonu przesłał zgłoszenie do darmowego 3-miesięcznego pilotażu asystenta EVA:</p>
+        <h2 style="color: #4f46e5; margin-top: 0;">🚀 Nowe zgłoszenie do programu pilotażowego Premium!</h2>
+        <p>Właściciel firmy przesłał zgłoszenie do bezpłatnego miesięcznego pakietu pilotażowego Premium (300 darmowych minut) asystenta EVA:</p>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
           <tr>
-            <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #eee; width: 40%;">Nazwa Salonu:</td>
+            <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #eee; width: 40%;">Nazwa Firmy:</td>
             <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.tenantName}</td>
           </tr>
           <tr>

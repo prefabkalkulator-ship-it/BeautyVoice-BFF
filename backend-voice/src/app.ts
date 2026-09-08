@@ -909,7 +909,7 @@ app.post('/api/auth/register', async (req, res) => {
     const tenant = await prisma.tenant.create({
       data: { name, phoneNumber, pinCode }
     });
-    res.json({ tenantId: tenant.id, message: 'Zarejestrowano pomyślnie' });
+    res.json({ tenantId: tenant.id, phoneNumber: tenant.phoneNumber, name: tenant.name, message: 'Zarejestrowano pomyślnie' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Błąd podczas rejestracji' });
@@ -929,7 +929,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (tenant.pinCode !== pinCode) {
       return res.status(401).json({ error: 'Nieprawidłowy PIN.' });
     }
-    res.json({ tenantId: tenant.id, message: 'Zalogowano pomyślnie' });
+    res.json({ tenantId: tenant.id, phoneNumber: tenant.phoneNumber, name: tenant.name, message: 'Zalogowano pomyślnie' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Błąd podczas logowania' });
@@ -1417,5 +1417,6 @@ app.post('/api/admin/tenants/:id/subscription/status', adminAuthMiddleware, (req
 app.post('/api/admin/fcm-token', adminAuthMiddleware, (req, res) => adminController.registerAdminDevice(req, res));
 app.get('/api/admin/beta-applications', adminAuthMiddleware, (req, res) => adminController.getBetaApplications(req, res));
 app.post('/api/admin/beta-applications/:id/approve', adminAuthMiddleware, (req, res) => adminController.approveBetaApplication(req, res));
+app.delete('/api/admin/beta-applications/:id', adminAuthMiddleware, (req, res) => adminController.deleteBetaApplication(req, res));
 
 
