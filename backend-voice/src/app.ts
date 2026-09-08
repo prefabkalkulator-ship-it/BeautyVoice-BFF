@@ -1166,7 +1166,7 @@ app.post("/api/twilio-incoming", async (req, res) => {
     console.log(`🔀 [Dev Proxy] Przekierowanie połączenia testowego (${normalizedDialed}) na serwer dev: ${devForwardUrl}`);
     const cleanHost = devForwardUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     res.type("text/xml");
-    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${cleanHost}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" /></Stream></Connect></Response>`);
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${cleanHost}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" /></Stream></Connect><Hangup/></Response>`);
   }
   
   let tenant = await prisma.tenant.findFirst({
@@ -1202,7 +1202,7 @@ app.post("/api/twilio-incoming", async (req, res) => {
 
   const outboundParam = outboundTaskId ? `<Parameter name="outboundTaskId" value="${outboundTaskId}" />` : '';
 
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" />${outboundParam}</Stream></Connect></Response>`);
+  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" />${outboundParam}</Stream></Connect><Hangup/></Response>`);
 });
 
 app.get("/api/zadarma-sms", (req, res) => {

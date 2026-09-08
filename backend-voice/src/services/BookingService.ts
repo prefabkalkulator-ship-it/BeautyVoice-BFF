@@ -210,6 +210,11 @@ export class BookingService {
           required: bookingMode === 'daily' ? ['customerName', 'customerPhone', 'serviceName', 'startTime', 'numberOfNights'] : ['customerName', 'customerPhone', 'serviceName', 'startTime', 'durationMinutes'],
         },
       },
+      {
+        name: 'endCall',
+        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. Użyj tego narzędzia, gdy klient pożegna się (np. "Dziękuję, do widzenia", "Na razie", "To wszystko"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy.',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
     ];
 
     if (isVoiceBot) {

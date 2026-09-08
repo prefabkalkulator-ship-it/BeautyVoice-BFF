@@ -23,6 +23,13 @@ export class CallOrchestrator {
   private turnAudioQueue: Uint8Array[] = [];
   private turnBufferedDurationMs: number = 0;
   private readonly PREBUFFER_THRESHOLD_MS: number = 200; // 200ms poduszka rozbiegowa (1600 bajtów 8kHz mulaw)
+
+  // Inactivity / Silence Watchdog (30s) & EndCall state
+  private lastActivityTime: number = Date.now();
+  private silenceWatchdogInterval: NodeJS.Timeout | null = null;
+  private readonly SILENCE_TIMEOUT_MS: number = 30000; // 30 sekund ciszy / szumu w tle
+  private shouldHangupAfterTurn: boolean = false;
+  private hangupTimeout: NodeJS.Timeout | null = null;
   
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
@@ -41,6 +48,8 @@ export class CallOrchestrator {
 
   constructor(twilioConnection: WebSocket) {
     this.twilioWs = twilioConnection;
+    this.lastActivityTime = Date.now();
+    this.silenceWatchdogInterval = setInterval(() => this.checkSilenceTimeout(), 2000);
     
     this.twilioWs.on('message', async (message: string) => {
       const msgStr = message.toString();
@@ -98,6 +107,14 @@ export class CallOrchestrator {
     });
 
     this.twilioWs.on('close', async () => {
+      if (this.silenceWatchdogInterval) {
+        clearInterval(this.silenceWatchdogInterval);
+        this.silenceWatchdogInterval = null;
+      }
+      if (this.hangupTimeout) {
+        clearTimeout(this.hangupTimeout);
+        this.hangupTimeout = null;
+      }
       if (this.geminiClient) this.geminiClient.close();
       if (this.callStartTime && this.tenantId) {
         const durationMs = Date.now() - this.callStartTime;
@@ -127,6 +144,17 @@ export class CallOrchestrator {
     });
   }
 
+  private checkSilenceTimeout() {
+    const silentDuration = Date.now() - this.lastActivityTime;
+    if (silentDuration >= this.SILENCE_TIMEOUT_MS) {
+      console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy/szumu w tle. Automatyczne odłożenie słuchawki.`);
+      if (this.silenceWatchdogInterval) {
+        clearInterval(this.silenceWatchdogInterval);
+        this.silenceWatchdogInterval = null;
+      }
+      this.twilioWs.close();
+    }
+  }
 
   private async initAsync(tenant: any) {
     try {
@@ -237,12 +265,24 @@ export class CallOrchestrator {
   }
 
   private handleGeminiTurnComplete() {
+    this.lastActivityTime = Date.now();
     // Jeśli tura była krótsza niż 200ms (np. pojedyncze "Tak"), uwalniamy bufor
     if (!this.isTurnStreaming && this.turnAudioQueue.length > 0 && !this.isTurnCanceled) {
       this.flushTurnBufferToTwilio();
     }
     this.isTurnStreaming = false;
     this.agentSpeaking = false;
+
+    if (this.shouldHangupAfterTurn) {
+      console.log('📞 [EndCall] Zakończenie rozmowy po pożegnaniu. Odłożenie słuchawki za 1.5s.');
+      this.hangupTimeout = setTimeout(() => {
+        if (this.silenceWatchdogInterval) {
+          clearInterval(this.silenceWatchdogInterval);
+          this.silenceWatchdogInterval = null;
+        }
+        this.twilioWs.close();
+      }, 1500);
+    }
   }
 
   private executeBargeInMechanism() {
@@ -250,6 +290,11 @@ export class CallOrchestrator {
     console.log('🛑 [Barge-in] Wykryto przerwanie! Natychmiastowe zatrzymanie mowy asystenta.');
     
     this.isTurnCanceled = true;
+    this.shouldHangupAfterTurn = false;
+    if (this.hangupTimeout) {
+      clearTimeout(this.hangupTimeout);
+      this.hangupTimeout = null;
+    }
     this.agentSpeaking = false;
     this.isTurnStreaming = false;
     this.turnAudioQueue = [];
@@ -304,6 +349,9 @@ export class CallOrchestrator {
           return await bookingService.cancelAppointment(tenantId, args.customerPhone);
         case 'requestHumanContact':
           return await bookingService.requestHumanContact(tenantId, args.customerPhone, args.reason);
+        case 'endCall':
+          this.shouldHangupAfterTurn = true;
+          return { status: "call_ending", message: "Pożegnaj się uprzejmie z klientem jednym krótkim zdaniem. Połączenie zostanie automatycznie rozłączone." };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
       }
@@ -318,6 +366,7 @@ export class CallOrchestrator {
     
     // 1. Sprawdzamy lokalny Silero VAD pod kątem wtrącenia użytkownika (Barge-in)
     await this.vadService.processAudio(float32Array, (speechProb) => {
+      this.lastActivityTime = Date.now(); // Wykryto ludzką mowę (nie szum w tle!)
       if (this.agentSpeaking || this.isTurnStreaming || this.turnAudioQueue.length > 0) {
         console.log(`🗣️ [VAD Barge-in] Wykryto mowę użytkownika (prob: ${speechProb.toFixed(2)}) w trakcie wypowiedzi asystenta!`);
         this.executeBargeInMechanism();
@@ -341,6 +390,7 @@ export class CallOrchestrator {
         return;
       }
 
+      this.lastActivityTime = Date.now(); // Asystentka mówi
       this.agentSpeaking = true;
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
