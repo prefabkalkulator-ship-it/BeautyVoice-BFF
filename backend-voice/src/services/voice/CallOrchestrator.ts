@@ -16,9 +16,13 @@ export class CallOrchestrator {
   private vadService!: VADService;
   private geminiClient!: GeminiClient;
   
-  private egressMulawBuffer: number[] = [];
-
+  // Egress Jitter Buffer & Barge-In State
   private agentSpeaking: boolean = false;
+  private isTurnCanceled: boolean = false;
+  private turnAudioQueue: Uint8Array[] = [];
+  private turnBufferedDurationMs: number = 0;
+  private isTurnStreaming: boolean = false;
+  private readonly PREBUFFER_THRESHOLD_MS: number = 300; // 300ms poduszka rozbiegowa
   private activeAudioController: AbortController | null = null;
   
   private voiceName: string = "Aoede";
@@ -179,6 +183,8 @@ export class CallOrchestrator {
     this.geminiClient = new GeminiClient({
       onAudioReceived: (audioBase64) => this.streamGeminiAudioToCaller(audioBase64),
       onToolCall: (toolCall) => this.orchestrateToolCallWithFiller(toolCall),
+      onInterrupted: () => this.handleGeminiInterrupted(),
+      onTurnComplete: () => this.handleGeminiTurnComplete(),
       voiceName: this.voiceName,
       businessProfile: this.businessProfile,
       bookingMode: this.bookingMode,
@@ -257,9 +263,28 @@ export class CallOrchestrator {
     }
   }
 
+  private handleGeminiInterrupted() {
+    console.log('⚡ [CallOrchestrator] Sygnał interrupted z Gemini Live API (Google wykrył mowę użytkownika).');
+    this.executeBargeInMechanism();
+  }
+
+  private handleGeminiTurnComplete() {
+    // Jeśli tura była bardzo krótka (np. "Tak" < 300ms) i jeszcze nie opróżniliśmy bufora rozbiegowego:
+    if (!this.isTurnStreaming && this.turnAudioQueue.length > 0 && !this.isTurnCanceled) {
+      this.flushTurnBufferToTwilio();
+    }
+    this.isTurnStreaming = false;
+  }
+
   private executeBargeInMechanism() {
-    console.log('--- [Barge-in] Wykryto przerwanie! Zatrzymywanie mowy.');
+    if (this.isTurnCanceled) return;
+    console.log('🛑 [Barge-in] Wykryto przerwanie! Natychmiastowe zatrzymanie mowy asystenta.');
+    
+    this.isTurnCanceled = true;
     this.agentSpeaking = false;
+    this.isTurnStreaming = false;
+    this.turnAudioQueue = [];
+    this.turnBufferedDurationMs = 0;
     
     this.audioPlayheadTimeMs = Date.now();
     if (this.turnOffSpeakingTimeout) {
@@ -267,6 +292,7 @@ export class CallOrchestrator {
       this.turnOffSpeakingTimeout = null;
     }
     
+    // Błyskawiczne wyczyszczenie bufora odtwarzacza w Twilio
     this.twilioWs.send(JSON.stringify({
       event: 'clear',
       streamSid: this.streamSid
@@ -276,8 +302,7 @@ export class CallOrchestrator {
       this.activeAudioController.abort();
       this.activeAudioController = null;
     }
-
-    this.geminiClient.sendTurnComplete();
+    // Celowo NIE wysyłamy sendTurnComplete(), aby nie wznawiać syntezy starej tury
   }
 
   private async orchestrateToolCallWithFiller(toolCall: any) {
@@ -358,16 +383,23 @@ export class CallOrchestrator {
   private async processIncomingAudio(payloadBase64: string) {
     const float32Array = AudioPipeline.decodeTwilioMulawTo16kHz(payloadBase64);
     
+    // 1. Sprawdzamy lokalny Silero VAD pod kątem wtrącenia użytkownika (Barge-in)
     await this.vadService.processAudio(float32Array, (speechProb) => {
-      if (this.agentSpeaking) {
+      if (this.agentSpeaking || this.isTurnStreaming || this.turnAudioQueue.length > 0) {
+        console.log(`🗣️ [VAD Barge-in] Wykryto mowę użytkownika (prob: ${speechProb.toFixed(2)}) w trakcie wypowiedzi asystenta!`);
         this.executeBargeInMechanism();
       }
     });
 
-    if (!this.agentSpeaking) {
-      const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
-      this.geminiClient.sendRealtimeAudio(pcmBase64);
+    // Jeśli poprzednia tura została anulowana, a użytkownik mówi (i bot milczy), resetujemy flagę
+    if (this.isTurnCanceled && !this.agentSpeaking && !this.isTurnStreaming) {
+      this.isTurnCanceled = false;
     }
+
+    // 2. FULL-DUPLEX: Zawsze przesyłamy dźwięk dzwoniącego do Gemini Live API!
+    // Umożliwia to Google natywne wykrywanie głosu i automatyczne przerywanie
+    const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
+    this.geminiClient.sendRealtimeAudio(pcmBase64);
   }
 
   private audioPlayheadTimeMs: number = Date.now();
@@ -375,29 +407,69 @@ export class CallOrchestrator {
 
   private streamGeminiAudioToCaller(audioBase64: string) {
     try {
-      this.agentSpeaking = true;
-      const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
-      
-      const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
-      
-      this.sendMediaMessage(Buffer.from(outMulawBuffer).toString('base64'));
-
-      const now = Date.now();
-      if (this.audioPlayheadTimeMs < now) {
-         this.audioPlayheadTimeMs = now + durationMs;
-      } else {
-         this.audioPlayheadTimeMs += durationMs;
+      // Jeśli bieżąca tura została przerwana (barge-in), bezwzględnie odrzucamy spóźnione pakiety z Gemini
+      if (this.isTurnCanceled) {
+        return;
       }
 
-      const timeUntilFinished = this.audioPlayheadTimeMs - now;
-      if (this.turnOffSpeakingTimeout) clearTimeout(this.turnOffSpeakingTimeout);
-      this.turnOffSpeakingTimeout = setTimeout(() => {
-          this.agentSpeaking = false;
-      }, timeUntilFinished);
+      this.agentSpeaking = true;
+      const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
+      const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
 
+      if (this.isTurnStreaming) {
+        // Faza ciągłego strumieniowania: Twilio ma już poduszkę rozbiegową, wysyłamy od razu
+        this.sendMediaMessage(Buffer.from(outMulawBuffer).toString('base64'));
+        this.updateSpeakingPlayhead(durationMs);
+      } else {
+        // Faza bufora rozbiegowego (Adaptive Jitter Buffer): gromadzimy pierwsze 300ms
+        this.turnAudioQueue.push(outMulawBuffer);
+        this.turnBufferedDurationMs += durationMs;
+
+        if (this.turnBufferedDurationMs >= this.PREBUFFER_THRESHOLD_MS) {
+          this.flushTurnBufferToTwilio();
+        }
+      }
     } catch (err) {
       console.error('[Egress] Błąd transformacji audio:', err);
     }
+  }
+
+  private flushTurnBufferToTwilio() {
+    if (this.turnAudioQueue.length === 0 || this.isTurnCanceled) return;
+
+    // Łączymy wszystkie zbuforowane klatki w jedną spójną poduszkę dźwiękową
+    const totalBytes = this.turnAudioQueue.reduce((acc, buf) => acc + buf.length, 0);
+    const combinedBuffer = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const buf of this.turnAudioQueue) {
+      combinedBuffer.set(buf, offset);
+      offset += buf.length;
+    }
+
+    const totalDurationMs = totalBytes / 8;
+    this.sendMediaMessage(Buffer.from(combinedBuffer).toString('base64'));
+    this.updateSpeakingPlayhead(totalDurationMs);
+
+    this.isTurnStreaming = true;
+    this.turnAudioQueue = [];
+    this.turnBufferedDurationMs = 0;
+  }
+
+  private updateSpeakingPlayhead(durationMs: number) {
+    const now = Date.now();
+    if (this.audioPlayheadTimeMs < now) {
+      this.audioPlayheadTimeMs = now + durationMs;
+    } else {
+      this.audioPlayheadTimeMs += durationMs;
+    }
+
+    const timeUntilFinished = this.audioPlayheadTimeMs - now;
+    if (this.turnOffSpeakingTimeout) clearTimeout(this.turnOffSpeakingTimeout);
+    this.turnOffSpeakingTimeout = setTimeout(() => {
+      this.agentSpeaking = false;
+      this.isTurnStreaming = false;
+      this.isTurnCanceled = false; // Gotowość na nową turę
+    }, timeUntilFinished);
   }
 
   private sendMediaMessage(payloadBase64: string) {

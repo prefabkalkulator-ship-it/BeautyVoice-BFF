@@ -1,10 +1,12 @@
 import * as ort from 'onnxruntime-node';
 import path from 'path';
+import fs from 'fs';
 
 export class VADService {
   private static vadSession: ort.InferenceSession | null = null;
   private vadState: ort.Tensor;
   private pcmBuffer: number[] = [];
+  private consecutiveSpeechFrames: number = 0;
 
   constructor() {
     this.vadState = new ort.Tensor('float32', new Float32Array(2 * 1 * 128), [2, 1, 128]);
@@ -12,9 +14,18 @@ export class VADService {
 
   static async init() {
     if (!VADService.vadSession) {
-      const modelPath = path.join(process.cwd(), 'src', 'services', 'voice', 'silero_vad.onnx');
+      const candidates = [
+        path.join(__dirname, 'silero_vad.onnx'),
+        path.join(__dirname, '..', '..', '..', 'src', 'services', 'voice', 'silero_vad.onnx'),
+        path.join(process.cwd(), 'src', 'services', 'voice', 'silero_vad.onnx'),
+        path.join(process.cwd(), 'backend-voice', 'src', 'services', 'voice', 'silero_vad.onnx'),
+      ];
+      const modelPath = candidates.find(p => fs.existsSync(p));
+      if (!modelPath) {
+        throw new Error(`Silero VAD ONNX model not found in candidate paths: ${candidates.join(', ')}`);
+      }
       VADService.vadSession = await ort.InferenceSession.create(modelPath);
-      console.log('✅ [VAD] Silero VAD ONNX model loaded successfully.');
+      console.log(`✅ [VAD] Silero VAD ONNX model loaded successfully from: ${modelPath}`);
     }
   }
 
@@ -33,8 +44,14 @@ export class VADService {
         this.vadState = results.stateN; 
         const speechProb = results.output.data[0] as number;
 
-        if (speechProb > 0.85) {
-          onSpeechDetected(speechProb);
+        if (speechProb > 0.80) {
+          this.consecutiveSpeechFrames++;
+          // Wymagamy co najmniej 2 kolejnych klatek mowy (~64ms), aby odfiltrować pojedyncze trzaski GSM
+          if (this.consecutiveSpeechFrames >= 2) {
+            onSpeechDetected(speechProb);
+          }
+        } else if (speechProb < 0.35) {
+          this.consecutiveSpeechFrames = 0;
         }
       } catch (err) {}
     }

@@ -6,6 +6,8 @@ import { prisma } from '../../prisma';
 export interface GeminiClientCallbacks {
   onAudioReceived: (audioBase64: string) => void;
   onToolCall: (toolCall: any) => void;
+  onInterrupted?: () => void;
+  onTurnComplete?: () => void;
   voiceName: string;
   businessProfile: string;
   bookingMode: string;
@@ -13,7 +15,7 @@ export interface GeminiClientCallbacks {
   botName?: string;
   tenantName?: string;
   toneOfVoice?: string;
-    contextHistory?: string;
+  contextHistory?: string;
 }
 
 export class GeminiClient {
@@ -97,6 +99,15 @@ export class GeminiClient {
 
       if (response.error || dataStr.includes('"error"')) {
         console.error('⚠️ [Gemini] Błąd zwrócony przez API:', dataStr);
+      }
+
+      if (response.serverContent?.interrupted) {
+        console.log('⚡ [Gemini] Model zgłasza interrupted: true (Barge-in)!');
+        this.callbacks.onInterrupted?.();
+      }
+
+      if (response.serverContent?.turnComplete) {
+        this.callbacks.onTurnComplete?.();
       }
 
       if (response.serverContent?.modelTurn) {
