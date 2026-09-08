@@ -1157,21 +1157,39 @@ app.post("/api/twilio-incoming", async (req, res) => {
   if (normalizedDialed !== 'unknown' && !normalizedDialed.startsWith('+')) {
     normalizedDialed = '+' + normalizedDialed;
   }
+
+  // 🔀 Opcjonalne przekierowanie deweloperskie (Dev Proxy)
+  // Pozwala na bezpieczne testowanie na numerze deweloperskim bez dotykania konfiguracji Zadarma dla salonów produkcyjnych
+  const devForwardUrl = process.env.DEV_FORWARD_URL;
+  const devTestNumber = process.env.DEV_TEST_PHONE_NUMBER || '+48459568507';
+  if (devForwardUrl && (normalizedDialed === devTestNumber || calledNumber === devTestNumber)) {
+    console.log(`🔀 [Dev Proxy] Przekierowanie połączenia testowego (${normalizedDialed}) na serwer dev: ${devForwardUrl}`);
+    const cleanHost = devForwardUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    res.type("text/xml");
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${cleanHost}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" /></Stream></Connect></Response>`);
+  }
   
   let tenant = await prisma.tenant.findFirst({
     where: { OR: [{ assignedPhoneNumber: normalizedDialed }, { phoneNumber: normalizedDialed }] },
     include: { subscription: true }
   });
+
+  // Bezpieczny fallback: jeśli numer nie jest bezpośrednio powiązany z żadnym salonem, kieruj do DEMO
   if (!tenant) {
     tenant = await prisma.tenant.findFirst({
-      where: { name: { not: 'DEMO' } },
+      where: { name: 'DEMO' },
       include: { subscription: true }
     });
   }
 
   res.type("text/xml");
 
-  if (tenant && (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled')))) {
+  if (!tenant) {
+    console.log(`⚠️ [Twilio Incoming] Odrzucono połączenie od ${callerPhone} do ${calledNumber}: Numer nie jest przypisany do żadnego aktywnego salonu.`);
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Wybrany numer nie jest obecnie przypisany do żadnego aktywnego salonu. Prosimy sprawdzić poprawność numeru.</Say><Hangup/></Response>`);
+  }
+
+  if (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled'))) {
     console.log(`🚫 [Twilio Incoming] Odrzucono połączenie od ${callerPhone} do ${calledNumber}. Salon: ${tenant.name} jest zawieszony (isSuspended: ${tenant.isSuspended}, sub: ${tenant.subscription?.status})`);
     return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Przepraszamy, asystent głosowy jest obecnie niedostępny z przyczyn technicznych. Prosimy spróbować później.</Say><Hangup/></Response>`);
   }
