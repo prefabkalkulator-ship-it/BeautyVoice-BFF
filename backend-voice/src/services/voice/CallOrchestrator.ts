@@ -151,18 +151,48 @@ export class CallOrchestrator {
         // Zapis do rejestru połączeń (CallLog)
         try {
           const durationSeconds = Math.round(durationMs / 1000);
-          await prisma.callLog.create({
-            data: {
+
+          // Sprawdzamy czy w trakcie tej rozmowy zapisano już CallLog (np. przez save_call_message)
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+          let callLog = await prisma.callLog.findFirst({
+            where: {
               tenantId: this.tenantId,
               callerPhone: this.callerPhone || 'nieznany',
-              callerName: this.vipContact ? this.vipContact.contactName : (this.callerRole === 'OWNER' ? this.tenantName : null),
-              callerRole: this.callerRole,
-              durationSeconds,
-              status: 'completed',
-              isProcessed: false
-            }
+              durationSeconds: 0,
+              createdAt: { gte: fiveMinutesAgo }
+            },
+            orderBy: { createdAt: 'desc' }
           });
-          console.log(`📝 [CallOrchestrator] Zapisano CallLog: role=${this.callerRole}, duration=${durationSeconds}s`);
+
+          if (callLog) {
+            callLog = await prisma.callLog.update({
+              where: { id: callLog.id },
+              data: { durationSeconds }
+            });
+            console.log(`📝 [CallOrchestrator] Zaktualizowano istniejący CallLog (${callLog.id}) czasem: ${durationSeconds}s`);
+          } else {
+            callLog = await prisma.callLog.create({
+              data: {
+                tenantId: this.tenantId,
+                callerPhone: this.callerPhone || 'nieznany',
+                callerName: this.vipContact ? this.vipContact.contactName : (this.callerRole === 'OWNER' ? this.tenantName : null),
+                callerRole: this.callerRole,
+                durationSeconds,
+                status: 'completed',
+                isProcessed: false
+              }
+            });
+            console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s`);
+          }
+
+          // Asynchroniczny Post-call worker dla asystenta osobistego
+          if (this.businessProfile === 'personal' && callLog) {
+            import('../../jobs/PersonalAssistantWorker').then(({ PersonalAssistantWorker }) => {
+              PersonalAssistantWorker.processPostCall(callLog.id).catch(workerErr => {
+                console.error('[CallOrchestrator] Błąd post-call worker:', workerErr);
+              });
+            }).catch(e => console.error('[CallOrchestrator] Błąd importu PersonalAssistantWorker:', e));
+          }
         } catch(logErr) {
           console.error('[CallOrchestrator] Błąd zapisu CallLog:', logErr);
         }

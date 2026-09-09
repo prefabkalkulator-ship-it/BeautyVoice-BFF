@@ -43,6 +43,7 @@ model Tenant {
   ownerRequirePin     Boolean        @default(false) // Wymóg autoryzacji PIN-em przy połączeniu z komórki właściciela
   morningBriefingEnabled Boolean     @default(true) // Codzienny e-mail podsumowujący o poranku
   morningBriefingHour Int            @default(8) // Godzina wysyłki porannego briefingu (np. 8:00)
+  lastBriefingSentAt  DateTime?      // Data i godzina ostatniej wysyłki porannego raportu
 
   betaStatus          String         @default("none") // none, pending, approved, rejected
   betaContactPerson   String?

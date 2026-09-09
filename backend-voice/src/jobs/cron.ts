@@ -1,4 +1,4 @@
-﻿import { prisma } from '../prisma';
+import { prisma } from '../prisma';
 import { PushService } from '../services/PushService';
 
 export async function runDailyCron() {
@@ -43,6 +43,10 @@ export async function runDailyCron() {
         console.log(`[CRON] Wznowiono subskrypcję dla ${sub.tenantId}`);
       }
     }
+
+    // Poranny raport wykonawczy (Morning Executive Briefing) dla Asystenta Osobistego
+    const { PersonalAssistantWorker } = await import('./PersonalAssistantWorker');
+    await PersonalAssistantWorker.runDailyMorningBriefings();
   } catch (err) {
     console.error('[CRON] Błąd:', err);
   }
