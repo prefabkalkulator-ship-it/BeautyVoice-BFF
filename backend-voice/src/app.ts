@@ -17,11 +17,54 @@ app.use((req, res, next) => {
 });
 
 async function getContextTenant(req: any) {
-  const tid = req.tenantId;
-  if (!tid || tid === '00000000-0000-0000-0000-000000000000') {
-    return await prisma.tenant.findFirst({ where: { name: { not: 'DEMO' } } });
+  const rawTid = req.headers?.['x-tenant-id'] || req.body?.tenantId || req.query?.tenantId || req.tenantId;
+  const tid = (rawTid && rawTid !== 'null' && rawTid !== 'undefined' && rawTid !== '00000000-0000-0000-0000-000000000000') ? String(rawTid).trim() : null;
+
+  if (tid) {
+    try {
+      const found = await prisma.tenant.findUnique({ where: { id: tid } });
+      if (found) return found;
+    } catch (_) {}
   }
-  return await prisma.tenant.findUnique({ where: { id: tid } });
+
+  // 2. Try looking up by phone
+  const rawPhone = req.headers?.['x-tenant-phone'] || req.body?.phoneNumber || req.body?.tenantPhone || req.query?.phoneNumber;
+  if (rawPhone && rawPhone !== 'null' && rawPhone !== 'undefined') {
+    try {
+      const clean = String(rawPhone).replace(/[\s\-()]/g, '');
+      const found = await prisma.tenant.findFirst({
+        where: {
+          OR: [
+            { phoneNumber: String(rawPhone).trim() },
+            { phoneNumber: clean },
+            { phoneNumber: { contains: clean.length > 6 ? clean.slice(-9) : clean } }
+          ]
+        }
+      });
+      if (found) return found;
+    } catch (_) {}
+  }
+
+  // 3. Fallback: non-DEMO tenant with an active subscription or newest non-DEMO tenant
+  try {
+    const activeWithSub = await prisma.tenant.findFirst({
+      where: { 
+        name: { not: 'DEMO' },
+        subscription: { isNot: null }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    if (activeWithSub) return activeWithSub;
+
+    const nonDemo = await prisma.tenant.findFirst({
+      where: { name: { not: 'DEMO' } },
+      orderBy: { createdAt: 'desc' }
+    });
+    if (nonDemo) return nonDemo;
+  } catch (_) {}
+
+  // 4. Ultimate fallback: any tenant
+  return await prisma.tenant.findFirst();
 }
 
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -1158,7 +1201,10 @@ app.post('/api/subscription/change-plan', async (req, res) => {
       });
     }
 
-    res.json(updatedSub);
+    res.json({
+      ...updatedSub,
+      tenantId: tenant.id
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

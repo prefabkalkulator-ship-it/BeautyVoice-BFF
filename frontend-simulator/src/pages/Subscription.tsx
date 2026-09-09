@@ -53,6 +53,9 @@ export default function Subscription() {
       if (r.ok) {
         const d = await r.json();
         setTenant(d);
+        if (d.id) {
+          localStorage.setItem('tenantId', d.id);
+        }
         if (d.name) setSalonName(d.name);
         if (d.betaContactPerson) setContactPerson(d.betaContactPerson);
         if (d.betaContactEmail || d.contactEmail) setContactEmail(d.betaContactEmail || d.contactEmail || '');
@@ -165,21 +168,27 @@ export default function Subscription() {
     setError('');
     setChangePlanSuccess('');
     try {
-      const tid = localStorage.getItem('tenantId');
+      const tid = tenant?.id || localStorage.getItem('tenantId') || '';
+      const phone = contactPhone || tenant?.phoneNumber || localStorage.getItem('tenantPhone') || '';
       const res = await fetch('/api/subscription/change-plan', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-tenant-id': tid || ''
+          'x-tenant-id': tid,
+          'x-tenant-phone': phone
         },
         body: JSON.stringify({
           tenantId: tid,
+          phoneNumber: phone,
           targetPlan
         })
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Nie udało się zmienić pakietu.');
+      }
+      if (data.tenantId) {
+        localStorage.setItem('tenantId', data.tenantId);
       }
       setChangePlanSuccess(`Pomyślnie zmieniono pakiet na: ${targetPlan === 'personal' ? 'OSOBISTY' : targetPlan.toUpperCase()}! Przeładowuję widok...`);
       setTimeout(() => {
@@ -199,15 +208,18 @@ export default function Subscription() {
     setIsWiping(true);
     setWipeError('');
     try {
-      const tid = localStorage.getItem('tenantId');
+      const tid = tenant?.id || localStorage.getItem('tenantId') || '';
+      const phone = contactPhone || tenant?.phoneNumber || localStorage.getItem('tenantPhone') || '';
       const res = await fetch('/api/tenant/wipe', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-tenant-id': tid || ''
+          'x-tenant-id': tid,
+          'x-tenant-phone': phone
         },
         body: JSON.stringify({
           tenantId: tid,
+          phoneNumber: phone,
           pinCode: wipePin.trim(),
           confirmText: wipeConfirmText.trim()
         })
