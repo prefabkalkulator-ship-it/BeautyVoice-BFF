@@ -36,6 +36,14 @@ model Tenant {
   contactEmail        String?
   emailPublicForAi    Boolean        @default(false)
 
+  // Pola Asystenta Osobistego Profesjonalisty
+  profession          String?        // np. Architekt, Programista, Lekarz, Adwokat, Konsultant
+  bioSummary          String?        @db.Text // Baza wiedzy o właścicielu wstrzykiwana do promptu
+  bufferMinutes       Int            @default(15) // Bufor logistyczny między spotkaniami
+  ownerRequirePin     Boolean        @default(false) // Wymóg autoryzacji PIN-em przy połączeniu z komórki właściciela
+  morningBriefingEnabled Boolean     @default(true) // Codzienny e-mail podsumowujący o poranku
+  morningBriefingHour Int            @default(8) // Godzina wysyłki porannego briefingu (np. 8:00)
+
   betaStatus          String         @default("none") // none, pending, approved, rejected
   betaContactPerson   String?
   betaContactEmail    String?
@@ -54,6 +62,8 @@ model Tenant {
   customers       Customer[]
   campaigns       Campaign[]
   outboundQueues  OutboundQueue[]
+  vipContacts     VipContact[]
+  annualEvents    AnnualEvent[]
 }
 
 model Subscription {
@@ -159,9 +169,17 @@ model CallLog {
   id              String   @id @default(uuid())
   tenantId        String
   callerPhone     String
+  callerName      String?
+  callerRole      String   @default("UNKNOWN") // OWNER, VIP, GUEST, SPAM
   durationSeconds Int
   status          String
   transcript      String?  @db.Text
+  summary         String?  @db.Text
+  actionItems     String?  @db.Text
+  isMessageLeft   Boolean  @default(false)
+  urgency         String   @default("NORMAL")  // LOW, NORMAL, HIGH, CRITICAL
+  pushSent        Boolean  @default(false)
+  isProcessed     Boolean  @default(false)
   createdAt       DateTime @default(now())
   
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -242,5 +260,40 @@ model AdminDevice {
   label     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Baza kontaktów VIP dla Asystenta Osobistego
+model VipContact {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  phoneNumber        String   // E.164 (np. +48500100200)
+  contactName        String
+  category           String   @default("OTHER") // FAMILY, FRIEND, COWORKER, KEY_CLIENT, OTHER
+  customNotes        String?  @db.Text // Indywidualne wskazówki dla bota (np. "Możesz łączyć bezpośrednio")
+  allowPrioritySlots Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, phoneNumber])
+  @@index([tenantId, phoneNumber])
+}
+
+// Ważne daty roczne (urodziny bliskich, rocznice, stałe terminy)
+model AnnualEvent {
+  id                String   @id @default(uuid())
+  tenantId          String
+  title             String   // np. "Urodziny Mamy", "Rocznica ślubu", "Termin podatku VAT"
+  month             Int      // 1 - 12
+  day               Int      // 1 - 31
+  category          String   @default("OTHER") // BIRTHDAY, ANNIVERSARY, TAX, HOLIDAY, OTHER
+  reminderDaysAhead Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, month, day])
 }
 
