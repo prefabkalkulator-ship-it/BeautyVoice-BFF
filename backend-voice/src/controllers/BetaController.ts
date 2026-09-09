@@ -143,6 +143,8 @@ export class BetaController {
         name: tenant.name,
         phoneNumber: tenant.phoneNumber,
         assignedPhoneNumber: tenant.assignedPhoneNumber,
+        businessProfile: tenant.businessProfile,
+        hasPin: !!tenant.pinCode,
         betaStatus: tenant.betaStatus,
         betaContactPerson: tenant.betaContactPerson,
         betaContactEmail: tenant.betaContactEmail,

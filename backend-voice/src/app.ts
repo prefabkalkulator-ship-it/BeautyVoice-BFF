@@ -1043,17 +1043,23 @@ app.post('/api/tenant/wipe', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
 
-    // Weryfikacja PINu salonu lub tokena admina przed usunięciem
-    const { pinCode } = req.body;
-    if (tenant.pinCode && (!pinCode || String(pinCode).trim() !== tenant.pinCode)) {
-      return res.status(403).json({ error: 'Nieprawidłowy kod PIN salonu. Wymagane potwierdzenie kodem PIN do usunięcia konta.' });
+    // Weryfikacja PINu salonu lub potwierdzenia przed usunięciem (RODO)
+    const { pinCode, confirmText } = req.body;
+    if (tenant.pinCode) {
+      if (!pinCode || String(pinCode).trim() !== tenant.pinCode) {
+        return res.status(403).json({ error: 'Nieprawidłowy kod PIN. Wprowadź poprawny kod PIN, aby potwierdzić usunięcie konta.' });
+      }
+    } else {
+      if (confirmText !== 'USUŃ' && req.body.confirm !== true) {
+        return res.status(400).json({ error: 'Wymagane potwierdzenie wpisaniem słowa USUŃ.' });
+      }
     }
 
     await prisma.tenant.delete({ where: { id: tenant.id } });
-    res.json({ success: true, message: 'Dane usunięto bezpowrotnie.' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Błąd podczas kasowania danych' });
+    res.json({ success: true, message: 'Dane usunięto bezpowrotnie zgodnie z art. 17 RODO.' });
+  } catch (err: any) {
+    console.error('[Tenant Wipe Error]', err);
+    res.status(500).json({ error: err.message || 'Błąd podczas kasowania danych' });
   }
 });
 
@@ -1109,18 +1115,53 @@ app.post('/api/subscription/change-plan', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Nie znaleziono konta' });
+
+    const targetPlan = req.body.targetPlan || req.body.planName;
     const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
-    if (!sub) return res.status(404).json({ error: 'Brak subskrypcji' });
 
-    let newPlanName = sub.planName === 'standard' ? 'premium' : 'standard';
-    let newMinutesIncluded = newPlanName === 'premium' ? 300 : 100;
+    let newPlanName = targetPlan;
+    if (!newPlanName) {
+      if (sub?.planName === 'standard') newPlanName = 'premium';
+      else if (sub?.planName === 'premium') newPlanName = 'personal';
+      else newPlanName = 'standard';
+    }
 
-    const updatedSub = await prisma.subscription.update({
+    let newMinutesIncluded = 100;
+    if (newPlanName === 'premium') newMinutesIncluded = 300;
+    else if (newPlanName === 'standard') newMinutesIncluded = 100;
+    else if (newPlanName === 'personal') newMinutesIncluded = 100;
+
+    const updatedSub = await prisma.subscription.upsert({
       where: { tenantId: tenant.id },
-      data: { planName: newPlanName, minutesIncluded: newMinutesIncluded }
+      create: {
+        tenantId: tenant.id,
+        planName: newPlanName,
+        minutesIncluded: newMinutesIncluded,
+        status: 'active'
+      },
+      update: {
+        planName: newPlanName,
+        minutesIncluded: newMinutesIncluded,
+        status: 'active'
+      }
     });
+
+    if (newPlanName === 'personal' && tenant.businessProfile !== 'personal') {
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { businessProfile: 'personal' }
+      });
+    } else if (newPlanName !== 'personal' && tenant.businessProfile === 'personal') {
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { businessProfile: 'solo' }
+      });
+    }
+
     res.json(updatedSub);
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/tenant/provision-number', async (req, res) => {
