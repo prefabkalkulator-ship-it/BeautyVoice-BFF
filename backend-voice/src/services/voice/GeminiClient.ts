@@ -16,6 +16,15 @@ export interface GeminiClientCallbacks {
   tenantName?: string;
   toneOfVoice?: string;
   contextHistory?: string;
+  // Właściwości Asystenta Osobistego
+  callerRole?: 'OWNER' | 'VIP' | 'GUEST' | 'SPAM';
+  vipName?: string;
+  vipCategory?: string;
+  vipNotes?: string;
+  profession?: string;
+  bioSummary?: string;
+  bufferMinutes?: number;
+  ownerName?: string;
 }
 
 export class GeminiClient {
@@ -52,6 +61,7 @@ export class GeminiClient {
     const aiVoice = this.callbacks.voiceName;
     const businessProfile = this.callbacks.businessProfile;
     const bookingMode = this.callbacks.bookingMode;
+    const callerRole = this.callbacks.callerRole || 'GUEST';
 
     const setupMessage = {
       setup: {
@@ -65,11 +75,19 @@ export class GeminiClient {
               botNameArg: this.callbacks.botName || "Ewa",
               toneOfVoiceArg: this.callbacks.toneOfVoice || "profesjonalny",
               contextHistory: this.callbacks.contextHistory || "",
-              isTextChat: false
+              isTextChat: false,
+              callerRole: callerRole,
+              vipName: this.callbacks.vipName,
+              vipCategory: this.callbacks.vipCategory,
+              vipNotes: this.callbacks.vipNotes,
+              profession: this.callbacks.profession,
+              bioSummary: this.callbacks.bioSummary,
+              bufferMinutes: this.callbacks.bufferMinutes,
+              ownerName: this.callbacks.ownerName
             }) }]
         },
         tools: [{
-          functionDeclarations: BookingService.getToolDefinitions(bookingMode, true)
+          functionDeclarations: BookingService.getToolDefinitions(bookingMode, true, callerRole, businessProfile)
         }],
         generationConfig: {
           responseModalities: ["AUDIO"],

@@ -43,6 +43,13 @@ export class CallOrchestrator {
   private callerPhone: string = "";
   private contextHistory: string = "";
 
+  // Właściwości Asystenta Osobistego
+  private callerRole: 'OWNER' | 'VIP' | 'GUEST' | 'SPAM' = 'GUEST';
+  private vipContact: any = null;
+  private profession: string = '';
+  private bioSummary: string = '';
+  private bufferMinutes: number = 15;
+
   private isReady: boolean = false;
   private twilioMessageBuffer: string[] = [];
 
@@ -140,6 +147,25 @@ export class CallOrchestrator {
           }
 
         } catch(e) { console.error('[Billing error]', e); }
+
+        // Zapis do rejestru połączeń (CallLog)
+        try {
+          const durationSeconds = Math.round(durationMs / 1000);
+          await prisma.callLog.create({
+            data: {
+              tenantId: this.tenantId,
+              callerPhone: this.callerPhone || 'nieznany',
+              callerName: this.vipContact ? this.vipContact.contactName : (this.callerRole === 'OWNER' ? this.tenantName : null),
+              callerRole: this.callerRole,
+              durationSeconds,
+              status: 'completed',
+              isProcessed: false
+            }
+          });
+          console.log(`📝 [CallOrchestrator] Zapisano CallLog: role=${this.callerRole}, duration=${durationSeconds}s`);
+        } catch(logErr) {
+          console.error('[CallOrchestrator] Błąd zapisu CallLog:', logErr);
+        }
       }
     });
   }
@@ -166,6 +192,34 @@ export class CallOrchestrator {
         this.botName = tenant.botName || "Ewa";
         this.toneOfVoice = tenant.toneOfVoice || "profesjonalny";
         this.tenantId = tenant.id;
+        this.profession = tenant.profession || "";
+        this.bioSummary = tenant.bioSummary || "";
+        this.bufferMinutes = tenant.bufferMinutes || 15;
+
+        // Router identyfikacji dzwoniącego (Owner vs VIP vs Guest)
+        const normCaller = this.callerPhone.replace(/[\s\-\+]/g, '');
+        const normOwner = (tenant.phoneNumber || '').replace(/[\s\-\+]/g, '');
+
+        if (normCaller && normOwner && (normCaller === normOwner || normCaller.endsWith(normOwner) || normOwner.endsWith(normCaller))) {
+          this.callerRole = 'OWNER';
+          console.log(`👑 [CallOrchestrator] Rozpoznano połączenie od WŁAŚCICIELA: ${tenant.name} (${this.callerPhone})`);
+        } else if (this.callerPhone) {
+          this.vipContact = await prisma.vipContact.findFirst({
+            where: {
+              tenantId: tenant.id,
+              OR: [
+                { phoneNumber: this.callerPhone },
+                { phoneNumber: this.callerPhone.startsWith('+') ? this.callerPhone.substring(1) : '+' + this.callerPhone }
+              ]
+            }
+          });
+          if (this.vipContact) {
+            this.callerRole = 'VIP';
+            console.log(`⭐ [CallOrchestrator] Rozpoznano kontakt VIP: ${this.vipContact.contactName} (${this.vipContact.category})`);
+          } else {
+            this.callerRole = 'GUEST';
+          }
+        }
       }
     } catch (err) {
       console.error("[Orchestrator] Błąd pobierania tenanta:", err);
@@ -184,8 +238,17 @@ export class CallOrchestrator {
       bookingMode: this.bookingMode,
       tenantName: this.tenantName,
       botName: this.botName,
-      toneOfVoice: this.toneOfVoice, contextHistory: this.contextHistory,
-      tenantId: this.tenantId
+      toneOfVoice: this.toneOfVoice,
+      contextHistory: this.contextHistory,
+      tenantId: this.tenantId,
+      callerRole: this.callerRole,
+      vipName: this.vipContact?.contactName,
+      vipCategory: this.vipContact?.category,
+      vipNotes: this.vipContact?.customNotes,
+      profession: this.profession,
+      bioSummary: this.bioSummary,
+      bufferMinutes: this.bufferMinutes,
+      ownerName: this.tenantName
     });
 
     this.geminiClient.connect();
@@ -221,6 +284,15 @@ export class CallOrchestrator {
                   // Oznacz task jako zakończony
                   await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                }
+            } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
+              // INBOUND DLA ASYSTENTA OSOBISTEGO
+              if (this.callerRole === 'OWNER') {
+                contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${this.tenantName}. Przywitaj się krótko po imieniu ("Cześć ${this.tenantName}!"). Zapytaj co słychać lub czy przedstawić raport.`;
+              } else if (this.callerRole === 'VIP' && this.vipContact) {
+                contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się wyjątkowo serdecznie i ciepło po imieniu.`;
+              } else {
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Reprezentujesz ${this.tenantName}. Przywitaj się profesjonalnie i pamiętaj o Privacy Shield.`;
+              }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // INBOUND CALL LOGIC: jedno spójne sprawdzenie stałego klienta i ostatniej wizyty
               try {
@@ -349,6 +421,14 @@ export class CallOrchestrator {
           return await bookingService.cancelAppointment(tenantId, args.customerPhone);
         case 'requestHumanContact':
           return await bookingService.requestHumanContact(tenantId, args.customerPhone, args.reason);
+        case 'get_owner_activity_summary':
+          return await bookingService.getOwnerActivitySummary(tenantId, args.timeRange);
+        case 'send_summary_email':
+          return await bookingService.sendSummaryEmail(tenantId, args.subject, args.contentMarkdown);
+        case 'save_call_message':
+          return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, args.rawMessage, args.urgency, args.callbackRequested);
+        case 'block_calendar_time':
+          return await bookingService.blockCalendarTime(tenantId, args.startTime, args.durationMinutes, args.title);
         case 'endCall':
           this.shouldHangupAfterTurn = true;
           return { status: "call_ending", message: "Pożegnaj się uprzejmie z klientem jednym krótkim zdaniem. Połączenie zostanie automatycznie rozłączone." };

@@ -48,7 +48,136 @@ export class BookingService {
   /**
    * Schematy narzędzi (Function Calling) dla Gemini
    */
-  public static getToolDefinitions(bookingMode: string = "hourly", isVoiceBot: boolean = false) {
+  public static getToolDefinitions(
+    bookingMode: string = "hourly",
+    isVoiceBot: boolean = false,
+    callerRole: string = "GUEST",
+    businessProfile: string = "solo"
+  ) {
+    if (businessProfile === 'personal') {
+      if (callerRole === 'OWNER') {
+        return [
+          {
+            name: 'get_owner_activity_summary',
+            description: 'Pobiera zagregowane podsumowanie połączeń, wiadomości i spotkań dla WŁAŚCICIELA z wybranego okresu czasu.',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                timeRange: {
+                  type: 'STRING',
+                  description: 'Okres podsumowania: TODAY (dzisiaj), YESTERDAY (wczoraj), THIS_WEEK (ten tydzień)',
+                  enum: ['TODAY', 'YESTERDAY', 'THIS_WEEK']
+                }
+              },
+              required: ['timeRange']
+            }
+          },
+          {
+            name: 'send_summary_email',
+            description: 'Wysyła aktualny raport lub podsumowanie na adres e-mail WŁAŚCICIELA na jego żądanie ("wyślij mi to na maila").',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                subject: { type: 'STRING', description: 'Temat wiadomości e-mail' },
+                contentMarkdown: { type: 'STRING', description: 'Treść raportu w czytelnym formacie punktowym' }
+              },
+              required: ['subject', 'contentMarkdown']
+            }
+          },
+          {
+            name: 'block_calendar_time',
+            description: 'Blokuje czas w kalendarzu na polecenie WŁAŚCICIELA (np. praca w skupieniu, sprawy prywatne, spotkanie wewnętrzne).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                startTime: { type: 'STRING', description: 'Data i godzina rozpoczęcia w formacie ISO (np. 2026-05-20T10:00:00+02:00)' },
+                durationMinutes: { type: 'INTEGER', description: 'Czas trwania blokady w minutach (np. 60, 120)' },
+                title: { type: 'STRING', description: 'Krótki opis blokady (np. Praca w skupieniu, Lekarz, Spotkanie prywatne)' }
+              },
+              required: ['startTime', 'durationMinutes']
+            }
+          },
+          {
+            name: 'endCall',
+            description: 'Kończy połączenie i odkłada słuchawkę. Wywołaj to narzędzie, gdy Właściciel zakończy rozmowę i pożegna się.',
+            parameters: { type: 'OBJECT', properties: {} }
+          }
+        ];
+      }
+
+      // Dla VIP i GOŚCI w profilu personal:
+      return [
+        {
+          name: 'checkAvailability',
+          description: 'Sprawdza wolne okna w kalendarzu na dany dzień z uwzględnieniem bufora czasowego i dyskrecji.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              date: { type: 'STRING', description: 'Data w formacie YYYY-MM-DD' },
+              durationMinutes: { type: 'INTEGER', description: 'Czas trwania spotkania w minutach (domyślnie 30)' },
+              serviceName: { type: 'STRING', description: 'Temat lub cel spotkania (opcjonalnie)' }
+            },
+            required: ['date']
+          }
+        },
+        {
+          name: 'bookAppointment',
+          description: 'Rezerwuje termin spotkania w kalendarzu po uzgodnieniu z dzwoniącym.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerName: { type: 'STRING', description: 'Imię i nazwisko dzwoniącego' },
+              customerPhone: { type: 'STRING', description: 'Numer telefonu dzwoniącego' },
+              startTime: { type: 'STRING', description: 'Data i godzina rozpoczęcia w ISO' },
+              durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach' },
+              serviceName: { type: 'STRING', description: 'Temat spotkania lub konsultacji' }
+            },
+            required: ['customerName', 'customerPhone', 'startTime', 'durationMinutes']
+          }
+        },
+        {
+          name: 'save_call_message',
+          description: 'Zapisuje wiadomość od dzwoniącego, generuje skrót i wysyła natychmiastowe powiadomienie Push do właściciela.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              callerName: { type: 'STRING', description: 'Imię i nazwisko osoby zostawiającej wiadomość' },
+              rawMessage: { type: 'STRING', description: 'Dokładna treść przekazanej wiadomości lub prośby' },
+              urgency: {
+                type: 'STRING',
+                description: 'Poziom pilności sprawy',
+                enum: ['LOW', 'NORMAL', 'HIGH', 'CRITICAL']
+              },
+              callbackRequested: { type: 'BOOLEAN', description: 'Czy dzwoniący prosi o pilny kontakt zwrotny' }
+            },
+            required: ['callerName', 'rawMessage', 'urgency']
+          }
+        },
+        {
+          name: 'getFAQ',
+          description: 'Pobiera odpowiedzi na pytania dotyczące działalności właściciela (baza wiedzy).',
+          parameters: { type: 'OBJECT', properties: {} }
+        },
+        {
+          name: 'requestHumanContact',
+          description: 'Informuje właściciela o pilnej prośbie o kontakt telefoniczny.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerPhone: { type: 'STRING', description: 'Numer telefonu' },
+              reason: { type: 'STRING', description: 'Powód kontaktu' }
+            },
+            required: ['customerPhone', 'reason']
+          }
+        },
+        {
+          name: 'endCall',
+          description: 'Kończy połączenie i odkłada słuchawkę po pożegnaniu.',
+          parameters: { type: 'OBJECT', properties: {} }
+        }
+      ];
+    }
+
     const allTools = [
           {
             name: 'send_nps_surveys',
@@ -159,15 +288,15 @@ export class BookingService {
             required: ['target_scope', 'confirmation_method']
           }
         },
-        {
+      {
         name: 'getServicesAndPrices',
-        description: 'Pobiera aktualną listę usług salonu (lub pokoi), ceny oraz personel.',
+        description: 'Pobiera aktualny cennik usług oraz listę personelu. ZAWSZE wywołaj to narzędzie na początku rozmowy, gdy klient pyta o ofertę, ceny lub dostępne zabiegi.',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
         name: 'checkAvailability',
-        description: bookingMode === 'daily'
-          ? 'Sprawdza dostępność zasobów na doby w zadanym przedziale dat.'
+        description: bookingMode === 'daily' 
+          ? 'Sprawdza dostępność zasobów na doby w zadanym przedziale dat.' 
           : 'Sprawdza dostępne godziny na wizytę w danym dniu dla wybranej usługi.',
         parameters: {
           type: 'OBJECT',
@@ -259,14 +388,29 @@ export class BookingService {
       const isTeam = tenant?.businessProfile === 'team' || tenant?.businessProfile === 'facility';
 
       const reqDate = new Date(`${date}T00:00:00+02:00`);
+      const bufferMinutes = tenant?.bufferMinutes || 0;
+      const bufferMs = bufferMinutes * 60000;
       
-      const service = await prisma.service.findFirst({
-        where: { tenantId, name: { contains: serviceName, mode: 'insensitive' } },
+      let service = await prisma.service.findFirst({
+        where: { tenantId, name: { contains: serviceName || '', mode: 'insensitive' } },
         include: { staffMembers: { include: { staff: true } } }
       });
 
       if (!service) {
-        throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
+        if (tenant?.businessProfile === 'personal') {
+          service = await prisma.service.findFirst({
+            where: { tenantId },
+            include: { staffMembers: { include: { staff: true } } }
+          });
+          if (!service) {
+            const newSvc = await prisma.service.create({
+              data: { tenantId, name: serviceName || 'Spotkanie', price: 0, durationMinutes: durationMinutes || 30 }
+            });
+            service = { ...newSvc, staffMembers: [] };
+          }
+        } else {
+          throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
+        }
       }
 
       let targetStaffIds: string[] = [];
@@ -370,7 +514,11 @@ export class BookingService {
               if (currentSlot < staffStartMs || slotEnd > staffEndMs) continue;
 
               const staffAppointments = appointments.filter(a => a.staffId === staffId);
-              const conflict = staffAppointments.some(a => (currentSlot < a.endTime.getTime() && slotEnd > a.startTime.getTime()));
+              const conflict = staffAppointments.some(a => {
+                const aStart = a.startTime.getTime() - bufferMs;
+                const aEnd = a.endTime.getTime() + bufferMs;
+                return currentSlot < aEnd && slotEnd > aStart;
+              });
               
               if (!conflict) {
                 hasSlot = true;
@@ -381,7 +529,11 @@ export class BookingService {
             const staffTimeMin = reqDate.getTime() + 8 * 60 * 60 * 1000;
             const staffTimeMax = reqDate.getTime() + 20 * 60 * 60 * 1000;
             if (currentSlot >= staffTimeMin && slotEnd <= staffTimeMax) {
-              const conflict = appointments.some(a => (currentSlot < a.endTime.getTime() && slotEnd > a.startTime.getTime()));
+              const conflict = appointments.some(a => {
+                const aStart = a.startTime.getTime() - bufferMs;
+                const aEnd = a.endTime.getTime() + bufferMs;
+                return currentSlot < aEnd && slotEnd > aStart;
+              });
               if (!conflict) hasSlot = true;
             }
           }
@@ -541,13 +693,27 @@ export class BookingService {
         endDate = new Date(startDate.getTime() + durationMinutes * 60000);
       }
 
-      const service = await prisma.service.findFirst({
-        where: { tenantId, name: { contains: serviceName, mode: 'insensitive' } },
+      let service = await prisma.service.findFirst({
+        where: { tenantId, name: { contains: serviceName || '', mode: 'insensitive' } },
         include: { staffMembers: { include: { staff: true } } }
       });
 
       if (!service) {
-        throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (tenant?.businessProfile === 'personal') {
+          service = await prisma.service.findFirst({
+            where: { tenantId },
+            include: { staffMembers: { include: { staff: true } } }
+          });
+          if (!service) {
+            const newSvc = await prisma.service.create({
+              data: { tenantId, name: serviceName || 'Spotkanie / Konsultacja', price: 0, durationMinutes: durationMinutes || 30 }
+            });
+            service = { ...newSvc, staffMembers: [] };
+          }
+        } else {
+          throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
+        }
       }
 
       const existingAppointment = await prisma.appointment.findFirst({
@@ -736,6 +902,200 @@ export class BookingService {
         throw error;
       }
       throw new Error('Wystąpił problem podczas próby zapisania wizyty. Spróbuj jeszcze raz lub przeproś klienta.');
+    }
+  }
+
+  /**
+   * POBIERA ZAGREGOWANY RAPORT DLA WŁAŚCICIELA (Owner Executive Summary)
+   */
+  public async getOwnerActivitySummary(tenantId: string, timeRange: string = "TODAY") {
+    try {
+      const now = new Date();
+      let fromDate = new Date();
+      fromDate.setHours(0, 0, 0, 0);
+
+      if (timeRange === "YESTERDAY") {
+        fromDate.setDate(fromDate.getDate() - 1);
+        const toDate = new Date(fromDate);
+        toDate.setHours(23, 59, 59, 999);
+      } else if (timeRange === "THIS_WEEK") {
+        const day = fromDate.getDay();
+        const diff = fromDate.getDate() - day + (day === 0 ? -6 : 1); // od poniedziałku
+        fromDate.setDate(diff);
+      }
+
+      const [callLogs, appointments] = await Promise.all([
+        prisma.callLog.findMany({
+          where: {
+            tenantId,
+            callerRole: { not: 'OWNER' },
+            createdAt: { gte: fromDate }
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.appointment.findMany({
+          where: {
+            tenantId,
+            startTime: { gte: fromDate },
+            status: { not: 'cancelled' }
+          },
+          orderBy: { startTime: 'asc' },
+          include: { service: true }
+        })
+      ]);
+
+      const messagesWaiting = callLogs.filter(c => c.isMessageLeft);
+      const urgentMessages = callLogs.filter(c => c.urgency === 'HIGH' || c.urgency === 'CRITICAL');
+
+      return {
+        timeRange,
+        totalCalls: callLogs.length,
+        messagesCount: messagesWaiting.length,
+        urgentCount: urgentMessages.length,
+        appointmentsCount: appointments.length,
+        messages: messagesWaiting.map(m => ({
+          who: m.callerName || m.callerPhone,
+          role: m.callerRole,
+          urgency: m.urgency,
+          summary: m.summary || 'Brak skrótu',
+          action: m.actionItems || 'Brak'
+        })),
+        upcomingAppointments: appointments.map(a => ({
+          client: a.customerName,
+          phone: a.customerPhone,
+          start: new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' }).format(a.startTime),
+          topic: a.service?.name || 'Spotkanie'
+        }))
+      };
+    } catch (err: any) {
+      console.error('[BookingService] Błąd w getOwnerActivitySummary:', err);
+      return { error: err.message || "Błąd pobierania raportu." };
+    }
+  }
+
+  /**
+   * WYSYŁA RAPORT NA E-MAIL WŁAŚCICIELA NA JEGO ŻĄDANIE ("wyślij mi to na maila")
+   */
+  public async sendSummaryEmail(tenantId: string, subject: string, contentMarkdown: string) {
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      const email = tenant?.contactEmail || tenant?.betaContactEmail;
+      if (!email) {
+        return { error: "Brak skonfigurowanego adresu e-mail w Twoim profilu. Uzupełnij e-mail w Ustawieniach." };
+      }
+
+      const { EmailService } = await import('./email/EmailService');
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+          <h2 style="color: #111827; margin-top: 0; font-size: 20px;">${subject}</h2>
+          <p style="color: #6b7280; font-size: 14px;">Zestawienie wygenerowane przez Twojego Asystenta Głosowego EVA na Twoje żądanie podczas rozmowy telefonicznej.</p>
+          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+          <div style="color: #374151; font-size: 15px; line-height: 1.6; white-space: pre-line;">
+            ${contentMarkdown}
+          </div>
+          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+          <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">EVA Voice Assistant &copy; ${new Date().getFullYear()}</p>
+        </div>
+      `;
+
+      const sent = await EmailService.sendEmail(email, subject, html, contentMarkdown);
+      return { success: sent, message: sent ? `Raport został wysłany na Twój adres e-mail (${email}).` : "Błąd podczas wysyłki wiadomości e-mail." };
+    } catch (err: any) {
+      console.error('[BookingService] Błąd w sendSummaryEmail:', err);
+      return { error: err.message || "Błąd wysyłki e-mail." };
+    }
+  }
+
+  /**
+   * ZAPISUJE WIADOMOŚĆ OD DZWONIĄCEGO I WYSYŁA NATYCHMIASTOWY PUSH DO WŁAŚCICIELA
+   */
+  public async saveCallMessage(
+    tenantId: string,
+    callerPhone: string,
+    callerName: string,
+    rawMessage: string,
+    urgency: string = "NORMAL",
+    callbackRequested: boolean = true
+  ) {
+    try {
+      const callLog = await prisma.callLog.create({
+        data: {
+          tenantId,
+          callerPhone: callerPhone || 'nieznany',
+          callerName: callerName || 'Nieznany rozmówca',
+          callerRole: 'GUEST',
+          durationSeconds: 0,
+          status: 'message_left',
+          summary: rawMessage,
+          actionItems: callbackRequested ? 'Prośba o pilny kontakt telefoniczny' : undefined,
+          isMessageLeft: true,
+          urgency: urgency.toUpperCase(),
+          isProcessed: false
+        }
+      });
+
+      // Natychmiastowy Push FCM do właściciela
+      try {
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+        if (tenant?.fcmTokens && tenant.fcmTokens.length > 0) {
+          const { PushService } = await import('./PushService');
+          const priorityIcon = (urgency.toUpperCase() === 'HIGH' || urgency.toUpperCase() === 'CRITICAL') ? '🚨 [PILNE]' : '📩';
+          await PushService.sendNotification(
+            tenant.fcmTokens,
+            `${priorityIcon} Wiadomość od: ${callerName || callerPhone}`,
+            rawMessage,
+            'https://beautyvoice-bff.web.app/dashboard',
+            callerPhone
+          );
+          await prisma.callLog.update({ where: { id: callLog.id }, data: { pushSent: true } });
+        }
+      } catch (pushErr) {
+        console.error('[BookingService] Błąd wysyłki Push w saveCallMessage:', pushErr);
+      }
+
+      return { success: true, message: "Wiadomość została zapisana i przekazana właścicielowi w powiadomieniu." };
+    } catch (err: any) {
+      console.error('[BookingService] Błąd w saveCallMessage:', err);
+      return { error: err.message || "Błąd zapisu wiadomości." };
+    }
+  }
+
+  /**
+   * BLOKUJE CZAS W KALENDARZU NA POLECENIE WŁAŚCICIELA
+   */
+  public async blockCalendarTime(
+    tenantId: string,
+    startTime: string,
+    durationMinutes: number = 60,
+    title: string = "Praca w skupieniu / Zablokowany czas"
+  ) {
+    try {
+      let service = await prisma.service.findFirst({ where: { tenantId } });
+      if (!service) {
+        service = await prisma.service.create({
+          data: { tenantId, name: 'Blokada kalendarza', price: 0, durationMinutes }
+        });
+      }
+      const start = new Date(startTime);
+      const end = new Date(start.getTime() + durationMinutes * 60000);
+
+      const appt = await prisma.appointment.create({
+        data: {
+          tenantId,
+          serviceId: service.id,
+          customerName: title || 'Praca w skupieniu',
+          customerPhone: 'OWNER',
+          startTime: start,
+          endTime: end,
+          status: 'confirmed'
+        }
+      });
+
+      const timeStr = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).format(start);
+      return { success: true, message: `Zablokowano czas w kalendarzu od ${timeStr} na ${durationMinutes} minut.` };
+    } catch (err: any) {
+      console.error('[BookingService] Błąd w blockCalendarTime:', err);
+      return { error: err.message || "Błąd blokowania czasu." };
     }
   }
 }

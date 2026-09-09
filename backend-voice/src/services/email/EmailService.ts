@@ -32,6 +32,30 @@ export class EmailService {
     return this.transporter;
   }
 
+  static async sendEmail(recipient: string, subject: string, html: string, text?: string): Promise<boolean> {
+    const sender = process.env.SMTP_USER || 'support@veritas-app.com';
+    const transporter = this.getTransporter();
+    if (!transporter) {
+      console.log(`\n📧 [Mock Email] Do: ${recipient}\nTemat: ${subject}\nTreść:\n${text || html}\n`);
+      return true;
+    }
+
+    try {
+      const info = await transporter.sendMail({
+        from: `"EVA - Twój Asystent Osobisty" <${sender}>`,
+        to: recipient,
+        subject,
+        text: text || html.replace(/<[^>]*>?/gm, ''),
+        html
+      });
+      console.log(`📧 [EmailService] Wysłano e-mail do ${recipient}: ${info.messageId}`);
+      return true;
+    } catch (err) {
+      console.error(`❌ [EmailService] Błąd wysyłki e-maila do ${recipient}:`, err);
+      return false;
+    }
+  }
+
   static async sendAdminAlert(subject: string, html: string, text?: string): Promise<boolean> {
     const recipient = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.SMTP_USER || 'support@veritas-app.com';
     const sender = process.env.SMTP_USER || 'support@veritas-app.com';
