@@ -32,6 +32,14 @@ export default function Settings() {
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Pola asystenta osobistego
+  const [profession, setProfession] = useState('');
+  const [bioSummary, setBioSummary] = useState('');
+  const [bufferMinutes, setBufferMinutes] = useState(15);
+  const [ownerRequirePin, setOwnerRequirePin] = useState(false);
+  const [morningBriefingEnabled, setMorningBriefingEnabled] = useState(true);
+  const [morningBriefingHour, setMorningBriefingHour] = useState(8);
+
   // Zmienne do modala pracownika
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [currentStaff, setCurrentStaff] = useState<any>(null);
@@ -60,6 +68,13 @@ export default function Settings() {
         setContactEmail(tData.contactEmail || '');
         setEmailPublicForAi(tData.emailPublicForAi || false);
         setAssignedPhoneNumber(tData.assignedPhoneNumber || '');
+
+        setProfession(tData.profession || '');
+        setBioSummary(tData.bioSummary || '');
+        setBufferMinutes(tData.bufferMinutes ?? 15);
+        setOwnerRequirePin(tData.ownerRequirePin ?? false);
+        setMorningBriefingEnabled(tData.morningBriefingEnabled ?? true);
+        setMorningBriefingHour(tData.morningBriefingHour ?? 8);
       }
       setStaffList(sData);
       setServices(svcData);
@@ -80,9 +95,25 @@ export default function Settings() {
         await fetch('/api/tenant', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ businessProfile, aiVoice, bookingMode, botName, toneOfVoice, reviewLink1, reviewLink2, contactEmail, emailPublicForAi })
+          body: JSON.stringify({ 
+            businessProfile, 
+            aiVoice, 
+            bookingMode, 
+            botName, 
+            toneOfVoice, 
+            reviewLink1, 
+            reviewLink2, 
+            contactEmail, 
+            emailPublicForAi,
+            profession,
+            bioSummary,
+            bufferMinutes,
+            ownerRequirePin,
+            morningBriefingEnabled,
+            morningBriefingHour
+          })
         });
-      alert('Zapisano ustawienia firmy.');
+      alert('Zapisano ustawienia.');
     } catch (err) {
       alert('Błąd zapisu');
     }
@@ -171,11 +202,12 @@ export default function Settings() {
 
       <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60">
         <h3 className="text-xl font-serif text-surface-900 mb-4">Profil Biznesowy</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {[
-            { id: 'solo', title: 'Solo', desc: 'Jeden kalendarz główny, jeden usługodawca.' },
-            { id: 'team', title: 'Zespół', desc: 'Wielu pracowników świadczących różne lub te same usługi.' },
-            { id: 'facility', title: 'Obiekty', desc: 'Rezerwacja gabinetów lub zasobów bez konkretnego pracownika.' }
+            { id: 'solo', title: 'Solo (Salon)', desc: 'Jeden kalendarz główny, jeden usługodawca.' },
+            { id: 'team', title: 'Zespół (Salon)', desc: 'Wielu pracowników świadczących różne usługi.' },
+            { id: 'facility', title: 'Obiekty', desc: 'Rezerwacja gabinetów lub zasobów bez pracownika.' },
+            { id: 'personal', title: 'Osobisty Asystent AI', desc: 'Dla prawników, lekarzy, architektów, konsultantów i inżynierów.' }
           ].map(opt => (
             <div 
               key={opt.id}
@@ -187,6 +219,113 @@ export default function Settings() {
             </div>
           ))}
         </div>
+
+        {businessProfile === 'personal' && (
+          <div className="mb-8 p-5 bg-amber-50/40 border border-amber-200/80 rounded-2xl animate-in fade-in duration-300">
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="text-2xl">👔</span>
+              <div>
+                <h4 className="font-bold text-surface-900 text-base">Konfiguracja Osobistego Asystenta AI</h4>
+                <p className="text-xs text-surface-500">Dostosuj wiedzę o sobie, bufor między spotkaniami oraz poranny raport.</p>
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Wykonywany zawód / Specjalizacja
+                </label>
+                <input 
+                  type="text" 
+                  value={profession} 
+                  onChange={e => setProfession(e.target.value)}
+                  placeholder="np. Architekt, Radca Prawny, Programista, Lekarz, Doradca"
+                  className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary text-sm bg-white"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">Asystentka uwzględni Twój zawód przy powitaniach i rozmowach z dzwoniącymi.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Logistyczny bufor odstępu między spotkaniami
+                </label>
+                <select 
+                  value={bufferMinutes} 
+                  onChange={e => setBufferMinutes(parseInt(e.target.value, 10))}
+                  className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary text-sm bg-white"
+                >
+                  <option value={0}>Brak bufora (0 min)</option>
+                  <option value={10}>10 minut odstępu</option>
+                  <option value={15}>15 minut odstępu (zalecane)</option>
+                  <option value={30}>30 minut odstępu</option>
+                  <option value={45}>45 minut odstępu</option>
+                  <option value={60}>60 minut odstępu</option>
+                </select>
+                <p className="text-[11px] text-surface-500 mt-1">Czas na dojazd, oddech lub notatki przed kolejnym spotkaniem.</p>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  O mnie / BIO (Baza wiedzy wstrzykiwana do promptu AI)
+                </label>
+                <textarea 
+                  rows={3}
+                  value={bioSummary} 
+                  onChange={e => setBioSummary(e.target.value)}
+                  placeholder="np. 'Jestem adwokatem specjalizującym się w prawie gospodarczym. Spotkania prowadzę w kancelarii w Warszawie lub online. W piątki po 15:00 nie odbieram telefonów. W pilnych sprawach karnych prosić o SMS.'"
+                  className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary text-sm bg-white"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">Wirtualna asystentka zapozna się z tym tekstem i będzie się nim kierować podczas rozmowy.</p>
+              </div>
+
+              <div className="md:col-span-2 p-4 rounded-xl border border-amber-200/80 bg-white space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={morningBriefingEnabled} 
+                    onChange={e => setMorningBriefingEnabled(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-primary rounded accent-primary"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-surface-900 uppercase tracking-wider">Poranny Raport Wykonawczy (Morning Executive Briefing)</span>
+                    <p className="text-xs text-surface-600 mt-0.5">Codzienny e-mail podsumowujący harmonogram dnia, rocznice/urodziny klientów i wiadomości z ostatnich 24h.</p>
+                  </div>
+                </label>
+
+                {morningBriefingEnabled && (
+                  <div className="pl-7 flex items-center gap-3 pt-1 border-t border-surface-100">
+                    <label className="text-xs font-medium text-surface-700">Godzina wysyłki raportu:</label>
+                    <select 
+                      value={morningBriefingHour} 
+                      onChange={e => setMorningBriefingHour(parseInt(e.target.value, 10))}
+                      className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs outline-none focus:border-primary bg-white"
+                    >
+                      <option value={6}>06:00 rano</option>
+                      <option value={7}>07:00 rano</option>
+                      <option value={8}>08:00 rano (domyślnie)</option>
+                      <option value={9}>09:00 rano</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="md:col-span-2 p-4 rounded-xl border border-amber-200/80 bg-white">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={ownerRequirePin} 
+                    onChange={e => setOwnerRequirePin(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 text-primary rounded accent-primary"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-surface-900 uppercase tracking-wider">Wymagaj PIN przy połączeniu z mojego numeru komórkowego</span>
+                    <p className="text-xs text-surface-600 mt-0.5">Zabezpieczenie na wypadek spoofingu numeru telefonu lub dzwonienia przez osoby trzecie z Twojej komórki.</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="mb-6">
           <h4 className="font-medium text-surface-900 mb-3">Wybór głosu Asystenta AI</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -334,7 +473,7 @@ export default function Settings() {
         </div>
       )}
 
-      {businessProfile !== 'solo' && (
+      {(businessProfile === 'team' || businessProfile === 'facility') && (
         <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-serif text-surface-900">Zarządzanie Zespołem / Zasobami</h3>

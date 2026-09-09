@@ -13,6 +13,9 @@ import TimeOff from './components/TimeOff';
 import Subscription from './pages/Subscription';
 import Guide from './pages/Guide';
 import { SuperAdminDashboard } from './components/SuperAdminDashboard';
+import VipContacts from './components/VipContacts';
+import AnnualEvents from './components/AnnualEvents';
+import CallHistoryMessages from './components/CallHistoryMessages';
 
 import './index.css';
 
@@ -28,6 +31,9 @@ function App() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Navigate to="/dashboard/appointments" replace />} />
           <Route path="appointments" element={<Appointments />} />
+          <Route path="vip-contacts" element={<VipContacts />} />
+          <Route path="annual-events" element={<AnnualEvents />} />
+          <Route path="messages" element={<CallHistoryMessages />} />
           <Route path="services" element={<Services />} />
           <Route path="customers" element={<Customers />} />
           <Route path="faq" element={<Faq />} />

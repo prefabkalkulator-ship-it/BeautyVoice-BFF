@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users, BookOpen } from 'lucide-react';
+import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users, BookOpen, Star, Gift, PhoneCall } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { requestForToken, onMessageListener } from '../firebase';
@@ -8,6 +8,7 @@ import OnboardingBanner from '../components/OnboardingBanner';
 
 export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [businessProfile, setBusinessProfile] = useState<string>('solo');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -40,10 +41,11 @@ export default function DashboardLayout() {
       }
       return r.json();
     }).then(t => {
-      if (t && t.isSuspended) {
-        setIsSuspended(true);
-      } else {
-        setIsSuspended(false);
+      if (t) {
+        setIsSuspended(Boolean(t.isSuspended));
+        if (t.businessProfile) {
+          setBusinessProfile(t.businessProfile);
+        }
       }
     }).catch(() => {});
   }, [navigate]);
@@ -72,7 +74,15 @@ export default function DashboardLayout() {
       .catch(() => {});
   }, []);
 
-  const tabs = [
+  const tabs = businessProfile === 'personal' ? [
+    { id: 'appointments', path: '/dashboard/appointments', label: 'Kalendarz & Spotkania', icon: Calendar },
+    { id: 'vip-contacts', path: '/dashboard/vip-contacts', label: 'Kontakty VIP', icon: Star },
+    { id: 'messages', path: '/dashboard/messages', label: 'Wiadomości i Połączenia', icon: PhoneCall },
+    { id: 'annual-events', path: '/dashboard/annual-events', label: 'Rocznice & Podatki', icon: Gift },
+    { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Asystenta', icon: Settings },
+    { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
+    { id: 'guide', path: '/dashboard/guide', label: 'Instrukcja', icon: BookOpen },
+  ] : [
     { id: 'appointments', path: '/dashboard/appointments', label: 'Rezerwacje', icon: Calendar },
     { id: 'services', path: '/dashboard/services', label: 'Usługi', icon: ClipboardList },
     { id: 'customers', path: '/dashboard/customers', label: 'Klienci', icon: Users },
@@ -117,7 +127,9 @@ export default function DashboardLayout() {
             <h1 className="font-serif font-semibold text-xl text-surface-900 leading-none flex items-baseline">
               E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
             </h1>
-            <span className="text-xs text-surface-500 font-medium tracking-wide uppercase">Dashboard</span>
+            <span className="text-xs text-surface-500 font-medium tracking-wide uppercase">
+              {businessProfile === 'personal' ? 'Personal AI' : 'Dashboard'}
+            </span>
           </div>
         </div>
 

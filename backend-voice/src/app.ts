@@ -312,7 +312,13 @@ app.put('/api/tenant', async (req, res) => {
         reviewLink1: req.body.reviewLink1 ?? undefined,
         reviewLink2: req.body.reviewLink2 ?? undefined,
         contactEmail: req.body.contactEmail !== undefined ? req.body.contactEmail : undefined,
-        emailPublicForAi: req.body.emailPublicForAi !== undefined ? req.body.emailPublicForAi : undefined
+        emailPublicForAi: req.body.emailPublicForAi !== undefined ? req.body.emailPublicForAi : undefined,
+        profession: req.body.profession !== undefined ? req.body.profession : undefined,
+        bioSummary: req.body.bioSummary !== undefined ? req.body.bioSummary : undefined,
+        bufferMinutes: req.body.bufferMinutes !== undefined ? parseInt(req.body.bufferMinutes, 10) : undefined,
+        ownerRequirePin: req.body.ownerRequirePin !== undefined ? Boolean(req.body.ownerRequirePin) : undefined,
+        morningBriefingEnabled: req.body.morningBriefingEnabled !== undefined ? Boolean(req.body.morningBriefingEnabled) : undefined,
+        morningBriefingHour: req.body.morningBriefingHour !== undefined ? parseInt(req.body.morningBriefingHour, 10) : undefined
       }
     });
 
@@ -1394,6 +1400,266 @@ const upcomingList = await prisma.appointment.findMany({
 
     res.send("OK");
   });
+
+// ==========================================
+// --- API DLA OSOBISTEGO ASYSTENTA AI ---
+// ==========================================
+
+// 1. VIP Contacts API
+app.get('/api/vip-contacts', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+    const vips = await prisma.vipContact.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(vips);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/vip-contacts', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    let { phoneNumber, contactName, category, customNotes, allowPrioritySlots } = req.body;
+    if (!phoneNumber || !contactName) {
+      return res.status(400).json({ error: 'Numer telefonu i nazwa kontaktu są wymagane.' });
+    }
+
+    let cleaned = phoneNumber.replace(/[\s-()]/g, '');
+    if (!cleaned.startsWith('+')) {
+      if (cleaned.length === 9) cleaned = '+48' + cleaned;
+      else cleaned = '+' + cleaned;
+    }
+
+    const vip = await prisma.vipContact.upsert({
+      where: {
+        tenantId_phoneNumber: {
+          tenantId: tenant.id,
+          phoneNumber: cleaned
+        }
+      },
+      update: {
+        contactName,
+        category: category || 'VIP',
+        customNotes: customNotes ?? null,
+        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true
+      },
+      create: {
+        tenantId: tenant.id,
+        phoneNumber: cleaned,
+        contactName,
+        category: category || 'VIP',
+        customNotes: customNotes ?? null,
+        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true
+      }
+    });
+
+    res.json(vip);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/vip-contacts/:id', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    const { contactName, category, customNotes, allowPrioritySlots, phoneNumber } = req.body;
+
+    let cleaned = phoneNumber ? phoneNumber.replace(/[\s-()]/g, '') : undefined;
+    if (cleaned && !cleaned.startsWith('+')) {
+      if (cleaned.length === 9) cleaned = '+48' + cleaned;
+      else cleaned = '+' + cleaned;
+    }
+
+    const updated = await prisma.vipContact.updateMany({
+      where: { id, tenantId: tenant.id },
+      data: {
+        contactName: contactName ?? undefined,
+        phoneNumber: cleaned ?? undefined,
+        category: category ?? undefined,
+        customNotes: customNotes !== undefined ? customNotes : undefined,
+        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : undefined
+      }
+    });
+
+    res.json({ success: true, count: updated.count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/vip-contacts/:id', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    await prisma.vipContact.deleteMany({
+      where: { id, tenantId: tenant.id }
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Annual Events API (Rocznice, Urodziny, Podatki)
+app.get('/api/annual-events', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const events = await prisma.annualEvent.findMany({
+      where: { tenantId: tenant.id },
+      orderBy: [
+        { month: 'asc' },
+        { day: 'asc' }
+      ]
+    });
+    res.json(events);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/annual-events', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { title, month, day, category, reminderDaysAhead } = req.body;
+    if (!title || !month || !day) {
+      return res.status(400).json({ error: 'Tytuł, miesiąc i dzień są wymagane.' });
+    }
+
+    const event = await prisma.annualEvent.create({
+      data: {
+        tenantId: tenant.id,
+        title,
+        month: parseInt(month, 10),
+        day: parseInt(day, 10),
+        category: category || 'custom',
+        reminderDaysAhead: reminderDaysAhead !== undefined ? parseInt(reminderDaysAhead, 10) : 1
+      }
+    });
+
+    res.json(event);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/annual-events/:id', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    const { title, month, day, category, reminderDaysAhead } = req.body;
+
+    const updated = await prisma.annualEvent.updateMany({
+      where: { id, tenantId: tenant.id },
+      data: {
+        title: title ?? undefined,
+        month: month !== undefined ? parseInt(month, 10) : undefined,
+        day: day !== undefined ? parseInt(day, 10) : undefined,
+        category: category ?? undefined,
+        reminderDaysAhead: reminderDaysAhead !== undefined ? parseInt(reminderDaysAhead, 10) : undefined
+      }
+    });
+
+    res.json({ success: true, count: updated.count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/annual-events/:id', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    await prisma.annualEvent.deleteMany({
+      where: { id, tenantId: tenant.id }
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Call Logs & Messages API
+app.get('/api/call-logs', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { onlyMessages, limit } = req.query;
+    const whereClause: any = { tenantId: tenant.id };
+    if (onlyMessages === 'true') {
+      whereClause.OR = [
+        { isMessageLeft: true },
+        { summary: { not: null } }
+      ];
+    }
+
+    const takeCount = limit ? parseInt(limit as string, 10) : 100;
+
+    const logs = await prisma.callLog.findMany({
+      where: whereClause,
+      orderBy: { createdAt: 'desc' },
+      take: takeCount
+    });
+
+    res.json(logs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/call-logs/:id/processed', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    const updated = await prisma.callLog.updateMany({
+      where: { id, tenantId: tenant.id },
+      data: { isProcessed: true }
+    });
+
+    res.json({ success: true, count: updated.count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/call-logs/:id', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    await prisma.callLog.deleteMany({
+      where: { id, tenantId: tenant.id }
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- API dla Super-Administratora i Pilotażu Beta ---
 import { adminController } from './controllers/AdminController';

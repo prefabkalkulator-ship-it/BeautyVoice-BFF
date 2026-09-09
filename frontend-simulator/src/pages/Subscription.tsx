@@ -146,6 +146,11 @@ export default function Subscription() {
   // --- WIDOK 1: Subskrypcja aktywna / zawieszona ---
   if (subStatus !== 'none') {
     const isPilot = subDetails?.planName === 'beta_pilot' || subDetails?.planName === 'pilot';
+    const isPersonal = subDetails?.planName === 'personal' || tenant?.businessProfile === 'personal';
+
+    const planLabel = isPilot 
+      ? 'Pakiet Pilotażowy Premium (Miesiąc Gratis)' 
+      : (subDetails?.planName === 'personal' ? 'Pakiet Osobisty (99 zł / mc)' : (subDetails?.planName ? subDetails.planName.toUpperCase() : 'STANDARD'));
 
     return (
       <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -177,8 +182,8 @@ export default function Subscription() {
           <div className="mb-6">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-medium text-surface-900">
-                Aktualny plan: <span className="font-bold uppercase text-primary">
-                  {isPilot ? 'Pakiet Pilotażowy Premium (Miesiąc Gratis)' : (subDetails?.planName || 'Standard')}
+                Aktualny plan: <span className="font-bold text-primary">
+                  {planLabel}
                 </span>
               </h2>
               {isPilot && (
@@ -186,10 +191,15 @@ export default function Subscription() {
                   <Sparkles className="w-3 h-3" /> Aktywny Pilotaż Premium
                 </span>
               )}
+              {isPersonal && !isPilot && (
+                <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                  <Sparkles className="w-3 h-3" /> Pakiet Osobisty
+                </span>
+              )}
             </div>
 
             <p className="text-surface-600 mt-2">Status: <strong className="uppercase">{subStatus}</strong></p>
-            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || 300}</strong></p>
+            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || (subDetails?.planName === 'personal' ? 100 : 300)}</strong></p>
             
             {tenant?.assignedPhoneNumber && (
               <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
