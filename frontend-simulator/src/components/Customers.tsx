@@ -1,4 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import PageHelpButton from './common/PageHelpButton';
 import { Users, Search, Plus, Mail, Tag, Check, X, Trash2, Phone } from 'lucide-react';
 
 interface Customer {
@@ -7,6 +9,7 @@ interface Customer {
   phone: string;
   tags: string[];
   notes: string;
+  formalityLevel?: string;
   lastVisitAt: string | null;
 }
 
@@ -15,7 +18,7 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', tags: '' });
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', tags: '', formalityLevel: 'default' });
 
   
   const handleDeleteCustomer = async (id: string) => {
@@ -45,14 +48,15 @@ export default function Customers() {
         body: JSON.stringify({
           name: newCustomerForm.name,
           phone: newCustomerForm.phone,
-          tags: tagsArray
+          tags: tagsArray,
+          formalityLevel: newCustomerForm.formalityLevel
         })
       });
       if (res.ok) {
         const added = await res.json();
         setCustomers([added, ...customers]);
         setShowNewModal(false);
-        setNewCustomerForm({ name: '', phone: '', tags: '' });
+        setNewCustomerForm({ name: '', phone: '', tags: '', formalityLevel: 'default' });
       } else {
         alert('Błąd dodawania klienta');
       }
@@ -83,8 +87,20 @@ export default function Customers() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Klienci (Mini-CRM)</h2>
-          <p className="text-surface-500 mt-1">Zarządzaj swoją bazą kontaktów i tagami.</p>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Klienci (Mini-CRM)</h2>
+            <PageHelpButton
+              title="Baza Klientów i Rejestr Formalności"
+              description="Zarządzaj bazą kontaktów, indywidualnym poziomem formalności oraz historią interakcji."
+              tips={[
+                "Automatyczne rozpoznawanie: Powracający klienci są witani po imieniu.",
+                "Poziom formalności per kontakt: Ustaw, czy asystent ma zwracać się do danego klienta oficjalnie (Pan/Pani) czy bezpośrednio na 'Ty'.",
+                "Tagi i etykiety: Dodawaj tagi (np. Stały Klient, Negocjacje, VIP), które asystent uwzględnia podczas rozmowy."
+              ]}
+              guideSectionId="personal-adaptive-roles"
+            />
+          </div>
+          <p className="text-surface-500 mt-1">Zarządzaj swoją bazą kontaktów, poziomem formalności i tagami.</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -123,7 +139,14 @@ export default function Customers() {
               <tbody>
                 {filtered.map(c => (
                   <tr key={c.id} className="border-b border-surface-100 hover:bg-surface-50/50">
-                    <td className="py-4 font-medium text-surface-900">{c.name}</td>
+                    <td className="py-4 font-medium text-surface-900">
+                      <div>{c.name}</div>
+                      {c.formalityLevel && c.formalityLevel !== 'default' && (
+                        <span className="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5">
+                          {c.formalityLevel === 'direct_ty' ? 'Na Ty' : (c.formalityLevel === 'formal_pan_pani' ? 'Pan/Pani' : 'Uprzejmy')}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-4 text-surface-600">{c.phone}</td>
                     <td className="py-4">
                       <div className="flex gap-2">
@@ -151,54 +174,78 @@ export default function Customers() {
         )}
             </div>
 
-      {showNewModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
-            <button onClick={() => setShowNewModal(false)} className="absolute right-4 top-4 text-surface-400 hover:text-surface-700">
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-xl font-serif text-surface-900 mb-6">Nowy klient</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-surface-700 mb-1">Imię i nazwisko</label>
-                <input 
-                  type="text" 
-                  value={newCustomerForm.name}
-                  onChange={e => setNewCustomerForm({...newCustomerForm, name: e.target.value})}
-                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500"
-                  placeholder="np. Jan Kowalski"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-surface-700 mb-1">Telefon</label>
-                <input 
-                  type="text" 
-                  value={newCustomerForm.phone}
-                  onChange={e => setNewCustomerForm({...newCustomerForm, phone: e.target.value})}
-                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500"
-                  placeholder="np. 500123456"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-surface-700 mb-1">Tagi (oddziel przecinkami)</label>
-                <input 
-                  type="text" 
-                  value={newCustomerForm.tags}
-                  onChange={e => setNewCustomerForm({...newCustomerForm, tags: e.target.value})}
-                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500"
-                  placeholder="np. VIP, polecenie"
-                />
-              </div>
+      {showNewModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowNewModal(false);
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl relative max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150">
               <button 
-                onClick={handleAddCustomer}
-                className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-medium hover:bg-surface-800 transition-colors mt-2"
+                onClick={() => setShowNewModal(false)} 
+                className="absolute right-4 top-4 text-surface-400 hover:text-surface-700 p-1 rounded-lg cursor-pointer transition-colors"
+                title="Zamknij"
               >
-                Zapisz klienta
+                <X className="w-5 h-5" />
               </button>
+              <h2 className="text-xl font-serif text-surface-900 mb-6">Nowy klient</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 mb-1">Imię i nazwisko</label>
+                  <input 
+                    type="text" 
+                    value={newCustomerForm.name}
+                    onChange={e => setNewCustomerForm({...newCustomerForm, name: e.target.value})}
+                    className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500 text-sm outline-none"
+                    placeholder="np. Jan Kowalski"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 mb-1">Telefon</label>
+                  <input 
+                    type="text" 
+                    value={newCustomerForm.phone}
+                    onChange={e => setNewCustomerForm({...newCustomerForm, phone: e.target.value})}
+                    className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500 text-sm outline-none"
+                    placeholder="np. 500123456"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 mb-1">Styl zwracania się (Rejestr Językowy)</label>
+                  <select
+                    value={newCustomerForm.formalityLevel}
+                    onChange={e => setNewCustomerForm({...newCustomerForm, formalityLevel: e.target.value})}
+                    className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500 text-sm outline-none"
+                  >
+                    <option value="default">Domyślny (zgodny z profilem asystenta)</option>
+                    <option value="formal_pan_pani">Oficjalny (Zawsze per Pan / Pani)</option>
+                    <option value="professional_friendly">Profesjonalny i Uprzejmy (Partnerski)</option>
+                    <option value="direct_ty">Bezpośredni (Na Ty - stały klient, znajomy)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 mb-1">Tagi (oddziel przecinkami)</label>
+                  <input 
+                    type="text" 
+                    value={newCustomerForm.tags}
+                    onChange={e => setNewCustomerForm({...newCustomerForm, tags: e.target.value})}
+                    className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500 text-sm outline-none"
+                    placeholder="np. VIP, polecenie"
+                  />
+                </div>
+                <button 
+                  onClick={handleAddCustomer}
+                  className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-medium hover:bg-surface-800 hover:text-white transition-colors mt-2 cursor-pointer text-sm"
+                >
+                  Zapisz klienta
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
     </div>
   );

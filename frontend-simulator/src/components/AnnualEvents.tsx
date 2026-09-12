@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Gift, 
   Calendar as CalendarIcon, 
@@ -19,6 +20,8 @@ interface AnnualEvent {
   title: string;
   month: number;
   day: number;
+  endMonth?: number | null;
+  endDay?: number | null;
   category: string;
   reminderDaysAhead: number;
   createdAt: string;
@@ -30,10 +33,11 @@ const MONTHS = [
 ];
 
 const CATEGORIES = [
+  { id: 'vacation', label: 'Urlop / Dni Wolne', icon: CalendarIcon, color: 'text-rose-600 bg-rose-50 border-rose-200' },
   { id: 'birthday', label: 'Urodziny', icon: PartyPopper, color: 'text-amber-600 bg-amber-50 border-amber-200' },
   { id: 'anniversary', label: 'Rocznica', icon: Gift, color: 'text-pink-600 bg-pink-50 border-pink-200' },
   { id: 'tax', label: 'Podatki / ZUS / VAT', icon: Receipt, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-  { id: 'statutory', label: 'Termin Prawny / Sądowy', icon: CalendarIcon, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+  { id: 'statutory', label: 'Święto / Termin Prawny', icon: CalendarIcon, color: 'text-purple-600 bg-purple-50 border-purple-200' },
   { id: 'custom', label: 'Inne', icon: Sparkles, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' }
 ];
 
@@ -43,13 +47,57 @@ export default function AnnualEvents() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEvent, setCurrentEvent] = useState<AnnualEvent | null>(null);
   const [saving, setSaving] = useState(false);
+  const [generatingHolidays, setGeneratingHolidays] = useState(false);
   const [error, setError] = useState('');
+
+  const generatePolishHolidays = async () => {
+    const POLISH_HOLIDAYS = [
+      { title: 'Nowy Rok', month: 1, day: 1, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Święto Trzech Króli', month: 1, day: 6, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Święto Pracy', month: 5, day: 1, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Święto Konstytucji 3 Maja', month: 5, day: 3, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Wniebowzięcie NMP / Wojska Polskiego', month: 8, day: 15, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Wszystkich Świętych', month: 11, day: 1, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Narodowe Święto Niepodległości', month: 11, day: 11, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Boże Narodzenie (I dzień)', month: 12, day: 25, category: 'statutory', reminderDaysAhead: 1 },
+      { title: 'Boże Narodzenie (II dzień)', month: 12, day: 26, category: 'statutory', reminderDaysAhead: 1 }
+    ];
+
+    const toAdd = POLISH_HOLIDAYS.filter(h => 
+      !events.some(e => e.month === h.month && e.day === h.day)
+    );
+
+    if (toAdd.length === 0) {
+      alert('Wszystkie święta państwowe znajdują się już na liście.');
+      return;
+    }
+
+    setGeneratingHolidays(true);
+    try {
+      for (const h of toAdd) {
+        await fetch('/api/annual-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(h)
+        });
+      }
+      await fetchEvents();
+      alert(`Pomyślnie wygenerowano ${toAdd.length} świąt państwowych.`);
+    } catch (err) {
+      alert('Wystąpił problem podczas dodawania świąt.');
+    } finally {
+      setGeneratingHolidays(false);
+    }
+  };
 
   const [formData, setFormData] = useState({
     title: '',
+    isRange: false,
     month: new Date().getMonth() + 1,
     day: new Date().getDate(),
-    category: 'birthday',
+    endMonth: new Date().getMonth() + 1,
+    endDay: new Date().getDate(),
+    category: 'vacation',
     reminderDaysAhead: 1
   });
 
@@ -71,13 +119,16 @@ export default function AnnualEvents() {
     fetchEvents();
   }, []);
 
-  const openAddModal = () => {
+  const openAddModal = (presetCategory?: string) => {
     setCurrentEvent(null);
     setFormData({
       title: '',
+      isRange: presetCategory === 'vacation',
       month: new Date().getMonth() + 1,
       day: new Date().getDate(),
-      category: 'birthday',
+      endMonth: new Date().getMonth() + 1,
+      endDay: new Date().getDate(),
+      category: presetCategory || 'vacation',
       reminderDaysAhead: 1
     });
     setError('');
@@ -86,10 +137,14 @@ export default function AnnualEvents() {
 
   const openEditModal = (ev: AnnualEvent) => {
     setCurrentEvent(ev);
+    const hasRange = Boolean(ev.endMonth && ev.endDay && !(ev.endMonth === ev.month && ev.endDay === ev.day));
     setFormData({
       title: ev.title,
+      isRange: hasRange,
       month: ev.month,
       day: ev.day,
+      endMonth: ev.endMonth || ev.month,
+      endDay: ev.endDay || ev.day,
       category: ev.category,
       reminderDaysAhead: ev.reminderDaysAhead || 1
     });
@@ -111,10 +166,20 @@ export default function AnnualEvents() {
       const url = currentEvent ? `/api/annual-events/${currentEvent.id}` : '/api/annual-events';
       const method = currentEvent ? 'PUT' : 'POST';
 
+      const payload = {
+        title: formData.title,
+        month: formData.month,
+        day: formData.day,
+        endMonth: formData.isRange ? formData.endMonth : null,
+        endDay: formData.isRange ? formData.endDay : null,
+        category: formData.category,
+        reminderDaysAhead: formData.reminderDaysAhead
+      };
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {
@@ -148,33 +213,44 @@ export default function AnnualEvents() {
   const currentDay = new Date().getDate();
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0">
       {/* Nagłówek */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Ważne Daty, Rocznice & Podatki</h2>
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Ważne Daty</h2>
             <PageHelpButton
-              title="Cykliczne Rocznice i Przypomnienia"
-              description="Zdefiniuj powtarzalne co roku wydarzenia: urodziny bliskich i kluczowych klientów, rocznice zawarcia kontraktów lub cykliczne terminy podatkowe (np. ZUS do 15/20, VAT do 25). Asystentka AI automatycznie uwzględnia je w Porannym Raporcie (Morning Briefing)."
+              title="Cykliczne Rocznice i Ważne Daty"
+              description="Zdefiniuj powtarzalne wydarzenia: urodziny bliskich i kluczowych klientów, rocznice, urlopy oraz cykliczne terminy podatkowe (ZUS, VAT). Asystent AI integruje je z widokami kalendarza i Porannym Raportem Push."
               tips={[
-                "Wydarzenia powtarzają się co roku automatycznie.",
-                "Ustaw 'Dni wyprzedzenia przypomnienia', aby asystentka poinformowała Cię np. na 2-3 dni przed urodzinami (czas na zakup prezentu lub kwiatów).",
-                "Wszystkie przypomnienia trafiają o 8:00 rano prosto na Twój e-mail w estetycznym zestawieniu."
+                "Baner całodzienny w Grafiku Dobowym: Ważne daty przypadające na dany dzień są widoczne na samej górze kalendarza w dedykowanej kolorystyce (🎂 Urodziny, 🏖️ Urlop, 🇵🇱 Święto, 💰 Podatki, 💍 Rocznica).",
+                "Widok miesięczny: Kolorowe plakietki emoji w siatce dni oraz pełna interaktywna lista 'Ważne daty w tym miesiącu' pod kalendarzem.",
+                "Przycisk 'Generuj Święta Państwowe': Jednym kliknięciem dodaje oficjalne polskie dni ustawowo wolne od pracy.",
+                "Wyprzedzenie przypomnienia: Ustaw np. 2-3 dni przed urodzinami, aby otrzymać alert na zakup prezentu lub kwiatów w Porannym Raporcie Push."
               ]}
-              guideSectionId="annual-events"
+              guideSectionId="personal-important-dates"
             />
           </div>
-          <p className="text-surface-500 mt-1">Nigdy nie zapomnij o urodzinach klienta VIP, rocznicy ani terminie ZUS/VAT.</p>
+          <p className="text-surface-500 mt-1">Nigdy nie zapomnij o urodzinach, rocznicach, kluczowych terminach, dniach wolnych i urlopach.</p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl shadow-md hover:bg-surface-800 transition"
-        >
-          <Plus className="w-5 h-5" />
-          Dodaj Ważną Datę
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={generatePolishHolidays}
+            disabled={generatingHolidays}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface-100 hover:bg-surface-200 text-surface-700 font-semibold rounded-xl border border-surface-200 shadow-xs transition text-sm disabled:opacity-50"
+          >
+            {generatingHolidays ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <Sparkles className="w-4 h-4 text-primary" />}
+            Generuj Święta Państwowe
+          </button>
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl shadow-md hover:bg-surface-800 hover:text-white transition text-sm"
+          >
+            <Plus className="w-5 h-5" />
+            Dodaj Ważną Datę
+          </button>
+        </div>
       </div>
 
       {/* Belka informacyjna */}
@@ -183,9 +259,9 @@ export default function AnnualEvents() {
           <BellRing className="w-6 h-6 text-pink-600" />
         </div>
         <div>
-          <h3 className="font-bold text-surface-900 text-sm">Automatyczna integracja z Porannym Raportem Asystenta</h3>
+          <h3 className="font-bold text-surface-900 text-sm">Automatyczna integracja z Porannym Raportem i Kalendarzem Asystenta</h3>
           <p className="text-xs text-surface-600 mt-1 leading-relaxed">
-            Każdego ranka Twój asystent sprawdza dzisiejsze oraz zbliżające się daty. Jeśli wybije dzień urodzin Twojego klienta VIP lub ważny termin rozliczeniowy, otrzymasz wyraźną adnotację w mailu o poranku.
+            Każdego ranka asystent sprawdza zbliżające się daty i informuje Cię o nich w powiadomieniu Push. W dniach świąt państwowych, urlopów i dodanych dni wolnych na kalendarz automatycznie nakładana jest <strong>reguła Niedzieli</strong> (klienci zewnętrzni słyszą, że odpoczywasz, a kontakty VIP i Rodzina kontaktują się według reguł strefy prywatnej).
           </p>
         </div>
       </div>
@@ -241,7 +317,7 @@ export default function AnnualEvents() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
                       <button
                         onClick={() => openEditModal(ev)}
                         className="p-1.5 text-surface-400 hover:text-surface-700 hover:bg-surface-100 rounded-lg transition"
@@ -263,7 +339,9 @@ export default function AnnualEvents() {
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="w-4 h-4 text-surface-400" />
                       <span className="font-bold text-surface-900 text-sm">
-                        {ev.day} {MONTHS[ev.month - 1]}
+                        {ev.endMonth && ev.endDay && !(ev.endMonth === ev.month && ev.endDay === ev.day)
+                          ? `${ev.day} ${MONTHS[ev.month - 1]} – ${ev.endDay} ${MONTHS[ev.endMonth - 1]}`
+                          : `${ev.day} ${MONTHS[ev.month - 1]}`}
                       </span>
                     </div>
 
@@ -290,9 +368,15 @@ export default function AnnualEvents() {
       )}
 
       {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-surface-200">
+      {isModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-surface-900/50 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsModalOpen(false);
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-5 sm:p-8 shadow-2xl border border-surface-200 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
@@ -320,6 +404,33 @@ export default function AnnualEvents() {
               </div>
             )}
 
+            {/* Przełącznik: Pojedyncza data vs Zakres dat */}
+            <div className="flex items-center p-1 bg-surface-100 rounded-xl mb-4 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, isRange: false })}
+                className={`flex-1 py-1.5 rounded-lg transition ${
+                  !formData.isRange ? 'bg-white text-surface-900 shadow-xs' : 'text-surface-500 hover:text-surface-700'
+                }`}
+              >
+                Pojedyncza data
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ 
+                  ...formData, 
+                  isRange: true, 
+                  category: 'vacation',
+                  title: formData.title || 'Urlop wypoczynkowy'
+                })}
+                className={`flex-1 py-1.5 rounded-lg transition ${
+                  formData.isRange ? 'bg-white text-surface-900 shadow-xs' : 'text-surface-500 hover:text-surface-700'
+                }`}
+              >
+                Zakres dat (Urlop / Dni wolne)
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
@@ -328,44 +439,106 @@ export default function AnnualEvents() {
                 <input 
                   type="text"
                   required
-                  placeholder="np. Urodziny Mec. Jana Nowaka / VAT-7 do US"
+                  placeholder={formData.isRange ? "np. Urlop wypoczynkowy, Wyjazd służbowy" : "np. Urlop, Urodziny, Rocznica, Kluczowy termin"}
                   value={formData.title}
                   onChange={e => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
-                    Dzień *
-                  </label>
-                  <input 
-                    type="number"
-                    min="1"
-                    max="31"
-                    required
-                    value={formData.day}
-                    onChange={e => setFormData({ ...formData, day: parseInt(e.target.value, 10) })}
-                    className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-                  />
-                </div>
+              {!formData.isRange ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
+                      Dzień *
+                    </label>
+                    <input 
+                      type="number"
+                      min="1"
+                      max="31"
+                      required
+                      value={formData.day}
+                      onChange={e => setFormData({ ...formData, day: parseInt(e.target.value, 10) })}
+                      className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
-                    Miesiąc *
-                  </label>
-                  <select
-                    value={formData.month}
-                    onChange={e => setFormData({ ...formData, month: parseInt(e.target.value, 10) })}
-                    className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white"
-                  >
-                    {MONTHS.map((m, idx) => (
-                      <option key={m} value={idx + 1}>{m}</option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
+                      Miesiąc *
+                    </label>
+                    <select
+                      value={formData.month}
+                      onChange={e => setFormData({ ...formData, month: parseInt(e.target.value, 10) })}
+                      className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white"
+                    >
+                      {MONTHS.map((m, idx) => (
+                        <option key={m} value={idx + 1}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3 bg-surface-50 p-3.5 rounded-2xl border border-surface-200/80">
+                  <div>
+                    <span className="text-[11px] font-bold text-surface-700 uppercase tracking-wider block mb-1">
+                      Data rozpoczęcia (Od):
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        type="number"
+                        min="1"
+                        max="31"
+                        required
+                        value={formData.day}
+                        onChange={e => setFormData({ ...formData, day: parseInt(e.target.value, 10) })}
+                        placeholder="Dzień"
+                        className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
+                      />
+                      <select
+                        value={formData.month}
+                        onChange={e => setFormData({ ...formData, month: parseInt(e.target.value, 10) })}
+                        className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
+                      >
+                        {MONTHS.map((m, idx) => (
+                          <option key={m} value={idx + 1}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-bold text-surface-700 uppercase tracking-wider block mb-1">
+                      Data zakończenia (Do):
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        type="number"
+                        min="1"
+                        max="31"
+                        required
+                        value={formData.endDay}
+                        onChange={e => setFormData({ ...formData, endDay: parseInt(e.target.value, 10) })}
+                        placeholder="Dzień"
+                        className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
+                      />
+                      <select
+                        value={formData.endMonth}
+                        onChange={e => setFormData({ ...formData, endMonth: parseInt(e.target.value, 10) })}
+                        className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
+                      >
+                        {MONTHS.map((m, idx) => (
+                          <option key={m} value={idx + 1}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-rose-700 leading-tight pt-1">
+                    🏖️ W tym okresie asystent automatycznie nałoży <strong>regułę Niedzieli</strong>: zewnętrzni klienci usłyszą, że odpoczywasz, a kontakty VIP i Rodzina kontaktują się według reguł strefy prywatnej.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
@@ -410,7 +583,7 @@ export default function AnnualEvents() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-surface-800 disabled:opacity-50 transition text-sm shadow"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-surface-800 hover:text-white disabled:opacity-50 transition text-sm shadow"
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {currentEvent ? 'Zapisz Zmiany' : 'Dodaj Datę'}
@@ -418,7 +591,8 @@ export default function AnnualEvents() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

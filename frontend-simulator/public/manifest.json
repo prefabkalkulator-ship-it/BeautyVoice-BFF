@@ -1,10 +1,10 @@
-﻿{
+{
   "name": "EasyVoiceAssistant",
   "short_name": "EasyVoice",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0d9488",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "/EVA_favicon_192.png",

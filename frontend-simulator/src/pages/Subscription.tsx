@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Check, 
   Sparkles, 
@@ -77,8 +78,20 @@ export default function Subscription() {
   };
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
     fetchStatus();
   }, []);
+
+  useEffect(() => {
+    if (isChangePlanModalOpen || isWipeModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isChangePlanModalOpen, isWipeModalOpen]);
 
   const handleApplyBeta = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,22 +259,27 @@ export default function Subscription() {
     return (
       <>
         {/* --- MODAL: ZMIEŃ PAKIET --- */}
-        {isChangePlanModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-surface-200 relative my-8 animate-in fade-in zoom-in-95 duration-150">
+        {isChangePlanModalOpen && createPortal(
+          <div 
+            className="fixed inset-0 z-[9999] flex items-start sm:items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsChangePlanModalOpen(false); }}
+          >
+            <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-8 shadow-2xl border border-surface-200 relative my-3 sm:my-8 animate-in fade-in zoom-in-95 duration-150">
               <button 
+                type="button"
                 onClick={() => setIsChangePlanModalOpen(false)}
-                className="absolute top-6 right-6 text-surface-400 hover:text-surface-600 p-2 rounded-full hover:bg-surface-100 transition"
+                className="absolute top-4 right-4 sm:top-6 sm:right-6 text-surface-400 hover:text-surface-600 p-2 rounded-full hover:bg-surface-100 transition"
+                aria-label="Zamknij"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="mb-6">
+              <div className="mb-6 pr-8">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Wybierz plan dla siebie lub firmy
                 </div>
-                <h3 className="text-2xl font-serif text-surface-900">Zmień pakiet subskrypcji</h3>
-                <p className="text-sm text-surface-600 mt-1">
+                <h3 className="text-xl sm:text-2xl font-serif text-surface-900">Zmień pakiet subskrypcji</h3>
+                <p className="text-xs sm:text-sm text-surface-600 mt-1">
                   Możesz w dowolnym momencie zmienić plan. Przejście na pakiet osobisty automatycznie dostosuje interfejs asystenta (Executive / VIP / Kalendarz roczny).
                 </p>
               </div>
@@ -282,7 +300,7 @@ export default function Subscription() {
 
               <div className="grid md:grid-cols-3 gap-6">
                 {/* 1. Pakiet Osobisty */}
-                <div className={`rounded-2xl p-6 border-2 transition flex flex-col justify-between ${
+                <div className={`rounded-2xl p-5 sm:p-6 border-2 transition flex flex-col justify-between ${
                   isPersonal ? 'border-indigo-600 bg-indigo-50/30 ring-2 ring-indigo-600/20' : 'border-surface-200 hover:border-indigo-300 bg-white'
                 }`}>
                   <div>
@@ -297,32 +315,44 @@ export default function Subscription() {
                       )}
                     </div>
                     <div className="mb-4">
-                      <div className="text-3xl font-bold text-surface-900">99 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
-                      <p className="text-xs text-surface-500 mt-1 font-medium">100 minut w cenie (0,99 zł / min po wyczerpaniu)</p>
+                      <div className="text-3xl font-bold text-surface-900">149 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
+                      <p className="text-xs text-surface-500 mt-1 font-medium">100 minut w cenie (0,60 zł / min po wyczerpaniu)</p>
                     </div>
                     <p className="text-xs text-surface-600 mb-4 leading-relaxed">
-                      Prywatna sekretarka executive: dyskretne odbieranie połączeń, kontakty VIP i kalendarz spraw prywatnych.
+                      Prywatna sekretarka executive: dyskretne odbieranie połączeń, kontakty VIP, kalendarz spraw prywatnych i tarcza anty-spam.
                     </p>
-                    <ul className="text-xs space-y-2.5 text-surface-700 border-t border-surface-100 pt-4">
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-4">
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                         <span>Dedykowany numer wirtualny GSM</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Rozpoznawanie VIP (Rodzina, Zarząd)</span>
+                        <span>Dwuetapowe inteligentne powitanie</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Roczny kalendarz (urodziny, polisy)</span>
+                        <span>Rozpoznawanie VIP (Rodzina, Wspólnik)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Podsumowania dnia SMS (rano / wieczór)</span>
+                        <span>Autoryzacja kodem PIN właściciela</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Tryb Dyskretny / Poza domem</span>
+                        <span>Baza wiedzy poufnej (kod PIN)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                        <span>Poranny push i raporty e-mail</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                        <span>Czas skupienia (Deep Work)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                        <span>Ważne daty (urodziny, polisy)</span>
                       </li>
                     </ul>
                   </div>
@@ -342,8 +372,8 @@ export default function Subscription() {
                   </button>
                 </div>
 
-                {/* 2. Pakiet Standard */}
-                <div className={`rounded-2xl p-6 border-2 transition flex flex-col justify-between ${
+                {/* 2. Pakiet Standard B2B */}
+                <div className={`rounded-2xl p-5 sm:p-6 border-2 transition flex flex-col justify-between ${
                   isStandard ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-surface-200 hover:border-surface-300 bg-white'
                 }`}>
                   <div>
@@ -359,27 +389,47 @@ export default function Subscription() {
                     </div>
                     <div className="mb-4">
                       <div className="text-3xl font-bold text-surface-900">199 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
-                      <p className="text-xs text-surface-500 mt-1 font-medium">100 minut w cenie (0,99 zł / min po wyczerpaniu)</p>
+                      <p className="text-xs text-surface-500 mt-1 font-medium">100 minut w cenie (0,60 zł / min po wyczerpaniu)</p>
                     </div>
                     <p className="text-xs text-surface-600 mb-4 leading-relaxed">
                       Dla jednoosobowych gabinetów i salonów beauty potrzebujących automatycznej recepcji.
                     </p>
-                    <ul className="text-xs space-y-2.5 text-surface-700 border-t border-surface-100 pt-4">
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-4">
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Dedykowany numer wirtualny GSM</span>
+                        <span>100 darmowych minut na rozmowy co miesiąc</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Automatyczny kalendarz rezerwacji</span>
+                        <span>1 dedykowany techniczny numer telefonu</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Baza wiedzy FAQ i cennik usług</span>
+                        <span>4 naturalne głosy AI (2 żeńskie i 2 męskie)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Potwierdzenia i przypomnienia SMS</span>
+                        <span>Obsługa ponad 140 języków (auto-detekcja)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>Baza Wiedzy AI ze zdjęć cenników i PDF</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>Grafiki pracowników i obsługa świąt / dni wolnych</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>Automatyczne umawianie terminów w kalendarzu</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>Potwierdzenia SMS do klientów po rezerwacji</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>Samodzielna konfiguracja w 10 minut</span>
                       </li>
                     </ul>
                   </div>
@@ -395,12 +445,12 @@ export default function Subscription() {
                     }`}
                   >
                     {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isStandard ? 'Twój obecny pakiet' : 'Wybierz Pakiet Standard'}
+                    {isStandard ? 'Twój obecny pakiet' : 'Wybierz Pakiet Standard B2B'}
                   </button>
                 </div>
 
-                {/* 3. Pakiet Premium */}
-                <div className={`rounded-2xl p-6 border-2 transition flex flex-col justify-between ${
+                {/* 3. Pakiet Premium B2B */}
+                <div className={`rounded-2xl p-5 sm:p-6 border-2 transition flex flex-col justify-between ${
                   isPremium ? 'border-amber-500 bg-amber-50/30 ring-2 ring-amber-500/20' : 'border-surface-200 hover:border-amber-300 bg-white'
                 }`}>
                   <div>
@@ -416,27 +466,39 @@ export default function Subscription() {
                     </div>
                     <div className="mb-4">
                       <div className="text-3xl font-bold text-surface-900">399 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
-                      <p className="text-xs text-amber-700 mt-1 font-semibold">300 minut w cenie (0,79 zł / min po wyczerpaniu)</p>
+                      <p className="text-xs text-amber-700 mt-1 font-semibold">300 darmowych minut w cenie (0,50 zł / min po wyczerpaniu)</p>
                     </div>
                     <p className="text-xs text-surface-600 mb-4 leading-relaxed">
                       Dla rozwijających się zespołów, klinik i salonów z aktywnym modułem Marketing AI.
                     </p>
-                    <ul className="text-xs space-y-2.5 text-surface-700 border-t border-surface-100 pt-4">
-                      <li className="flex items-start gap-2">
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-4">
+                      <li className="flex items-start gap-2 font-medium text-amber-950">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Wszystkie możliwości pakietu Standard</span>
+                        <span>Wszystko z pakietu Standard B2B, oraz dodatkowo:</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>300 minut rozmów w cenie</span>
+                        <span>300 darmowych minut na rozmowy co miesiąc</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Moduł Marketing AI (reaktywacja klientów)</span>
+                        <span>Wypełnianie okienek (Last Minute) – ratowanie terminów</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Priorytetowe przetwarzanie głosu</span>
+                        <span>Badanie satysfakcji (NPS) – zbieranie opinii po wizycie</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <span>Reaktywacja bazy 90+ dni – powrót dawnych klientów do firmy</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <span>Telefoniczne potwierdzanie wizyt dzień wcześniej (zero „no-show”)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <span>Wielokanałowość – do 5 jednoczesnych rozmów naraz bez zajętości</span>
                       </li>
                     </ul>
                   </div>
@@ -452,7 +514,7 @@ export default function Subscription() {
                     }`}
                   >
                     {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isPremium ? 'Twój obecny pakiet' : 'Wybierz Pakiet Premium'}
+                    {isPremium ? 'Twój obecny pakiet' : 'Wybierz Pakiet Premium B2B'}
                   </button>
                 </div>
               </div>
@@ -467,16 +529,22 @@ export default function Subscription() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* --- MODAL: KASOWANIE KONTA / RODO (PRAWO DO BYCIA ZAPOMNIANYM) --- */}
-        {isWipeModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border-2 border-red-200 relative my-8 animate-in fade-in zoom-in-95 duration-150">
+        {isWipeModalOpen && createPortal(
+          <div 
+            className="fixed inset-0 z-[9999] flex items-start sm:items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto"
+            onClick={(e) => { if (e.target === e.currentTarget) setIsWipeModalOpen(false); }}
+          >
+            <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-8 shadow-2xl border-2 border-red-200 relative my-3 sm:my-8 animate-in fade-in zoom-in-95 duration-150">
               <button 
+                type="button"
                 onClick={() => setIsWipeModalOpen(false)}
-                className="absolute top-6 right-6 text-surface-400 hover:text-surface-600 p-2 rounded-full hover:bg-surface-100 transition"
+                className="absolute top-4 right-4 sm:top-6 sm:right-6 text-surface-400 hover:text-surface-600 p-2 rounded-full hover:bg-surface-100 transition"
+                aria-label="Zamknij"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -570,7 +638,8 @@ export default function Subscription() {
                 </div>
               </form>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </>
     );
@@ -583,7 +652,7 @@ export default function Subscription() {
 
     const planLabel = isPilot 
       ? 'Pakiet Pilotażowy Premium (Miesiąc Gratis)' 
-      : (subDetails?.planName === 'personal' ? 'Pakiet Osobisty (99 zł / mc)' : (subDetails?.planName ? subDetails.planName.toUpperCase() : 'STANDARD'));
+      : (subDetails?.planName === 'personal' ? 'Pakiet Osobisty (149 zł / mc)' : (subDetails?.planName ? subDetails.planName.toUpperCase() : 'STANDARD'));
 
     return (
       <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">

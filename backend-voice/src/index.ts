@@ -24,7 +24,6 @@ wss.on('connection', (ws) => {
 // Start background cron jobs
 import { processOutboundQueue } from './jobs/OutboundProcessor';
 
-setTimeout(runDailyCron, 5000); // 5 sekund po starcie serwera
 setInterval(processOutboundQueue, 60000); // Co 1 minutę sprawdzamy kolejkę Outbound
 setInterval(runDailyCron, 15 * 60 * 1000); // Co 15 minut sprawdzamy harmonogram briefingu i subskrypcji
 

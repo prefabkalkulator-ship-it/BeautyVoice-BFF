@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { 
   Star, 
   ShieldCheck, 
@@ -22,16 +24,15 @@ interface VipContact {
   category: string;
   customNotes?: string | null;
   allowPrioritySlots: boolean;
+  formalityLevel?: string;
   createdAt: string;
 }
 
 const CATEGORIES = [
-  'Klient VIP',
+  'VIP',
   'Rodzina',
-  'Przyjaciel',
-  'Partner Biznesowy',
-  'Kancelaria / Prawnik',
-  'Urząd / Księgowość',
+  'Praca',
+  'Prywatne',
   'Inne'
 ];
 
@@ -47,9 +48,10 @@ export default function VipContacts() {
   const [formData, setFormData] = useState({
     phoneNumber: '',
     contactName: '',
-    category: 'Klient VIP',
+    category: 'VIP',
     customNotes: '',
-    allowPrioritySlots: true
+    allowPrioritySlots: true,
+    formalityLevel: 'default'
   });
 
   const fetchContacts = async () => {
@@ -66,18 +68,39 @@ export default function VipContacts() {
     }
   };
 
+  const location = useLocation();
+
   useEffect(() => {
     fetchContacts();
   }, []);
+
+  useEffect(() => {
+    if (location.state && (location.state as any).openNewVip) {
+      const state = location.state as any;
+      setCurrentContact(null);
+      setFormData({
+        phoneNumber: state.defaultPhone || '',
+        contactName: state.defaultName || '',
+        category: 'VIP',
+        customNotes: '',
+        allowPrioritySlots: true,
+        formalityLevel: 'default'
+      });
+      setError('');
+      setIsModalOpen(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const openAddModal = () => {
     setCurrentContact(null);
     setFormData({
       phoneNumber: '',
       contactName: '',
-      category: 'Klient VIP',
+      category: 'VIP',
       customNotes: '',
-      allowPrioritySlots: true
+      allowPrioritySlots: true,
+      formalityLevel: 'default'
     });
     setError('');
     setIsModalOpen(true);
@@ -90,7 +113,8 @@ export default function VipContacts() {
       contactName: contact.contactName,
       category: contact.category,
       customNotes: contact.customNotes || '',
-      allowPrioritySlots: contact.allowPrioritySlots
+      allowPrioritySlots: contact.allowPrioritySlots,
+      formalityLevel: contact.formalityLevel || 'default'
     });
     setError('');
     setIsModalOpen(true);
@@ -150,21 +174,22 @@ export default function VipContacts() {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300 w-full max-w-full min-w-0">
       {/* Nagłówek */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Kontakty VIP & Baza Bliskich</h2>
             <PageHelpButton
-              title="Zarządzanie Kontaktami VIP"
-              description="Osoby dodane do listy VIP są natychmiast rozpoznawane po Caller ID przez Asystenta. Asystent wita je po imieniu, używa ciepłego i bezpośredniego tonu oraz może proponować zarezerwowane dla nich sloty priorytetowe."
+              title="Kontakty z Priorytetem & Baza Bliskich"
+              description="Osoby dodane do tej listy są natychmiast rozpoznawane po Caller ID przez Asystenta. Asystent wita je bezpośrednio i ciepło oraz może udostępnić im specjalne sloty priorytetowe."
               tips={[
-                "Wpisz numer z numerem kierunkowym np. +48 600 111 222 (system automatycznie formatuje).",
-                "W polu 'Notatki dla Asystentki' wpisz np. 'Zawsze łącz z tym klientem' lub 'Mój najważniejszy partner biznesowy' — Eva uwzględni to w rozmowie.",
-                "Zaznacz 'Terminy priorytetowe', aby asystentka mogła udostępnić dla tej osoby godziny niedostępne dla zwykłych dzwoniących."
+                "Terminy Priorytetowe: Zaznacz 'Udostępnij terminy priorytetowe', aby asystent mógł zaoferować tej osobie najlepsze okienka (niedostępne dla zwykłych dzwoniących).",
+                "Live Call Transfer: W przypadku pilnej sprawy od osoby z kategorii VIP lub Rodzina asystent może spróbować bezpośrednio połączyć ją z Twoją komórką (limit 30 sek.; w razie braku odbioru natychmiast przejmuje rozmowę z powrotem).",
+                "Baza Wiedzy Poufnej: Pamiętaj, że nawet kontakty z listy VIP nie mają dostępu do wiedzy oznaczonej jako Poufne bez podania kodu PIN.",
+                "Notatki dla asystenta: Wpisz kontekst relacji, aby asystent wiedział, z kim rozmawia i jaki priorytet nadać sprawie."
               ]}
-              guideSectionId="vip-contacts"
+              guideSectionId="personal-call-transfer"
             />
           </div>
           <p className="text-surface-500 mt-1">Zarządzaj kluczowymi klientami, rodziną i zaufanymi partnerami rozpoznawanymi po Caller ID.</p>
@@ -172,7 +197,7 @@ export default function VipContacts() {
 
         <button
           onClick={openAddModal}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl shadow-md hover:bg-surface-800 transition"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl shadow-md hover:bg-surface-800 hover:text-white transition"
         >
           <Plus className="w-5 h-5" />
           Dodaj Kontakt VIP
@@ -243,13 +268,20 @@ export default function VipContacts() {
                     </div>
                     <div>
                       <h4 className="font-bold text-surface-900 text-base leading-snug">{c.contactName}</h4>
-                      <span className="inline-block bg-surface-100 text-surface-700 text-[11px] font-semibold px-2 py-0.5 rounded-full mt-0.5">
-                        {c.category}
-                      </span>
+                      <div className="flex flex-wrap gap-1.5 mt-0.5">
+                        <span className="inline-block bg-surface-100 text-surface-700 text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                          {c.category}
+                        </span>
+                        {c.formalityLevel && c.formalityLevel !== 'default' && (
+                          <span className="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                            {c.formalityLevel === 'direct_ty' ? 'Na Ty' : (c.formalityLevel === 'formal_pan_pani' ? 'Pan/Pani' : 'Uprzejmy')}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                  <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
                     <button
                       onClick={() => openEditModal(c)}
                       className="p-1.5 text-surface-400 hover:text-surface-700 hover:bg-surface-100 rounded-lg transition"
@@ -302,9 +334,15 @@ export default function VipContacts() {
       )}
 
       {/* Modal Dodawania / Edycji Kontaktu */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-surface-200">
+      {isModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-surface-900/50 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsModalOpen(false);
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-5 sm:p-8 shadow-2xl border border-surface-200 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
@@ -378,11 +416,30 @@ export default function VipContacts() {
 
               <div>
                 <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
+                  Styl zwracania się (Rejestr Językowy)
+                </label>
+                <select
+                  value={formData.formalityLevel}
+                  onChange={e => setFormData({ ...formData, formalityLevel: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white"
+                >
+                  <option value="default">Domyślny (zgodny z profilem asystenta)</option>
+                  <option value="formal_pan_pani">Oficjalny (Zawsze per Pan / Pani)</option>
+                  <option value="professional_friendly">Profesjonalny i Uprzejmy (Partnerski)</option>
+                  <option value="direct_ty">Bezpośredni (Na Ty - rodzina, przyjaciele, koledzy)</option>
+                </select>
+                <p className="text-[11px] text-surface-400 mt-1">
+                  Określa, jak asystent ma zwracać się do tego kontaktu podczas rozmowy.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1.5">
                   Wskazówki dla Asystentki AI (Notatka)
                 </label>
                 <textarea 
                   rows={2}
-                  placeholder="np. 'Kluczowy klient z Krakowa. Zawsze łącz lub natychmiast notuj szczegóły sprawy.'"
+                  placeholder="np. 'Kluczowy partner z Krakowa. Zawsze traktuj z najwyższym priorytetem i natychmiast powiadamiaj o kontakcie.'"
                   value={formData.customNotes}
                   onChange={e => setFormData({ ...formData, customNotes: e.target.value })}
                   className="w-full px-4 py-2.5 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
@@ -420,7 +477,7 @@ export default function VipContacts() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-surface-800 disabled:opacity-50 transition text-sm shadow"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-surface-800 hover:text-white disabled:opacity-50 transition text-sm shadow"
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {currentContact ? 'Zapisz Zmiany' : 'Dodaj Kontakt'}
@@ -428,7 +485,8 @@ export default function VipContacts() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

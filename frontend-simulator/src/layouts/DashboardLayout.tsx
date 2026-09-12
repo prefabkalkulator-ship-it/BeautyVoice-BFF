@@ -76,9 +76,10 @@ export default function DashboardLayout() {
 
   const tabs = businessProfile === 'personal' ? [
     { id: 'appointments', path: '/dashboard/appointments', label: 'Kalendarz & Spotkania', icon: Calendar },
-    { id: 'vip-contacts', path: '/dashboard/vip-contacts', label: 'Kontakty VIP', icon: Star },
     { id: 'messages', path: '/dashboard/messages', label: 'Wiadomości i Połączenia', icon: PhoneCall },
-    { id: 'annual-events', path: '/dashboard/annual-events', label: 'Rocznice & Podatki', icon: Gift },
+    { id: 'vip-contacts', path: '/dashboard/vip-contacts', label: 'Kontakty VIP', icon: Star },
+    { id: 'annual-events', path: '/dashboard/annual-events', label: 'Ważne Daty', icon: Gift },
+    { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
     { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Asystenta', icon: Settings },
     { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
     { id: 'guide', path: '/dashboard/guide', label: 'Instrukcja', icon: BookOpen },
@@ -176,7 +177,7 @@ export default function DashboardLayout() {
 
       <Toaster />
       {/* Main Content */}
-      <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-3.5 sm:p-6 md:p-10 max-w-7xl mx-auto w-full min-w-0 overflow-x-hidden">
         {isSuspended && (
           <div className="mb-6 bg-red-600 text-white p-4 rounded-2xl shadow-lg flex items-center gap-4">
             <span className="text-3xl">🚫</span>

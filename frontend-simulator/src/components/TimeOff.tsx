@@ -1,5 +1,6 @@
 import PageHelpButton from './common/PageHelpButton';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, Trash2, Plus, Sparkles, X } from 'lucide-react';
 
 export default function TimeOff() {
@@ -133,49 +134,56 @@ export default function TimeOff() {
         )}
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-surface-900/40 backdrop-blur-sm">
-          <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6 relative w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <h3 className="text-xl font-serif text-surface-900">Dodaj Dzień Wolny</h3>
-              <button 
-                onClick={() => setIsModalOpen(false)} 
-                className="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-xl -mr-1 -mt-1 cursor-pointer transition-colors"
-                title="Zamknij"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Kogo dotyczy?</label>
-                <select value={form.staffId} onChange={e => setForm({...form, staffId: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2">
-                  <option value="">Cała firma (zamknięte)</option>
-                  {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+      {isModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-surface-900/40 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsModalOpen(false);
+            }}
+          >
+            <div className="glass-card bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 relative w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h3 className="text-xl font-serif text-surface-900">Dodaj Dzień Wolny</h3>
+                <button 
+                  onClick={() => setIsModalOpen(false)} 
+                  className="p-1.5 text-surface-400 hover:text-surface-900 hover:bg-surface-100 rounded-xl -mr-1 -mt-1 cursor-pointer transition-colors"
+                  title="Zamknij"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Powód / Nazwa</label>
-                <input type="text" value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2" placeholder="np. Urlop wakacyjny" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-surface-500 mb-1">Od</label>
-                  <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2" />
+                  <label className="block text-xs font-medium text-surface-500 mb-1">Kogo dotyczy?</label>
+                  <select value={form.staffId} onChange={e => setForm({...form, staffId: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="">Cała firma (zamknięte)</option>
+                    {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-surface-500 mb-1">Do</label>
-                  <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2" />
+                  <label className="block text-xs font-medium text-surface-500 mb-1">Powód / Nazwa</label>
+                  <input type="text" value={form.reason} onChange={e => setForm({...form, reason: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 text-sm" placeholder="np. Urlop wakacyjny" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-surface-500 mb-1">Od</label>
+                    <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-surface-500 mb-1">Do</label>
+                    <input type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} className="w-full bg-white border border-surface-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="pt-4 flex gap-2">
+                  <button onClick={() => setIsModalOpen(false)} className="flex-1 py-2 bg-surface-100 text-surface-600 hover:bg-surface-200 rounded-xl transition-colors font-medium text-sm cursor-pointer">Anuluj</button>
+                  <button onClick={handleSave} className="flex-1 py-2 bg-primary text-primary-foreground hover:bg-surface-800 hover:text-white rounded-xl transition-colors font-medium text-sm cursor-pointer">Zapisz</button>
                 </div>
               </div>
-              <div className="pt-4 flex gap-2">
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 py-2 bg-surface-100 text-surface-600 hover:bg-surface-200 rounded-xl transition-colors font-medium">Anuluj</button>
-                <button onClick={handleSave} className="flex-1 py-2 bg-surface-200 text-surface-900 hover:bg-surface-800 hover:text-white rounded-xl transition-colors font-medium">Zapisz</button>
-              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

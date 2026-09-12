@@ -1,12 +1,15 @@
 import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState, useRef } from 'react';
-import { HelpCircle, ChevronDown, ChevronUp, Pencil, Sparkles, Loader2, X, ShieldAlert, Mic, Square, Plus, Database, Trash2, Check } from 'lucide-react';
+import { HelpCircle, ChevronDown, ChevronUp, Pencil, Sparkles, Loader2, X, ShieldAlert, Mic, Square, Plus, Database, Trash2, Check, AlertCircle, Lock } from 'lucide-react';
 
 interface FaqItem {
   id: string;
   question: string;
   answer: string;
+  isConfidential?: boolean;
 }
+
+const FAQ_LIMIT = 150;
 
 export default function Faq() {
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
@@ -18,6 +21,7 @@ export default function Faq() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuestion, setEditQuestion] = useState('');
   const [editAnswer, setEditAnswer] = useState('');
+  const [editIsConfidential, setEditIsConfidential] = useState(false);
 
   // Stan asystenta (Ucz mnie)
   const [rawText, setRawText] = useState('');
@@ -32,11 +36,15 @@ export default function Faq() {
   const [extractedData, setExtractedData] = useState<any>(null);
   const [error, setError] = useState('');
 
+  const [businessProfile, setBusinessProfile] = useState('solo');
+  const [botName, setBotName] = useState('EVA');
+  const [isPremium, setIsPremium] = useState(false);
+
   const fetchFaqs = () => {
     fetch('/api/faq')
       .then(res => res.json())
       .then(data => {
-        setFaqs(data);
+        setFaqs(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(err => {
@@ -47,6 +55,24 @@ export default function Faq() {
 
   useEffect(() => {
     fetchFaqs();
+    fetch('/api/tenant')
+      .then(res => res.json())
+      .then(t => {
+        if (t) {
+          setBusinessProfile(t.businessProfile || 'solo');
+          if (t.botName) setBotName(t.botName);
+        }
+      })
+      .catch(err => console.error('Failed to load tenant in Faq:', err));
+
+    fetch('/api/subscription')
+      .then(res => res.json())
+      .then(s => {
+        if (s?.planName?.toLowerCase() === 'premium') {
+          setIsPremium(true);
+        }
+      })
+      .catch(err => console.error('Failed to load subscription in Faq:', err));
   }, []);
 
   const handleStartRecording = async () => {
@@ -105,17 +131,41 @@ export default function Faq() {
         payload.mimeType = fileData.mime;
       }
 
-      const res = await fetch('/api/knowledge/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || 'Błąd serwera przy analizie.');
+      // Bezpośrednie wywołanie backendu na Cloud Run eliminuje 60-sekundowy limit Firebase Hosting
+      const isCloudHosted = typeof window !== 'undefined' && (window.location.hostname.includes('web.app') || window.location.hostname.includes('firebaseapp.com'));
+      const directUrl = 'https://beautyvoice-bff-739272851032.europe-central2.run.app/api/knowledge/extract';
+      const extractUrl = isCloudHosted ? directUrl : '/api/knowledge/extract';
+
+      let res: Response;
+      try {
+        res = await fetch(extractUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (directErr) {
+        // Fallback do względnego endpointu /api/ w razie specyficznych blokad sieciowych
+        res = await fetch('/api/knowledge/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
       }
-      
+
+      if (!res.ok) {
+        let errMsg = `Błąd serwera (${res.status})`;
+        try {
+          const errData = await res.json();
+          if (errData.error) errMsg = errData.error;
+        } catch (_) {
+          if (res.status === 502 || res.status === 504) {
+            errMsg = 'Przekroczono limit czasu bramy sieciowej (timeout 60s). Przetwarzanie trwało zbyt długo. Podziel plik na mniejsze części lub wgraj ponownie – zoptymalizowaliśmy silnik!';
+          }
+        }
+        throw new Error(errMsg);
+      }
+
+      const data = await res.json();
       setExtractedData(data);
     } catch (err: any) {
       setError(err.message);
@@ -154,6 +204,7 @@ export default function Faq() {
     setEditingId(faq.id);
     setEditQuestion(faq.question);
     setEditAnswer(faq.answer);
+    setEditIsConfidential(Boolean(faq.isConfidential));
     setExpandedId(faq.id);
   };
 
@@ -168,7 +219,7 @@ export default function Faq() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: editQuestion, answer: editAnswer })
+        body: JSON.stringify({ question: editQuestion, answer: editAnswer, isConfidential: editIsConfidential })
       });
       if (res.ok) {
         const savedData = await res.json();
@@ -202,44 +253,84 @@ export default function Faq() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl relative">
+    <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl relative w-full min-w-0">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Wiedza dla EVA</h2>
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">
+              {businessProfile === 'personal' ? 'Baza Wiedzy Asystenta' : `Wiedza dla ${botName}`}
+            </h2>
             <PageHelpButton
               title="Jak uczyć asystenta w Bazie Wiedzy?"
-              description="Baza wiedzy to zbiór informacji, którymi posługuje się EVA podczas rozmowy z Twoimi klientami."
-              tips={[
-                "Wklejaj zasady firmy: metody płatności, politykę spóźnień, parking, dojazd czy warunki realizacji usług.",
-                "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zwięzłe pytania i odpowiedzi.",
-                "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć i ręcznie poprawić dowolną odpowiedź."
-              ]}
-              nextStepRecommendation={{
-                text: "Przejdź do Usług i Cennika, aby zweryfikować wykryte przez AI pozycje",
-                path: "/dashboard/services",
-                actionLabel: "Przejdź do Usług"
-              }}
+              description={
+                businessProfile === 'personal'
+                  ? "Baza wiedzy to zbiór informacji merytorycznych, zasad współpracy, specjalizacji i procedur, którymi posługuje się Twój asystent podczas rozmowy z dzwoniącymi."
+                  : `Baza wiedzy to zbiór informacji, którymi posługuje się ${botName} podczas rozmowy z Twoimi klientami.`
+              }
+              tips={
+                businessProfile === 'personal'
+                  ? [
+                      "Wprowadzaj wiedzę merytoryczną: zakres prowadzonych spraw, wymagane dokumenty, zasady wyceny konsultacji, godziny kontaktu czy procedury awaryjne.",
+                      "Wiedza Poufna (PIN): Zaznacz 'Poufne' przy dowolnym pytaniu, aby zabezpieczyć odpowiedź kodem PIN (domyślnie 7777, do zmiany w Ustawieniach). Asystent nigdy nie poda jej przypadkowemu rozmówcy.",
+                      "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zestaw konkretnych pytań i odpowiedzi.",
+                      "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć, edytować lub ręcznie dodać dowolną odpowiedź."
+                    ]
+                  : [
+                      "Wklejaj zasady firmy: metody płatności, politykę spóźnień, parking, dojazd czy warunki realizacji usług.",
+                      "Wiedza Poufna (PIN): Zaznacz 'Poufne' przy pytaniu, aby zabezpieczyć wrażliwe informacje kodem PIN (domyślnie 7777).",
+                      "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zwięzłe pytania i odpowiedzi.",
+                      "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć i ręcznie poprawić dowolną odpowiedź."
+                    ]
+              }
+              guideSectionId={businessProfile === 'personal' ? 'personal-confidential-knowledge' : 'faq-training'}
+              nextStepRecommendation={
+                businessProfile === 'personal'
+                  ? {
+                      text: "Przejdź do Ustawień, aby dostosować harmonogram i strefy dostępności",
+                      path: "/dashboard/settings",
+                      actionLabel: "Przejdź do Ustawień"
+                    }
+                  : {
+                      text: "Przejdź do Usług i Cennika, aby zweryfikować wykryte przez AI pozycje",
+                      path: "/dashboard/services",
+                      actionLabel: "Przejdź do Usług"
+                    }
+              }
               guideSectionId="faq-training"
             />
           </div>
-          <p className="text-surface-500 mt-1">Ucz swoją asystentkę zasad działania Twojej firmy.</p>
+          <p className="text-surface-500 mt-1">
+            {businessProfile === 'personal'
+              ? "Ucz asystenta wiedzy merytorycznej, procedur i zasad obsługi dzwoniących."
+              : "Ucz swoją asystentkę zasad działania Twojej firmy."}
+          </p>
         </div>
-        <div className="flex items-center gap-3 self-start md:self-auto bg-surface-100 p-1 rounded-xl">
-          <button 
-            onClick={() => setViewMode('teach')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${viewMode === 'teach' ? 'bg-white shadow-sm text-surface-900' : 'text-surface-500 hover:text-surface-700'}`}
-          >
-            <Sparkles className="w-4 h-4" />
-            Ucz mnie
-          </button>
-          <button 
-            onClick={() => setViewMode('advanced')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${viewMode === 'advanced' ? 'bg-white shadow-sm text-surface-900' : 'text-surface-500 hover:text-surface-700'}`}
-          >
-            <Database className="w-4 h-4" />
-            Baza Wyuczona
-          </button>
+        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <div className="bg-surface-100/80 border border-surface-200 px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs">
+            <span className="text-surface-500 font-medium">Baza Q&A:</span>
+            <span className={`font-bold px-2 py-0.5 rounded-md ${
+              !isPremium && faqs.length >= FAQ_LIMIT
+                ? 'bg-amber-100 text-amber-800' 
+                : 'bg-white text-surface-900 shadow-2xs'
+            }`}>
+              {faqs.length} / {isPremium ? 'Bez limitu' : FAQ_LIMIT}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 bg-surface-100 p-1 rounded-xl">
+            <button 
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${viewMode === 'teach' ? 'bg-white shadow-sm text-surface-900' : 'text-surface-500 hover:text-surface-700'}`}
+            >
+              <Sparkles className="w-4 h-4" />
+              Ucz mnie
+            </button>
+            <button 
+              onClick={() => setViewMode('advanced')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${viewMode === 'advanced' ? 'bg-white shadow-sm text-surface-900' : 'text-surface-500 hover:text-surface-700'}`}
+            >
+              <Database className="w-4 h-4" />
+              Baza Wyuczona
+            </button>
+          </div>
         </div>
       </div>
 
@@ -250,10 +341,13 @@ export default function Faq() {
               <Sparkles className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-xl font-serif text-surface-900">Cześć! Jestem EVA.</h3>
+              <h3 className="text-xl font-serif text-surface-900">
+                {businessProfile === 'personal' ? 'Cześć! Jestem Twoim Asystentem Osobistym.' : `Cześć! Jestem ${botName}.`}
+              </h3>
               <p className="text-surface-500 text-sm">
-                Wklej tutaj swój cennik, wrzuć zdjęcie ulotki lub po prostu kliknij mikrofon i opowiedz mi o swoim biznesie.
-                Jako Twoja wirtualna asystentka przetworzę te dane i nauczę się, jak wyceniać usługi przed klientami.
+                {businessProfile === 'personal'
+                  ? "Wklej tutaj zasady współpracy, procedury, opis swojej specjalizacji lub po prostu kliknij mikrofon i opowiedz mi o swoim stylu pracy. Przetworzę te dane i nauczę się, jak profesjonalnie odpowiadać na pytania dzwoniących."
+                  : "Wklej tutaj swój cennik, wrzuć zdjęcie ulotki lub po prostu kliknij mikrofon i opowiedz mi o swoim biznesie. Jako Twoja wirtualna asystentka przetworzę te dane i nauczę się, jak wyceniać usługi przed klientami."}
               </p>
             </div>
           </div>
@@ -262,6 +356,18 @@ export default function Faq() {
             <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl text-sm border border-red-100 flex items-start gap-2">
               <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {!isPremium && faqs.length >= FAQ_LIMIT && (
+            <div className="mb-6 p-4 bg-amber-50 text-amber-800 rounded-2xl text-sm border border-amber-200 flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Osiągnięto limit {FAQ_LIMIT} pytań i odpowiedzi (Q&A)</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  W Twoim bieżącym pakiecie możesz zapisać maksymalnie {FAQ_LIMIT} wpisów wiedzy. Przejdź do zakładki "Baza Wyuczona", aby usunąć nieaktualne wpisy lub przejdź na pakiet Premium, aby uczyć asystenta bez limitów.
+                </p>
+              </div>
             </div>
           )}
 
@@ -317,14 +423,18 @@ export default function Faq() {
                   className="bg-primary text-primary-foreground px-8 py-3.5 rounded-2xl font-medium hover:bg-surface-800 hover:text-white transition-all shadow-md hover:shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:hover:shadow-none"
                 >
                   {isExtracting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                  {isExtracting ? 'Analizuję moje nowe dane...' : 'Wygeneruj wiedzę dla EVA'}
+                  {isExtracting 
+                    ? 'Analizuję moje nowe dane...' 
+                    : (businessProfile === 'personal' ? 'Wygeneruj wiedzę dla asystenta' : `Wygeneruj wiedzę dla ${botName}`)}
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-6 animate-in slide-in-from-right-8 duration-300">
               <div className="bg-green-50 text-green-800 p-4 rounded-2xl border border-green-200 font-medium">
-                Przetworzyłam! Zrozumiałam {extractedData.services?.length || 0} usług i opracowałam {extractedData.faq?.length || 0} pytań FAQ.
+                {businessProfile === 'personal'
+                  ? `Przetworzyłam! Opracowałam ${extractedData.faq?.length || 0} wpisów bazy wiedzy dla asystenta.`
+                  : `Przetworzyłam! Zrozumiałam ${extractedData.services?.length || 0} usług i opracowałam ${extractedData.faq?.length || 0} pytań FAQ.`}
               </div>
               
               <div className="grid md:grid-cols-2 gap-6">
@@ -405,21 +515,41 @@ export default function Faq() {
 
       {viewMode === 'advanced' && (
         <div className="space-y-4 animate-in slide-in-from-right-4">
+          {!isPremium && faqs.length >= FAQ_LIMIT && (
+            <div className="p-4 bg-amber-50 text-amber-800 rounded-2xl text-sm border border-amber-200 flex items-start gap-2.5 shadow-xs">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Osiągnięto limit {FAQ_LIMIT} wpisów Q&A</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Aby dodać nowe pytania i odpowiedzi, usuń niepotrzebne wpisy lub przejdź na pakiet Premium.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="glass-card p-6 rounded-3xl mb-6 bg-gradient-to-r from-surface-900 to-surface-800 text-white flex justify-between items-center shadow-lg">
              <div>
                <h3 className="text-xl font-serif">Wyuczona Baza Wiedzy</h3>
                <p className="text-surface-300 text-sm mt-1">Zarządzaj odpowiedziami, które pamiętam na pamięć.</p>
              </div>
              <button 
+                disabled={!isPremium && faqs.length >= FAQ_LIMIT}
                 onClick={() => {
-                   const newFaq = { id: `new-${Date.now()}`, question: '', answer: '' };
+                   if (!isPremium && faqs.length >= FAQ_LIMIT) return;
+                   const newFaq: FaqItem = { id: `new-${Date.now()}`, question: '', answer: '', isConfidential: false };
                    setFaqs([newFaq, ...faqs]);
                    setEditingId(newFaq.id);
                    setEditQuestion(newFaq.question);
                    setEditAnswer(newFaq.answer);
+                   setEditIsConfidential(false);
                    setExpandedId(newFaq.id);
                 }}
-                className="bg-white text-surface-900 hover:bg-surface-100 px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm ${
+                  !isPremium && faqs.length >= FAQ_LIMIT
+                    ? 'bg-surface-700 text-surface-400 cursor-not-allowed opacity-60'
+                    : 'bg-white text-surface-900 hover:bg-surface-100 cursor-pointer'
+                }`}
+                title={!isPremium && faqs.length >= FAQ_LIMIT ? `Osiągnięto limit ${FAQ_LIMIT} wpisów` : undefined}
              >
                Ręcznie dodaj wpis
              </button>
@@ -437,8 +567,16 @@ export default function Faq() {
               >
                 <div className="flex flex-col w-full gap-3">
                   <div className="flex justify-between items-start w-full">
-                    <div className="bg-gold-50 p-2 rounded-lg text-gold-600 border border-gold-100 shrink-0">
-                      <HelpCircle className="w-5 h-5" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="bg-gold-50 p-2 rounded-lg text-gold-600 border border-gold-100 shrink-0">
+                        <HelpCircle className="w-5 h-5" />
+                      </div>
+                      {faq.isConfidential && !isEditing && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100/90 text-amber-900 border border-amber-300/80 shadow-2xs">
+                          <Lock className="w-3.5 h-3.5 text-amber-700" />
+                          Poufne (wymaga PIN)
+                        </span>
+                      )}
                     </div>
                       <div className="flex items-center gap-2">
                         {isEditing ? (
@@ -477,14 +615,48 @@ export default function Faq() {
                   {isExpanded && (
                       <div className="mt-2 pt-4 border-t border-surface-100 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
                         {isEditing ? (
-                          <textarea 
-                            value={editAnswer} 
-                            onChange={(e) => setEditAnswer(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            rows={3}
-                            placeholder="Wpisz odpowiedź..."
-                            className="w-full bg-surface-50 border border-surface-200 rounded-lg p-3 text-surface-800 focus:outline-none focus:ring-2 focus:ring-gold-500/50 resize-none"
-                          />
+                          <div className="space-y-3">
+                            <textarea 
+                              value={editAnswer} 
+                              onChange={(e) => setEditAnswer(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              rows={3}
+                              placeholder="Wpisz odpowiedź..."
+                              className="w-full bg-surface-50 border border-surface-200 rounded-lg p-3 text-surface-800 focus:outline-none focus:ring-2 focus:ring-gold-500/50 resize-none"
+                            />
+                            <div className="pt-2 border-t border-surface-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <label className="inline-flex items-center gap-2 text-xs font-bold text-surface-800 cursor-pointer select-none bg-amber-50/80 border border-amber-200 px-3 py-2 rounded-xl">
+                                  <input 
+                                    type="checkbox"
+                                    checked={editIsConfidential}
+                                    onChange={(e) => setEditIsConfidential(e.target.checked)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-4 h-4 rounded text-amber-600 accent-amber-600 border-surface-300"
+                                  />
+                                  <span className="flex items-center gap-1.5">
+                                    <Lock className="w-3.5 h-3.5 text-amber-700" />
+                                    Oznacz jako wiedzę poufną (wymaga podania PIN przez dzwoniącego)
+                                  </span>
+                                </label>
+                                <PageHelpButton
+                                  variant="circle_i"
+                                  title="Wiedza Poufna z kodem PIN"
+                                  description="Oznaczenie pytania jako poufne ukrywa treść odpowiedzi przed zwykłymi dzwoniącymi. Asystent odczyta tę odpowiedź wyłącznie po poprawnym podaniu kodu PIN."
+                                  tips={[
+                                    "Domyślny PIN dostępu to 7777 (możesz go zmienić w Ustawieniach Asystenta w sekcji Baza Wiedzy Poufnej).",
+                                    "PIN do wiedzy poufnej jest całkowicie niezależny od głównego PIN-u Właściciela.",
+                                    "Gdy rozmówca zapyta o to zagadnienie, asystent poinformuje, że treść wymaga autoryzacji kodem PIN.",
+                                    "Po podaniu PIN-u asystent natychmiast odblokowuje odpowiedź i utrzymuje dostęp do końca połączenia."
+                                  ]}
+                                  guideSectionId={businessProfile === 'personal' ? 'personal-confidential-knowledge' : 'faq-training'}
+                                />
+                              </div>
+                              <span className="text-[11px] text-surface-500">
+                                Asystent nie odczyta tej odpowiedzi bez podania kodu PIN.
+                              </span>
+                            </div>
+                          </div>
                         ) : (
                           <p className="text-surface-600 leading-relaxed w-full"><span className="font-bold text-surface-800">EVA:</span> {faq.answer}</p>
                         )}

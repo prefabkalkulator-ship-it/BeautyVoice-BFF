@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import twilio from 'twilio';
 import { AudioPipeline } from './AudioPipeline';
 import { VADService } from './VADService';
 import { GeminiClient } from './GeminiClient';
@@ -6,12 +7,18 @@ import { prisma } from '../../prisma';
 import { PushService } from '../PushService';
 
 import { BookingService } from '../BookingService';
+import { getPolishGenitive } from '../../prompts/systemPrompt';
 
 const bookingService = new BookingService();
 
 export class CallOrchestrator {
   private twilioWs: WebSocket;
   private streamSid: string = '';
+  private callSid: string = '';
+  private ownerPhone: string = '';
+  private dialedNumber: string = '';
+  private transferAttempted: boolean = false;
+  private isPostTransferFallback: boolean = false;
   
   private vadService!: VADService;
   private geminiClient!: GeminiClient;
@@ -43,12 +50,31 @@ export class CallOrchestrator {
   private callerPhone: string = "";
   private contextHistory: string = "";
 
-  // Właściwości Asystenta Osobistego
+  // Właściwości Asystenta Osobistego i Tożsamości
   private callerRole: 'OWNER' | 'VIP' | 'GUEST' | 'SPAM' = 'GUEST';
   private vipContact: any = null;
   private profession: string = '';
   private bioSummary: string = '';
   private bufferMinutes: number = 15;
+  private ownerName: string = '';
+  private ownerGender: string = 'MALE';
+  private companyName: string = '';
+  private businessCategory: string = '';
+  private assistantRole: string = 'executive_gatekeeper';
+  private defaultFormalityLevel: string = 'formal_pan_pani';
+  private callSummaryFromAi: string | null = null;
+  private callerNameFromAi: string | null = null;
+  private isReturningCaller: boolean = false;
+  private returningCallerName: string = '';
+  private returningCallerGender: 'MALE' | 'FEMALE' | 'UNKNOWN' = 'UNKNOWN';
+
+  // PIN & Confidential Knowledge State
+  private ownerRequirePin: boolean = false;
+  private isOwnerPinVerified: boolean = false;
+  private ownerPinAttempts: number = 0;
+  private confidentialTopics: string[] = [];
+  private isConfidentialUnlocked: boolean = false;
+  private confidentialPinAttempts: number = 0;
 
   private isReady: boolean = false;
   private twilioMessageBuffer: string[] = [];
@@ -65,13 +91,19 @@ export class CallOrchestrator {
         try {
           const data = JSON.parse(msgStr);
           if (data.event === 'start') {
+            this.callSid = data.start.callSid || data.start.customParameters?.callSid || '';
             const dialedNumber = data.start.customParameters?.dialedNumber || 'unknown';
+            this.dialedNumber = dialedNumber;
             const outboundTaskId = data.start.customParameters?.outboundTaskId;
             this.callerPhone = data.start.customParameters?.callerPhone || "";
+            const tenantIdParam = data.start.customParameters?.tenantId;
 
             // --- SZYBKA ŚCIEŻKA: tylko tenant lookup (1-2 zapytania), potem natychmiast initAsync ---
             let tenant = null;
-            if (outboundTaskId) {
+            if (tenantIdParam) {
+              tenant = await prisma.tenant.findUnique({ where: { id: tenantIdParam }, include: { subscription: true } });
+            }
+            if (!tenant && outboundTaskId) {
               const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId }, include: { tenant: true } });
               if (task && task.tenant) {
                 tenant = task.tenant;
@@ -164,10 +196,21 @@ export class CallOrchestrator {
             orderBy: { createdAt: 'desc' }
           });
 
+          const resolvedSummary = this.callSummaryFromAi || undefined;
+          const resolvedCallerName = this.vipContact 
+            ? this.vipContact.contactName 
+            : (this.callerRole === 'OWNER' 
+                ? (this.ownerName || this.tenantName) 
+                : (this.callerNameFromAi || undefined));
+
           if (callLog) {
             callLog = await prisma.callLog.update({
               where: { id: callLog.id },
-              data: { durationSeconds }
+              data: { 
+                durationSeconds,
+                summary: resolvedSummary || callLog.summary,
+                callerName: resolvedCallerName || callLog.callerName
+              }
             });
             console.log(`📝 [CallOrchestrator] Zaktualizowano istniejący CallLog (${callLog.id}) czasem: ${durationSeconds}s`);
           } else {
@@ -175,14 +218,15 @@ export class CallOrchestrator {
               data: {
                 tenantId: this.tenantId,
                 callerPhone: this.callerPhone || 'nieznany',
-                callerName: this.vipContact ? this.vipContact.contactName : (this.callerRole === 'OWNER' ? this.tenantName : null),
+                callerName: resolvedCallerName || null,
                 callerRole: this.callerRole,
                 durationSeconds,
                 status: 'completed',
+                summary: resolvedSummary || null,
                 isProcessed: false
               }
             });
-            console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s`);
+            console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s, summary="${resolvedSummary || ''}"`);
           }
 
           // Asynchroniczny Post-call worker dla asystenta osobistego
@@ -219,12 +263,29 @@ export class CallOrchestrator {
         this.businessProfile = tenant.businessProfile || "solo";
         this.bookingMode = tenant.bookingMode || "hourly";
         this.tenantName = tenant.name || "BeautyVoice";
-        this.botName = tenant.botName || "Ewa";
+        this.botName = (tenant.botName !== undefined && tenant.botName !== null) ? tenant.botName : "Ewa";
         this.toneOfVoice = tenant.toneOfVoice || "profesjonalny";
         this.tenantId = tenant.id;
         this.profession = tenant.profession || "";
         this.bioSummary = tenant.bioSummary || "";
         this.bufferMinutes = tenant.bufferMinutes || 15;
+        this.ownerPhone = tenant.phoneNumber || "";
+        this.ownerName = tenant.ownerName || tenant.name || "";
+        this.ownerGender = tenant.ownerGender || "MALE";
+        this.companyName = tenant.companyName || "";
+        this.businessCategory = tenant.businessCategory || "";
+        this.assistantRole = tenant.assistantRole || "executive_gatekeeper";
+        this.ownerRequirePin = Boolean(tenant.ownerRequirePin);
+
+        // Pobieramy tematy wiedzy poufnej dla tego salonu
+        try {
+          this.confidentialTopics = await bookingService.getConfidentialTopics(tenant.id);
+          if (this.confidentialTopics.length > 0) {
+            console.log(`🔒 [CallOrchestrator] Załadowano ${this.confidentialTopics.length} tematów wiedzy poufnej`);
+          }
+        } catch (confErr) {
+          console.error('[CallOrchestrator] Błąd pobierania tematów poufnych:', confErr);
+        }
 
         // Router identyfikacji dzwoniącego (Owner vs VIP vs Guest)
         const normCaller = this.callerPhone.replace(/[\s\-\+]/g, '');
@@ -232,7 +293,13 @@ export class CallOrchestrator {
 
         if (normCaller && normOwner && (normCaller === normOwner || normCaller.endsWith(normOwner) || normOwner.endsWith(normCaller))) {
           this.callerRole = 'OWNER';
-          console.log(`👑 [CallOrchestrator] Rozpoznano połączenie od WŁAŚCICIELA: ${tenant.name} (${this.callerPhone})`);
+          if (this.ownerRequirePin && tenant.pinCode) {
+            this.isOwnerPinVerified = false;
+            console.log(`🔒 [CallOrchestrator] Rozpoznano WŁAŚCICIELA, ale WYMAGANA AUTORYZACJA KODEM PIN (${this.callerPhone})`);
+          } else {
+            this.isOwnerPinVerified = true;
+            console.log(`👑 [CallOrchestrator] Rozpoznano połączenie od WŁAŚCICIELA: ${tenant.name} (${this.callerPhone})`);
+          }
         } else if (this.callerPhone) {
           this.vipContact = await prisma.vipContact.findFirst({
             where: {
@@ -248,6 +315,45 @@ export class CallOrchestrator {
             console.log(`⭐ [CallOrchestrator] Rozpoznano kontakt VIP: ${this.vipContact.contactName} (${this.vipContact.category})`);
           } else {
             this.callerRole = 'GUEST';
+
+            // Sprawdzamy czy dzwoniący jest powracającym rozmówcą (Returning Caller z CallLog lub Customer)
+            const normCallerDigits = normCaller.length >= 9 ? normCaller.slice(-9) : normCaller;
+            try {
+              const [prevLog, cust] = await Promise.all([
+                prisma.callLog.findFirst({
+                  where: {
+                    tenantId: tenant.id,
+                    callerPhone: { contains: normCallerDigits },
+                    callerName: { not: null }
+                  },
+                  orderBy: { createdAt: 'desc' }
+                }),
+                prisma.customer.findFirst({
+                  where: {
+                    tenantId: tenant.id,
+                    phone: { contains: normCallerDigits },
+                    name: { not: '' }
+                  }
+                })
+              ]);
+
+              const foundName = prevLog?.callerName || cust?.name;
+              if (foundName && foundName.trim() && !['nieznany', 'brak', 'unknown', 'nieznany rozmówca'].includes(foundName.toLowerCase().trim())) {
+                this.isReturningCaller = true;
+                this.returningCallerName = foundName.trim();
+                const firstWord = this.returningCallerName.split(' ')[0].toLowerCase().replace(/[^a-ząćęłńóśźż]/g, '');
+                if (['kuba', 'bonawentura', 'kosma', 'jarema', 'barnaba'].includes(firstWord)) {
+                  this.returningCallerGender = 'MALE';
+                } else if (firstWord.endsWith('a')) {
+                  this.returningCallerGender = 'FEMALE';
+                } else {
+                  this.returningCallerGender = 'MALE';
+                }
+                console.log(`🔁 [CallOrchestrator] Rozpoznano powracającego rozmówcę: ${this.returningCallerName} (Płeć: ${this.returningCallerGender})`);
+              }
+            } catch (retErr) {
+              console.error('[CallOrchestrator] Błąd szukania powracającego rozmówcy:', retErr);
+            }
           }
         }
       }
@@ -257,6 +363,11 @@ export class CallOrchestrator {
 
     this.vadService = new VADService();
     await VADService.init();
+
+    const isDemoLine = this.tenantName === 'DEMO' || this.businessProfile === 'demo';
+    const effectiveFormality = (this.vipContact?.formalityLevel && this.vipContact.formalityLevel !== 'default')
+      ? this.vipContact.formalityLevel
+      : this.defaultFormalityLevel;
 
     this.geminiClient = new GeminiClient({
       onAudioReceived: (audioBase64) => this.streamGeminiAudioToCaller(audioBase64),
@@ -278,7 +389,21 @@ export class CallOrchestrator {
       profession: this.profession,
       bioSummary: this.bioSummary,
       bufferMinutes: this.bufferMinutes,
-      ownerName: this.tenantName
+      ownerName: this.ownerName,
+      ownerGender: this.ownerGender,
+      companyName: this.companyName,
+      businessCategory: this.businessCategory,
+      assistantRole: this.assistantRole,
+      formalityLevel: effectiveFormality,
+      personalSchedule: tenant?.personalSchedule,
+      callerPhone: this.callerPhone,
+      proactiveMode: tenant?.proactiveMode ?? isDemoLine,
+      isReturningCaller: this.isReturningCaller,
+      returningCallerName: this.returningCallerName,
+      returningCallerGender: this.returningCallerGender,
+      ownerRequirePin: this.ownerRequirePin,
+      isOwnerPinVerified: this.isOwnerPinVerified,
+      confidentialTopics: this.confidentialTopics
     });
 
     this.geminiClient.connect();
@@ -299,13 +424,23 @@ export class CallOrchestrator {
           break;
         case 'start':
           this.streamSid = data.start.streamSid;
+          this.callSid = data.start.callSid || data.start.customParameters?.callSid || this.callSid || '';
+          this.dialedNumber = data.start.customParameters?.dialedNumber || this.dialedNumber || '';
           this.callStartTime = Date.now();
           const callerPhone = data.start.customParameters?.callerPhone || 'unknown';
           const outboundTaskId = data.start.customParameters?.outboundTaskId;
+          const isPostTransferFallback = data.start.customParameters?.isPostTransferFallback === 'true';
+          const fallbackVipName = data.start.customParameters?.vipName || '';
+          if (isPostTransferFallback) {
+            this.isPostTransferFallback = true;
+            this.transferAttempted = true;
+          }
           
           setTimeout(async () => {
             let contextText = '';
-            if (outboundTaskId && this.tenantId) {
+            if (isPostTransferFallback && this.geminiClient) {
+              contextText = `UWAGA: Próba bezpośredniego połączenia z właścicielem nie powiodła się (właściciel nie odebrał w ciągu 30 sekund lub odrzucił połączenie). Rozmówca (${fallbackVipName || 'kontakt VIP'}) powrócił na linię. NATYCHMIAST przemów jako pierwsza i powiedz dosłownie: "Właściciel nie mógł teraz odebrać. Zostaw wiadomość, a przekażę ją natychmiast." Następnie wysłuchaj i zapisz jego wiadomość narzędziem save_call_message. Pod żadnym pozorem NIE próbuj łączyć ponownie!`;
+            } else if (outboundTaskId && this.tenantId) {
                // OUTBOUND CALL LOGIC
                const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId } });
                if (task) {
@@ -314,17 +449,71 @@ export class CallOrchestrator {
                   // Oznacz task jako zakończony
                   await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                }
+            } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
+              // LINIA TESTOWA DEMO (EVA Brand Ambassador)
+              contextText = `To jest połączenie na linię testową platformy EasyVoiceAssistant, EVA. Numer dzwoniącego: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być dokładnie: "Dzień dobry! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. Czy chcesz dowiedzieć się, jak działam, czy wolisz poznać, co obejmują nasze plany cenowe?". ZAKAZ mówienia, że ktoś nie może odebrać!`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
+              const isMale = ['Puck', 'Charon'].includes(this.voiceName);
+              const assistantTitle = isMale ? 'asystentem wirtualnym' : 'wirtualną asystentką';
+              const ownerDisplayName = this.ownerName || this.tenantName;
+              const ownerGenitivePrefix = this.ownerGender === 'FEMALE' ? 'pani' : 'pana';
+              const ownerGenitiveName = getPolishGenitive(ownerDisplayName, this.ownerGender);
+              const ownerFirst = ownerDisplayName.split(' ')[0];
+              const ownerFirstGenitive = getPolishGenitive(ownerFirst, this.ownerGender);
+              const ownerTitle = this.ownerGender === 'FEMALE' ? 'Pani' : 'Pan';
+
               if (this.callerRole === 'OWNER') {
-                contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${this.tenantName}. Przywitaj się krótko po imieniu ("Cześć ${this.tenantName}!"). Zapytaj co słychać lub czy przedstawić raport.`;
+                if (this.ownerRequirePin && !this.isOwnerPinVerified) {
+                  contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Ze względów bezpieczeństwa włączona jest autoryzacja kodem PIN. Twoim PIERWSZYM ZDANIEM musi być: "Dzień dobry ${ownerFirst}! Ze względów bezpieczeństwa, proszę podaj swój kod PIN, aby odblokować funkcje asystenta." KATEGORYCZNY ZAKAZ podawania jakichkolwiek informacji o kalendarzu, wiadomościach czy połączeniach, dopóki rozmówca nie poda PIN-u i nie zweryfikujesz go pomyślnie narzędziem verify_owner_pin.`;
+                } else {
+                  contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Przywitaj się krótko po imieniu ("Cześć ${ownerDisplayName}!"). Zapytaj co słychać lub czy przedstawić raport.`;
+                }
               } else if (this.callerRole === 'VIP' && this.vipContact) {
-                contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się wyjątkowo serdecznie i ciepło po imieniu.`;
+                const vipFormality = (this.vipContact.formalityLevel && this.vipContact.formalityLevel !== 'default')
+                  ? this.vipContact.formalityLevel
+                  : this.defaultFormalityLevel;
+
+                if (vipFormality === 'direct_ty') {
+                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się bezpośrednio na "Ty". Przywitaj się wyjątkowo ciepło i po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałbyś/chciałabyś zostawić wiadomość, czy umówić dogodny termin rozmowy?".`;
+                } else {
+                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się z pełnym szacunkiem per Pan/Pani. Przywitaj się serdecznie: "Dzień dobry, jestem ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy zarezerwować dogodny termin rozmowy?".
+DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
+                }
+              } else if (this.isReturningCaller && this.returningCallerName) {
+                // POWRACAJĄCY ROZMÓWCA ZE ZNANĄ TOŻSAMOŚCIĄ (Krótkie, zgodne z prawem powitanie)
+                const firstName = this.returningCallerName.split(' ')[0];
+                let vocative = '';
+                if (this.returningCallerGender === 'FEMALE') {
+                  vocative = `Pani ${firstName}`;
+                } else {
+                  if (firstName.endsWith('ek')) vocative = `Panie ${firstName.slice(0, -2)}ku`;
+                  else if (firstName.endsWith('r')) vocative = `Panie ${firstName}ze`;
+                  else if (firstName.endsWith('ł')) vocative = `Panie ${firstName.slice(0, -1)}le`;
+                  else if (firstName.endsWith('n')) vocative = `Panie ${firstName}ie`;
+                  else vocative = `Panie ${firstName}`;
+                }
+
+                contextText = `Rozmawiasz ze ZNANYM POWRACAJĄCYM ROZMÓWCĄ: ${this.returningCallerName} (${vocative}). Numer: ${callerPhone}. Dzwonił już wcześniej i zna Twoje możliwości.
+ABSOLUTNY ZAKAZ pytania "z kim mam przyjemność?" i ZAKAZ długiego dwuetapowego onboardingu!
+Twoim PIERWSZYM ZDANIEM musi być krótkie, profesjonalne powitanie z imieniem w wołaczu:
+"Dzień dobry ${vocative}, z tej strony ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".
+JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni"): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: ...") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
+DYSKRECJA NAZWISKA: Mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
               } else {
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Reprezentujesz ${this.tenantName}. Przywitaj się profesjonalnie i pamiętaj o Privacy Shield.`;
+                // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST): 100% neutralność i prośba o przedstawienie się
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Reprezentujesz: ${ownerDisplayName}. Twoim PIERWSZYM ZDANIEM (Tura 1) musi być DOKŁADNIE: "Witam, jestem ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".
+JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni", "Niech zadzwoni do..."): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: żeby podszedł do biura") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
+DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}' (np. 'pan ${ownerFirst}'). KATEGORYCZNY ZAKAZ podawania nazwiska właściciela, chyba że rozmówca wprost o to zapyta ("A o jakiego pana ${ownerFirst} chodzi?"). Wtedy i tylko wtedy potwierdź pełne nazwisko.
+W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 według instrukcji systemowych.`;
               }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
-              // INBOUND CALL LOGIC: jedno spójne sprawdzenie stałego klienta i ostatniej wizyty
+              // PAKIET BIZNESOWY (Standard / Premium)
+              const compName = this.companyName || this.tenantName;
+              const isMale = ['Puck', 'Charon'].includes(this.voiceName);
+              const botRole = isMale ? "Wirtualny Asystent" : "Wirtualna Asystentka";
+              const botDisplayName = this.botName || botRole;
+
               try {
                 const [knownCustomer, lastAppt] = await Promise.all([
                   prisma.customer.findFirst({ where: { phone: callerPhone, tenantId: this.tenantId } }),
@@ -336,10 +525,18 @@ export class CallOrchestrator {
                 ]);
 
                 if (knownCustomer) {
-                  const visitInfo = lastAppt ? ` Jej ostatnia wizyta to ${lastAppt.service.name}.` : '';
-                  contextText = `To jest połączenie od TWOJEJ STAŁEJ KLIENTKI: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj ją ciepło po imieniu w pierwszym zdaniu. ZAKAZ pytania o imię i numer (masz już te dane). ZAKAZ pytania skąd wie o salonie.`;
+                  const visitInfo = lastAppt ? ` Ostatnia wizyta: ${lastAppt.service.name}.` : '';
+                  const custFormality = (knownCustomer.formalityLevel && knownCustomer.formalityLevel !== 'default')
+                    ? knownCustomer.formalityLevel
+                    : this.defaultFormalityLevel;
+
+                  if (custFormality === 'direct_ty') {
+                    contextText = `To jest połączenie od stałego klienta: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Zwracaj się bezpośrednio na "Ty". Powitaj ciepło po imieniu: "Cześć ${knownCustomer.name}! Miło Cię słyszeć. Z tej strony ${botDisplayName} z firmy ${compName}. W czym mogę dzisiaj pomóc?". ZAKAZ pytania o imię i numer.`;
+                  } else {
+                    contextText = `To jest połączenie od stałego klienta: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj ciepło i z szacunkiem po imieniu w pierwszym zdaniu. ZAKAZ pytania o imię i numer (masz już te dane).`;
+                  }
                 } else {
-                  contextText = `Klient dzwoni z numeru: ${callerPhone}.`;
+                  contextText = `Nowy klient dzwoni z numeru: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być: "Dzień dobry, dodzwoniłeś się do firmy ${compName}. Z tej strony ${botDisplayName}. W czym mogę dzisiaj pomóc?".`;
                 }
               } catch (err) {
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
@@ -440,11 +637,90 @@ export class CallOrchestrator {
         case 'getServicesAndPrices':
           return await bookingService.getServicesAndPrices(tenantId);
         case 'getFAQ':
-          return await bookingService.getFAQ(tenantId);
+          return await bookingService.getFAQ(tenantId, this.isConfidentialUnlocked);
+        case 'verify_owner_pin': {
+          const result = await bookingService.verifyOwnerPin(tenantId, args.pin);
+          if (result.success) {
+            this.isOwnerPinVerified = true;
+            this.ownerPinAttempts = 0;
+            console.log(`🔓 [CallOrchestrator] Właściciel autoryzowany kodem PIN!`);
+            return {
+              success: true,
+              message: "Kod PIN poprawny. Dostęp do funkcji zarządczych został autoryzowany. Przywitaj szefa po imieniu i zaoferuj podsumowanie dnia lub zapytaj w czym możesz pomóc."
+            };
+          } else {
+            this.ownerPinAttempts = (this.ownerPinAttempts || 0) + 1;
+            console.warn(`❌ [CallOrchestrator] Błędny PIN Właściciela (${this.ownerPinAttempts}/3)`);
+            if (this.ownerPinAttempts >= 3) {
+              this.callerRole = 'GUEST';
+              return {
+                success: false,
+                message: "Przekroczono maksymalną liczbę prób (3). Odmowa autoryzacji do trybu Właściciela. Przełączono w tryb gościa."
+              };
+            }
+            return {
+              success: false,
+              message: `Niepoprawny kod PIN. Pozostało prób: ${3 - this.ownerPinAttempts}. Poproś o ponowne podanie PIN.`
+            };
+          }
+        }
+        case 'verify_confidential_pin': {
+          const result = await bookingService.verifyConfidentialPin(tenantId, args.pin, args.topic);
+          if (result.success) {
+            this.isConfidentialUnlocked = true;
+            this.confidentialPinAttempts = 0;
+            console.log(`🔓 [CallOrchestrator] Wiedza poufna odblokowana kodem PIN!`);
+            return {
+              success: true,
+              message: result.message,
+              answer: result.answer
+            };
+          } else {
+            this.confidentialPinAttempts = (this.confidentialPinAttempts || 0) + 1;
+            console.warn(`❌ [CallOrchestrator] Błędny PIN wiedzy poufnej (${this.confidentialPinAttempts}/3)`);
+            if (this.confidentialPinAttempts >= 3) {
+              return {
+                success: false,
+                message: "Przekroczono maksymalną liczbę prób PIN. Dostęp do tej informacji został zablokowany. Zaproponuj kontakt w innej sprawie lub pozostawienie wiadomości dla właściciela."
+              };
+            }
+            return {
+              success: false,
+              message: `Błędny kod PIN do wiedzy poufnej. Pozostało prób: ${3 - this.confidentialPinAttempts}. Poproś o ponowne podanie PIN.`
+            };
+          }
+        }
         case 'checkAvailability':
-          return { availableSlots: await bookingService.checkAvailability(tenantId, args.date, args.serviceName, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights) };
+          return { availableSlots: await bookingService.checkAvailability(
+            tenantId, 
+            args.date, 
+            args.serviceName, 
+            args.durationMinutes, 
+            args.preferredStaffName, 
+            this.bookingMode, 
+            args.numberOfNights, 
+            this.callerRole, 
+            this.vipContact?.category, 
+            this.vipContact?.allowPrioritySlots
+          ) };
         case 'bookAppointment':
-          return await bookingService.bookAppointment(tenantId, args.customerName, args.customerPhone, args.serviceName, args.startTime, args.durationMinutes, args.preferredStaffName, this.bookingMode, args.numberOfNights, args.promoCode, this.callerPhone);
+          return await bookingService.bookAppointment(
+            tenantId, 
+            args.customerName, 
+            args.customerPhone, 
+            args.serviceName, 
+            args.startTime, 
+            args.durationMinutes, 
+            args.preferredStaffName, 
+            this.bookingMode, 
+            args.numberOfNights, 
+            args.promoCode, 
+            this.callerPhone, 
+            args.contactLevel, 
+            this.callerRole, 
+            this.vipContact?.category, 
+            this.vipContact?.allowPrioritySlots
+          );
         case 'confirmAppointment':
           return await bookingService.confirmAppointment(tenantId, args.customerPhone);
         case 'cancelAppointment':
@@ -452,15 +728,84 @@ export class CallOrchestrator {
         case 'requestHumanContact':
           return await bookingService.requestHumanContact(tenantId, args.customerPhone, args.reason);
         case 'get_owner_activity_summary':
+          if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
+            return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
+          }
           return await bookingService.getOwnerActivitySummary(tenantId, args.timeRange);
         case 'send_summary_email':
-          return await bookingService.sendSummaryEmail(tenantId, args.subject, args.contentMarkdown);
+          if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
+            return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
+          }
+          return await bookingService.sendSummaryEmail(tenantId, args.subject, args.contentMarkdown, args.timeRange);
         case 'save_call_message':
           return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, args.rawMessage, args.urgency, args.callbackRequested);
         case 'block_calendar_time':
+          if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
+            return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
+          }
           return await bookingService.blockCalendarTime(tenantId, args.startTime, args.durationMinutes, args.title);
+        case 'transferCallToOwner': {
+          if (this.businessProfile !== 'personal' || this.callerRole !== 'VIP' || !['VIP', 'Rodzina'].includes(this.vipContact?.category || '')) {
+            return {
+              status: "transfer_rejected",
+              message: "Bezpośrednie przełączanie połączeń jest zarezerwowane wyłącznie dla kontaktów z kategorii VIP oraz Rodzina. Poinformuj rozmówcę uprzejmie, że nie masz możliwości połączenia na żywo, ale chętnie zapiszesz dokładną wiadomość i przekażesz ją natychmiast właścicielowi."
+            };
+          }
+          if (this.transferAttempted) {
+            return {
+              status: "transfer_already_attempted",
+              message: "Próba bezpośredniego połączenia została już wcześniej podjęta w tej rozmowie i właściciel nie odebrał. Poproś rozmówcę o podyktowanie wiadomości, a przekażesz ją natychmiast."
+            };
+          }
+          const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+          const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+          if (!this.callSid || !this.ownerPhone || !twilioSid || !twilioToken) {
+            console.warn(`[Transfer] Brak danych do transferu: callSid=${this.callSid}, ownerPhone=${this.ownerPhone}`);
+            return {
+              status: "technical_unavailable",
+              message: "Przełączenie techniczne jest chwilowo niedostępne. Zaproponuj rozmówcy zapisanie pilnej notatki."
+            };
+          }
+
+          try {
+            this.transferAttempted = true;
+            const client = twilio(twilioSid, twilioToken);
+            const host = process.env.HOST || 'beautyvoice-bff.web.app';
+            const fallbackUrl = `https://${host}/api/voice/transfer-fallback?tenantId=${encodeURIComponent(tenantId)}&callerPhone=${encodeURIComponent(this.callerPhone)}&vipName=${encodeURIComponent(this.vipContact?.contactName || '')}&dialedNumber=${encodeURIComponent(this.dialedNumber || '')}`;
+
+            console.log(`📞 [Transfer] Przełączam połączenie ${this.callSid} do właściciela ${this.ownerPhone}. Fallback: ${fallbackUrl}`);
+            
+            await client.calls(this.callSid).update({
+              twiml: `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say language="pl-PL">Łączę bezpośrednio z właścicielem. Proszę czekać na linii.</Say>
+  <Dial timeout="30" action="${fallbackUrl}">
+    ${this.ownerPhone}
+  </Dial>
+</Response>`
+            });
+
+            return {
+              status: "transferring",
+              message: "Przełączam rozmowę do właściciela. Proszę czekać na linii."
+            };
+          } catch (err: any) {
+            console.error(`[Transfer] Błąd wywołania Twilio call update:`, err);
+            return {
+              status: "transfer_error",
+              message: "Wystąpił problem techniczny podczas próby łączenia. Zaproponuj zapisanie wiadomości."
+            };
+          }
+        }
         case 'endCall':
           this.shouldHangupAfterTurn = true;
+          if (args?.callSummary) {
+            this.callSummaryFromAi = args.callSummary;
+            console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
+          }
+          if (args?.callerName) {
+            this.callerNameFromAi = args.callerName;
+          }
           return { status: "call_ending", message: "Pożegnaj się uprzejmie z klientem jednym krótkim zdaniem. Połączenie zostanie automatycznie rozłączone." };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };

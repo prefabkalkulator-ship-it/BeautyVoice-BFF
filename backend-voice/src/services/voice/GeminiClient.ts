@@ -25,6 +25,20 @@ export interface GeminiClientCallbacks {
   bioSummary?: string;
   bufferMinutes?: number;
   ownerName?: string;
+  ownerGender?: string;
+  companyName?: string;
+  businessCategory?: string;
+  assistantRole?: string;
+  formalityLevel?: string;
+  personalSchedule?: any;
+  callerPhone?: string;
+  proactiveMode?: boolean;
+  isReturningCaller?: boolean;
+  returningCallerName?: string;
+  returningCallerGender?: 'MALE' | 'FEMALE' | 'UNKNOWN';
+  ownerRequirePin?: boolean;
+  isOwnerPinVerified?: boolean;
+  confidentialTopics?: string[];
 }
 
 export class GeminiClient {
@@ -72,7 +86,7 @@ export class GeminiClient {
               businessProfile: businessProfile,
               voiceName: aiVoice,
               bookingMode: bookingMode,
-              botNameArg: this.callbacks.botName || "Ewa",
+              botNameArg: (this.callbacks.botName !== undefined && this.callbacks.botName !== null) ? this.callbacks.botName : "Ewa",
               toneOfVoiceArg: this.callbacks.toneOfVoice || "profesjonalny",
               contextHistory: this.callbacks.contextHistory || "",
               isTextChat: false,
@@ -83,7 +97,21 @@ export class GeminiClient {
               profession: this.callbacks.profession,
               bioSummary: this.callbacks.bioSummary,
               bufferMinutes: this.callbacks.bufferMinutes,
-              ownerName: this.callbacks.ownerName
+              ownerName: this.callbacks.ownerName,
+              ownerGender: this.callbacks.ownerGender,
+              companyName: this.callbacks.companyName,
+              businessCategory: this.callbacks.businessCategory,
+              assistantRole: this.callbacks.assistantRole,
+              formalityLevel: this.callbacks.formalityLevel,
+              personalSchedule: this.callbacks.personalSchedule,
+              callerPhone: this.callbacks.callerPhone,
+              proactiveMode: this.callbacks.proactiveMode,
+              isReturningCaller: this.callbacks.isReturningCaller,
+              returningCallerName: this.callbacks.returningCallerName,
+              returningCallerGender: this.callbacks.returningCallerGender,
+              ownerRequirePin: this.callbacks.ownerRequirePin,
+              isOwnerPinVerified: this.callbacks.isOwnerPinVerified,
+              confidentialTopics: this.callbacks.confidentialTopics
             }) }]
         },
         tools: [{

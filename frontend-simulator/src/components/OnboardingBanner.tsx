@@ -17,11 +17,15 @@ export default function OnboardingBanner() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [currentTenant, setCurrentTenant] = useState<any>(null);
   const [hasProfile, setHasProfile] = useState(false);
   const [hasFaq, setHasFaq] = useState(false);
   const [hasServices, setHasServices] = useState(false);
   const [hasStaffWithServices, setHasStaffWithServices] = useState(false);
   const [hasTimeOff, setHasTimeOff] = useState(false);
+  const [hasVip, setHasVip] = useState(false);
+  const [hasAnnualEvents, setHasAnnualEvents] = useState(false);
+  const [hasCallLogs, setHasCallLogs] = useState(false);
 
   useEffect(() => {
     const collapsed = localStorage.getItem('onboarding_collapsed') === 'true';
@@ -31,27 +35,38 @@ export default function OnboardingBanner() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const [tenRes, faqRes, svcRes, staffRes, toRes] = await Promise.allSettled([
+        const [tenRes, faqRes, svcRes, staffRes, toRes, vipRes, eventsRes, logsRes] = await Promise.allSettled([
           fetch('/api/tenant').then(r => r.ok ? r.json() : null),
           fetch('/api/faq').then(r => r.ok ? r.json() : []),
           fetch('/api/services').then(r => r.ok ? r.json() : []),
           fetch('/api/staff').then(r => r.ok ? r.json() : []),
-          fetch('/api/timeoff').then(r => r.ok ? r.json() : [])
+          fetch('/api/timeoff').then(r => r.ok ? r.json() : []),
+          fetch('/api/vip-contacts').then(r => r.ok ? r.json() : []),
+          fetch('/api/annual-events').then(r => r.ok ? r.json() : []),
+          fetch('/api/call-logs').then(r => r.ok ? r.json() : [])
         ]);
 
         const tenant = tenRes.status === 'fulfilled' ? tenRes.value : null;
+        setCurrentTenant(tenant);
         const faqs = faqRes.status === 'fulfilled' && Array.isArray(faqRes.value) ? faqRes.value : [];
         const services = svcRes.status === 'fulfilled' && Array.isArray(svcRes.value) ? svcRes.value : [];
         const staff = staffRes.status === 'fulfilled' && Array.isArray(staffRes.value) ? staffRes.value : [];
         const timeoffs = toRes.status === 'fulfilled' && Array.isArray(toRes.value) ? toRes.value : [];
+        const vips = vipRes.status === 'fulfilled' && Array.isArray(vipRes.value) ? vipRes.value : [];
+        const events = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
+        const logs = logsRes.status === 'fulfilled' && Array.isArray(logsRes.value) ? logsRes.value : [];
 
-        // 1. Profil firmy: wymaga uzupełnienia danych kontaktowych e-mail w Ustawieniach Firmy
-        setHasProfile(Boolean(tenant && tenant.name && tenant.contactEmail && tenant.contactEmail.trim().length > 0));
+        // 1. Profil firmy / osobisty
+        if (tenant?.businessProfile === 'personal') {
+          setHasProfile(Boolean(tenant.profession && tenant.contactEmail));
+        } else {
+          setHasProfile(Boolean(tenant && tenant.name && tenant.contactEmail && tenant.contactEmail.trim().length > 0));
+        }
         // 2. Baza wiedzy EVA
         setHasFaq(faqs.length > 0);
         // 3. Usługi i cennik
         setHasServices(services.length > 0);
-        // 4. Zespół i zasoby (czy pracownicy mają przypisane usługi lub profil solo z usługami)
+        // 4. Zespół i zasoby
         const staffAssigned = staff.length > 0 && staff.some((s: any) => 
           (Array.isArray(s.services) && s.services.length > 0) ||
           (Array.isArray(s.serviceIds) && s.serviceIds.length > 0)
@@ -59,6 +74,10 @@ export default function OnboardingBanner() {
         setHasStaffWithServices(staffAssigned || (tenant?.businessProfile === 'solo' && services.length > 0));
         // 5. Dni wolne
         setHasTimeOff(timeoffs.length > 0);
+        // Pola asystenta osobistego
+        setHasVip(vips.length > 0);
+        setHasAnnualEvents(events.length > 0);
+        setHasCallLogs(logs.length > 0);
       } catch (err) {
         console.error('Error checking onboarding status:', err);
       } finally {
@@ -69,8 +88,45 @@ export default function OnboardingBanner() {
     checkStatus();
   }, [location.pathname]);
 
-  // Kolejność: Profil → Baza wiedzy → Usługi → Zespół → Dni wolne
-  const steps: StepStatus[] = [
+  const isPersonal = currentTenant?.businessProfile === 'personal';
+
+  const steps: StepStatus[] = isPersonal ? [
+    {
+      id: 'profile',
+      title: '1. Profil & BIO',
+      desc: 'Wypełnij swój zawód, BIO i dane kontaktowe.',
+      path: '/dashboard/settings',
+      isDone: hasProfile
+    },
+    {
+      id: 'forwarding',
+      title: '2. Przekierowanie GSM',
+      desc: 'Włącz przekierowanie *61* lub *21* na wirtualny numer asystenta.',
+      path: '/dashboard/subscription',
+      isDone: Boolean(currentTenant?.assignedPhoneNumber)
+    },
+    {
+      id: 'vip',
+      title: '3. Kontakty VIP',
+      desc: 'Dodaj pierwsze kontakty: Rodzina, Współpracownicy, Kluczowi partnerzy.',
+      path: '/dashboard/vip-contacts',
+      isDone: hasVip
+    },
+    {
+      id: 'events',
+      title: '4. Ważne Daty',
+      desc: 'Wprowadź Ważne Daty w roku (urodziny bliskich, kluczowe terminy).',
+      path: '/dashboard/annual-events',
+      isDone: hasAnnualEvents
+    },
+    {
+      id: 'test',
+      title: '5. Test Asystenta',
+      desc: 'Zadzwoń do asystenta ze swojej komórki lub sprawdź powiadomienia.',
+      path: '',
+      isDone: hasCallLogs
+    }
+  ] : [
     {
       id: 'profile',
       title: '1. Profil Firmy',
@@ -157,13 +213,18 @@ export default function OnboardingBanner() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 self-end sm:self-auto shrink-0">
-          {!allDone && (
+          {!allDone && nextStep.id !== 'test' && (
             <button
               onClick={() => navigate(nextStep.path)}
               className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-surface-900 text-white hover:bg-surface-800 hover:text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer"
             >
               Przejdź do: {nextStep.title.split('. ')[1]} <ArrowRight className="w-3.5 h-3.5" />
             </button>
+          )}
+          {!allDone && nextStep.id === 'test' && (
+            <span className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-gold-100 text-gold-900 border border-gold-300 text-xs font-semibold rounded-xl">
+              📞 Zadzwoń na numer asystenta
+            </span>
           )}
           {!isGuidePage && (
             <button
@@ -198,11 +259,14 @@ export default function OnboardingBanner() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4 pt-3 border-t border-gold-200/50">
           {steps.map((s) => {
             const isCurrent = !allDone && s.id === nextStep.id;
+            const isClickable = s.id !== 'test' && Boolean(s.path);
             return (
               <div
                 key={s.id}
-                onClick={() => navigate(s.path)}
-                className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                onClick={isClickable ? () => navigate(s.path) : undefined}
+                className={`p-3.5 rounded-2xl border transition-all ${
+                  isClickable ? 'cursor-pointer' : 'cursor-default'
+                } ${
                   s.isDone
                     ? 'bg-white/90 border-green-300 hover:bg-white shadow-2xs'
                     : isCurrent

@@ -1,4 +1,5 @@
 import { SMSService } from './services/sms/SMSService';
+import { parseWarsawDateTime } from './services/BookingService';
 import express from 'express';
 import cors from 'cors';
 import { webhookController } from './controllers/WebhookController';
@@ -317,16 +318,31 @@ app.get('/api/tenant', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak' });
+    if (tenant.name === 'DEMO') {
+      return res.json({ ...tenant, proactiveMode: tenant.proactiveMode ?? true });
+    }
     res.json(tenant);
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
 });
 app.post('/api/tenant/fcm-token', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
-    if (!tenant) return res.status(404).json({ error: 'Brak' });
-    // W przyszłości można to zapisać do bazy
+    if (!tenant) return res.status(404).json({ error: 'Brak salonu' });
+    const token = req.body?.token;
+    if (token && typeof token === 'string') {
+      const existing = tenant.fcmTokens || [];
+      if (!existing.includes(token)) {
+        await prisma.tenant.update({
+          where: { id: tenant.id },
+          data: {
+            fcmTokens: { push: token }
+          }
+        });
+      }
+    }
     res.json({ success: true });
   } catch (err) {
+    console.error('[FCM] Error saving token:', err);
     res.status(500).json({ error: 'Błąd' });
   }
 });
@@ -344,11 +360,13 @@ app.put('/api/tenant', async (req, res) => {
     const updated = await prisma.tenant.update({
       where: { id: tenant.id },
       data: { 
+        name: req.body.name !== undefined ? req.body.name : undefined,
         businessProfile: req.body.businessProfile, 
         aiVoice: req.body.aiVoice ?? undefined,
         bookingMode: modeToSave,
-        botName: req.body.botName ?? undefined,
+        botName: req.body.botName !== undefined ? req.body.botName : undefined,
         toneOfVoice: req.body.toneOfVoice ?? undefined,
+        proactiveMode: req.body.proactiveMode !== undefined ? Boolean(req.body.proactiveMode) : undefined,
         termsAcceptedAt: req.body.termsAcceptedAt ? new Date(req.body.termsAcceptedAt) : undefined,
         fcmTokens: req.body.fcmToken ? { push: req.body.fcmToken } : undefined,
         reviewLink: req.body.reviewLink ?? undefined,
@@ -360,8 +378,17 @@ app.put('/api/tenant', async (req, res) => {
         bioSummary: req.body.bioSummary !== undefined ? req.body.bioSummary : undefined,
         bufferMinutes: req.body.bufferMinutes !== undefined ? parseInt(req.body.bufferMinutes, 10) : undefined,
         ownerRequirePin: req.body.ownerRequirePin !== undefined ? Boolean(req.body.ownerRequirePin) : undefined,
+        pinCode: req.body.pinCode !== undefined ? req.body.pinCode : undefined,
+        confidentialPin: req.body.confidentialPin !== undefined ? req.body.confidentialPin : undefined,
         morningBriefingEnabled: req.body.morningBriefingEnabled !== undefined ? Boolean(req.body.morningBriefingEnabled) : undefined,
-        morningBriefingHour: req.body.morningBriefingHour !== undefined ? parseInt(req.body.morningBriefingHour, 10) : undefined
+        morningBriefingHour: req.body.morningBriefingHour !== undefined ? parseInt(req.body.morningBriefingHour, 10) : undefined,
+        personalSchedule: req.body.personalSchedule !== undefined ? req.body.personalSchedule : undefined,
+        ownerName: req.body.ownerName !== undefined ? req.body.ownerName : undefined,
+        ownerGender: req.body.ownerGender !== undefined ? req.body.ownerGender : undefined,
+        companyName: req.body.companyName !== undefined ? req.body.companyName : undefined,
+        businessCategory: req.body.businessCategory !== undefined ? req.body.businessCategory : undefined,
+        assistantRole: req.body.assistantRole !== undefined ? req.body.assistantRole : undefined,
+        defaultFormalityLevel: req.body.defaultFormalityLevel !== undefined ? req.body.defaultFormalityLevel : undefined
       }
     });
 
@@ -504,6 +531,76 @@ app.get('/api/appointments', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.json([]);
+
+    // Automatyczna synchronizacja: upewnij się, że wszystkie wpisy z CallLog (nie-właściciel) mają swoje odzwierciedlenie w kalendarzu
+    try {
+      const unlinkedLogs = await prisma.callLog.findMany({
+        where: {
+          tenantId: tenant.id,
+          callerRole: { not: 'OWNER' }
+        }
+      });
+
+      if (unlinkedLogs.length > 0) {
+        const existingApptLogIds = new Set(
+          (await prisma.appointment.findMany({
+            where: { tenantId: tenant.id, callLogId: { not: null } },
+            select: { callLogId: true }
+          })).map(a => a.callLogId)
+        );
+
+        let defaultService: any = null;
+        for (const log of unlinkedLogs) {
+          if (!existingApptLogIds.has(log.id)) {
+            if (!defaultService) {
+              defaultService = await prisma.service.findFirst({
+                where: { tenantId: tenant.id, name: { contains: 'Telefon', mode: 'insensitive' } }
+              }) || await prisma.service.findFirst({ where: { tenantId: tenant.id } });
+
+              if (!defaultService) {
+                defaultService = await prisma.service.create({
+                  data: {
+                    tenantId: tenant.id,
+                    name: 'Połączenie telefoniczne',
+                    price: 0,
+                    durationMinutes: 15
+                  }
+                });
+              }
+            }
+
+            const apptStartTime = log.createdAt || new Date();
+            const apptEndTime = new Date(apptStartTime.getTime() + Math.max(15 * 60000, (log.durationSeconds || 0) * 1000));
+            const callerDisplayName = log.callerName 
+              ? `📞 ${log.callerName}` 
+              : `📞 Połączenie: ${log.callerPhone}`;
+
+            await prisma.appointment.create({
+              data: {
+                tenantId: tenant.id,
+                serviceId: defaultService.id,
+                customerName: callerDisplayName,
+                customerPhone: log.callerPhone,
+                callerPhone: log.callerPhone,
+                startTime: apptStartTime,
+                endTime: apptEndTime,
+                status: 'confirmed',
+                contactLevel: 'CALL',
+                callDuration: log.durationSeconds,
+                callSummary: log.summary,
+                actionItems: log.actionItems,
+                notes: log.summary,
+                isProcessed: log.isProcessed || false,
+                callLogId: log.id
+              }
+            });
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.error('[GET /api/appointments] Błąd synchronizacji CallLog do kalendarza:', syncErr);
+    }
+
     const apps = await prisma.appointment.findMany({
       where: { tenantId: tenant.id },
       include: { service: true, staff: true }
@@ -519,8 +616,17 @@ app.post('/api/appointments', async (req, res) => {
 
     let serviceId = req.body.serviceId;
     if (!serviceId) {
-      const defaultSvc = await prisma.service.findFirst({ where: { tenantId: tenant.id } });
-      if (!defaultSvc) return res.status(400).json({ error: 'Najpierw dodaj usługę do cennika' });
+      let defaultSvc = await prisma.service.findFirst({ where: { tenantId: tenant.id } });
+      if (!defaultSvc) {
+        defaultSvc = await prisma.service.create({
+          data: {
+            tenantId: tenant.id,
+            name: 'Spotkanie / Konsultacja',
+            price: 0,
+            durationMinutes: 45
+          }
+        });
+      }
       serviceId = defaultSvc.id;
     } else {
        const svc = await prisma.service.findUnique({ where: { id: serviceId }});
@@ -549,7 +655,7 @@ app.post('/api/appointments', async (req, res) => {
       
       await prisma.customer.update({
         where: { id: customer.id },
-        data: { lastVisitAt: new Date(req.body.startTime), tags: Array.from(newTags) }
+        data: { lastVisitAt: parseWarsawDateTime(req.body.startTime), tags: Array.from(newTags) }
       });
     }
 
@@ -561,9 +667,10 @@ app.post('/api/appointments', async (req, res) => {
         customerId: customerId,
         customerName: req.body.customerName,
         customerPhone: req.body.customerPhone,
-        startTime: new Date(req.body.startTime),
-        endTime: new Date(req.body.endTime),
-        status: req.body.status || 'confirmed'
+        startTime: parseWarsawDateTime(req.body.startTime),
+        endTime: parseWarsawDateTime(req.body.endTime),
+        status: req.body.status || 'confirmed',
+        contactLevel: req.body.contactLevel || 'MEETING'
       }
     });
     res.json(created);
@@ -577,19 +684,36 @@ app.put('/api/appointments/:id', async (req, res) => {
     const item = await prisma.appointment.findUnique({ where: { id: req.params.id } });
     if (!item || item.tenantId !== tenant.id) return res.status(403).json({ error: 'Odmowa dostępu' });
 
+    const newIsProcessed = req.body.isProcessed !== undefined ? Boolean(req.body.isProcessed) : item.isProcessed;
+
     const updated = await prisma.appointment.update({
       where: { id: req.params.id },
       data: {
-        serviceId: req.body.serviceId,
-        staffId: req.body.staffId || null,
-        customerName: req.body.customerName,
-        customerPhone: req.body.customerPhone,
-        startTime: new Date(req.body.startTime),
-        endTime: new Date(req.body.endTime),
-        status: req.body.status
+        serviceId: req.body.serviceId !== undefined ? req.body.serviceId : item.serviceId,
+        staffId: req.body.staffId !== undefined ? req.body.staffId : item.staffId,
+        customerName: req.body.customerName !== undefined ? req.body.customerName : item.customerName,
+        customerPhone: req.body.customerPhone !== undefined ? req.body.customerPhone : item.customerPhone,
+        startTime: req.body.startTime ? parseWarsawDateTime(req.body.startTime) : item.startTime,
+        endTime: req.body.endTime ? parseWarsawDateTime(req.body.endTime) : item.endTime,
+        status: req.body.status !== undefined ? req.body.status : (newIsProcessed ? 'completed' : item.status),
+        contactLevel: req.body.contactLevel !== undefined ? req.body.contactLevel : item.contactLevel,
+        isProcessed: newIsProcessed,
+        notes: req.body.notes !== undefined ? req.body.notes : item.notes,
+        callSummary: req.body.callSummary !== undefined ? req.body.callSummary : item.callSummary,
+        actionItems: req.body.actionItems !== undefined ? req.body.actionItems : item.actionItems
       },
       include: { service: true, staff: true }
     });
+
+    // Synchronizuj status z powiązanym CallLog jeśli istnieje
+    if (item.callLogId && req.body.isProcessed !== undefined) {
+      await prisma.callLog.updateMany({
+        where: { id: item.callLogId, tenantId: tenant.id },
+        data: { isProcessed: newIsProcessed }
+      });
+      console.log(`🔄 [PUT /api/appointments/:id] Zsynchronizowano CallLog (${item.callLogId}) ze statusem isProcessed=${newIsProcessed}`);
+    }
+
     res.json(updated);
   } catch (err) { res.status(500).json({ error: 'Błąd edycji wizyty' }); }
 });
@@ -692,7 +816,8 @@ app.post('/api/customers', async (req, res) => {
         name: req.body.name,
         phone: req.body.phone,
         tags: req.body.tags || [],
-        notes: req.body.notes || ''
+        notes: req.body.notes || '',
+        formalityLevel: req.body.formalityLevel || 'default'
       }
     });
     res.json(created);
@@ -712,7 +837,8 @@ app.put('/api/customers/:id', async (req, res) => {
         name: req.body.name,
         phone: req.body.phone,
         tags: req.body.tags || [],
-        notes: req.body.notes || ''
+        notes: req.body.notes || '',
+        formalityLevel: req.body.formalityLevel !== undefined ? req.body.formalityLevel : undefined
       }
     });
     res.json(updated);
@@ -746,11 +872,24 @@ app.post('/api/faq', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(400).json({ error: 'No tenant' });
     
+    // Limit 150 Q&A dla osobisty i standard, nielimitowany dla premium
+    const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
+    const isPremium = sub?.planName?.toLowerCase() === 'premium';
+    const maxFaqLimit = isPremium ? 10000 : 150;
+
+    const currentCount = await prisma.faqEntry.count({ where: { tenantId: tenant.id } });
+    if (currentCount >= maxFaqLimit) {
+      return res.status(400).json({ 
+        error: `Osiągnięto limit ${maxFaqLimit} pytań i odpowiedzi (Q&A) dla Twojego pakietu. Aby dodać więcej, usuń zbędne wpisy lub przejdź na pakiet Premium.` 
+      });
+    }
+
     const created = await prisma.faqEntry.create({
       data: {
         tenantId: tenant.id,
         question: req.body.question,
-        answer: req.body.answer
+        answer: req.body.answer,
+        isConfidential: Boolean(req.body.isConfidential)
       }
     });
     res.json(created);
@@ -768,7 +907,8 @@ app.put('/api/faq/:id', async (req, res) => {
       where: { id: req.params.id },
       data: {
         question: req.body.question,
-        answer: req.body.answer
+        answer: req.body.answer,
+        isConfidential: req.body.isConfidential !== undefined ? Boolean(req.body.isConfidential) : undefined
       }
     });
     res.json(updated);
@@ -918,12 +1058,27 @@ app.post('/api/knowledge/save', async (req, res) => {
       transactions.push(prisma.service.createMany({ data: servicesData }));
     }
 
-    // Zapisujemy FAQ
+    // Zapisujemy FAQ z uwzględnieniem limitu Q&A
     if (faq && faq.length > 0) {
-      const faqData = faq.map((f: any) => ({
+      const sub = await prisma.subscription.findUnique({ where: { tenantId } });
+      const isPremium = sub?.planName?.toLowerCase() === 'premium';
+      const maxFaqLimit = isPremium ? 10000 : 150;
+
+      const currentCount = await prisma.faqEntry.count({ where: { tenantId } });
+      const availableSlots = Math.max(0, maxFaqLimit - currentCount);
+
+      if (availableSlots <= 0) {
+        return res.status(400).json({ 
+          error: `Osiągnięto limit ${maxFaqLimit} pytań i odpowiedzi (Q&A). Usuń zbędne wpisy lub przejdź na pakiet Premium.` 
+        });
+      }
+
+      const faqToSave = faq.slice(0, availableSlots);
+      const faqData = faqToSave.map((f: any) => ({
         tenantId,
         question: f.question,
-        answer: f.answer
+        answer: f.answer,
+        isConfidential: Boolean(f.isConfidential)
       }));
       transactions.push(prisma.faqEntry.createMany({ data: faqData }));
     }
@@ -1192,12 +1347,18 @@ app.post('/api/subscription/change-plan', async (req, res) => {
     if (newPlanName === 'personal' && tenant.businessProfile !== 'personal') {
       await prisma.tenant.update({
         where: { id: tenant.id },
-        data: { businessProfile: 'personal' }
+        data: {
+          businessProfile: 'personal',
+          name: tenant.ownerName || tenant.name
+        }
       });
     } else if (newPlanName !== 'personal' && tenant.businessProfile === 'personal') {
       await prisma.tenant.update({
         where: { id: tenant.id },
-        data: { businessProfile: 'solo' }
+        data: {
+          businessProfile: 'solo',
+          name: tenant.companyName || tenant.name
+        }
       });
     }
 
@@ -1295,7 +1456,24 @@ app.post("/api/twilio-incoming", async (req, res) => {
 
   const outboundParam = outboundTaskId ? `<Parameter name="outboundTaskId" value="${outboundTaskId}" />` : '';
 
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" />${outboundParam}</Stream></Connect><Hangup/></Response>`);
+  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" /><Parameter name="callSid" value="${req.body.CallSid || ''}" />${outboundParam}</Stream></Connect><Hangup/></Response>`);
+});
+
+app.post("/api/voice/transfer-fallback", async (req, res) => {
+  const dialCallStatus = req.body.DialCallStatus;
+  const { tenantId, callerPhone, vipName, dialedNumber } = req.query;
+  const host = req.headers.host;
+
+  console.log(`📞 [Transfer Fallback] Status połączenia z właścicielem: ${dialCallStatus} dla dzwoniącego: ${callerPhone} (${vipName})`);
+
+  res.type("text/xml");
+
+  if (dialCallStatus === 'completed') {
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
+  }
+
+  // Właściciel nie odebrał (30s) lub odrzucił - natychmiast łączymy z powrotem z asystentem
+  return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone || 'unknown'}" /><Parameter name="dialedNumber" value="${dialedNumber || ''}" /><Parameter name="callSid" value="${req.body.CallSid || ''}" /><Parameter name="isPostTransferFallback" value="true" /><Parameter name="vipName" value="${vipName || ''}" /><Parameter name="tenantId" value="${tenantId || ''}" /></Stream></Connect><Hangup/></Response>`);
 });
 
 app.get("/api/zadarma-sms", (req, res) => {
@@ -1512,7 +1690,7 @@ app.post('/api/vip-contacts', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
-    let { phoneNumber, contactName, category, customNotes, allowPrioritySlots } = req.body;
+    let { phoneNumber, contactName, category, customNotes, allowPrioritySlots, formalityLevel } = req.body;
     if (!phoneNumber || !contactName) {
       return res.status(400).json({ error: 'Numer telefonu i nazwa kontaktu są wymagane.' });
     }
@@ -1534,7 +1712,8 @@ app.post('/api/vip-contacts', async (req, res) => {
         contactName,
         category: category || 'VIP',
         customNotes: customNotes ?? null,
-        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true
+        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true,
+        formalityLevel: formalityLevel !== undefined ? formalityLevel : undefined
       },
       create: {
         tenantId: tenant.id,
@@ -1542,7 +1721,8 @@ app.post('/api/vip-contacts', async (req, res) => {
         contactName,
         category: category || 'VIP',
         customNotes: customNotes ?? null,
-        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true
+        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true,
+        formalityLevel: formalityLevel || 'default'
       }
     });
 
@@ -1558,7 +1738,7 @@ app.put('/api/vip-contacts/:id', async (req, res) => {
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
     const { id } = req.params;
-    const { contactName, category, customNotes, allowPrioritySlots, phoneNumber } = req.body;
+    const { contactName, category, customNotes, allowPrioritySlots, phoneNumber, formalityLevel } = req.body;
 
     let cleaned = phoneNumber ? phoneNumber.replace(/[\s-()]/g, '') : undefined;
     if (cleaned && !cleaned.startsWith('+')) {
@@ -1573,7 +1753,8 @@ app.put('/api/vip-contacts/:id', async (req, res) => {
         phoneNumber: cleaned ?? undefined,
         category: category ?? undefined,
         customNotes: customNotes !== undefined ? customNotes : undefined,
-        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : undefined
+        allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : undefined,
+        formalityLevel: formalityLevel !== undefined ? formalityLevel : undefined
       }
     });
 
@@ -1623,7 +1804,7 @@ app.post('/api/annual-events', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
-    const { title, month, day, category, reminderDaysAhead } = req.body;
+    const { title, month, day, endMonth, endDay, category, reminderDaysAhead } = req.body;
     if (!title || !month || !day) {
       return res.status(400).json({ error: 'Tytuł, miesiąc i dzień są wymagane.' });
     }
@@ -1634,6 +1815,8 @@ app.post('/api/annual-events', async (req, res) => {
         title,
         month: parseInt(month, 10),
         day: parseInt(day, 10),
+        endMonth: endMonth ? parseInt(endMonth, 10) : null,
+        endDay: endDay ? parseInt(endDay, 10) : null,
         category: category || 'custom',
         reminderDaysAhead: reminderDaysAhead !== undefined ? parseInt(reminderDaysAhead, 10) : 1
       }
@@ -1651,7 +1834,7 @@ app.put('/api/annual-events/:id', async (req, res) => {
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
     const { id } = req.params;
-    const { title, month, day, category, reminderDaysAhead } = req.body;
+    const { title, month, day, endMonth, endDay, category, reminderDaysAhead } = req.body;
 
     const updated = await prisma.annualEvent.updateMany({
       where: { id, tenantId: tenant.id },
@@ -1659,6 +1842,8 @@ app.put('/api/annual-events/:id', async (req, res) => {
         title: title ?? undefined,
         month: month !== undefined ? parseInt(month, 10) : undefined,
         day: day !== undefined ? parseInt(day, 10) : undefined,
+        endMonth: endMonth !== undefined ? (endMonth ? parseInt(endMonth, 10) : null) : undefined,
+        endDay: endDay !== undefined ? (endDay ? parseInt(endDay, 10) : null) : undefined,
         category: category ?? undefined,
         reminderDaysAhead: reminderDaysAhead !== undefined ? parseInt(reminderDaysAhead, 10) : undefined
       }
@@ -1721,12 +1906,23 @@ app.put('/api/call-logs/:id/processed', async (req, res) => {
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
     const { id } = req.params;
+    const targetStatus = (req.body && req.body.isProcessed !== undefined) ? Boolean(req.body.isProcessed) : true;
+
     const updated = await prisma.callLog.updateMany({
       where: { id, tenantId: tenant.id },
-      data: { isProcessed: true }
+      data: { isProcessed: targetStatus }
     });
 
-    res.json({ success: true, count: updated.count });
+    // Synchronizuj powiązany Appointment w kalendarzu
+    await prisma.appointment.updateMany({
+      where: { callLogId: id, tenantId: tenant.id },
+      data: { 
+        isProcessed: targetStatus,
+        status: targetStatus ? 'completed' : 'confirmed'
+      }
+    });
+
+    res.json({ success: true, count: updated.count, isProcessed: targetStatus });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

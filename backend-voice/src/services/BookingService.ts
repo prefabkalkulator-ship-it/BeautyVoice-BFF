@@ -8,6 +8,35 @@ export interface ServiceItem {
   durationMinutes: number;
 }
 
+/**
+ * Interpretuje czas w strefie Europe/Warsaw niezależnie od tego, czy na serwerze jest UTC
+ * i czy ciąg znaków zawierał literę Z (UTC) czy nie.
+ */
+export function parseWarsawDateTime(isoOrDateStr: string): Date {
+  const match = String(isoOrDateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const [_, y, m, d, hh, mm, ss] = match;
+    const targetUtc = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss || 0)));
+    
+    const warsawParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Warsaw',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: false
+    }).formatToParts(targetUtc);
+
+    const wH = Number(warsawParts.find(p => p.type === 'hour')?.value);
+    const wD = Number(warsawParts.find(p => p.type === 'day')?.value);
+    
+    let diffHours = wH - Number(hh);
+    if (wD !== Number(d)) {
+      diffHours += (wD > Number(d) ? 24 : -24);
+    }
+    return new Date(targetUtc.getTime() - diffHours * 3600000);
+  }
+  return new Date(isoOrDateStr);
+}
+
 export class BookingService {
   public async saveNpsScore(tenantId: string, phone: string, score: number): Promise<boolean> {
     try {
@@ -74,14 +103,15 @@ export class BookingService {
           },
           {
             name: 'send_summary_email',
-            description: 'Wysyła aktualny raport lub podsumowanie na adres e-mail WŁAŚCICIELA na jego żądanie ("wyślij mi to na maila").',
+            description: 'Wysyła pełny, szczegółowy raport wykonawczy (pilne sprawy z numerami telefonów, zarejestrowane rozmowy, spotkania z kalendarza) na adres e-mail WŁAŚCICIELA na jego żądanie ("wyślij mi to na maila").',
             parameters: {
               type: 'OBJECT',
               properties: {
-                subject: { type: 'STRING', description: 'Temat wiadomości e-mail' },
-                contentMarkdown: { type: 'STRING', description: 'Treść raportu w czytelnym formacie punktowym' }
+                subject: { type: 'STRING', description: 'Temat wiadomości e-mail np. "📊 Podsumowanie Dnia - 12.09.2026"' },
+                contentMarkdown: { type: 'STRING', description: 'Komentarz, wnioski i synteza spraw od asystenta' },
+                timeRange: { type: 'STRING', enum: ['TODAY', 'YESTERDAY', 'THIS_WEEK'], description: 'Zakres czasu raportu (domyślnie TODAY)' }
               },
-              required: ['subject', 'contentMarkdown']
+              required: ['subject']
             }
           },
           {
@@ -98,6 +128,17 @@ export class BookingService {
             }
           },
           {
+            name: 'verify_owner_pin',
+            description: 'Weryfikuje kod PIN podany przez Właściciela w celu autoryzacji dostępu do funkcji zarządczych (kalendarz, wiadomości, raporty).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                pin: { type: 'STRING', description: 'Kod PIN podyktowany przez Właściciela (same cyfry)' }
+              },
+              required: ['pin']
+            }
+          },
+          {
             name: 'endCall',
             description: 'Kończy połączenie i odkłada słuchawkę. Wywołaj to narzędzie, gdy Właściciel zakończy rozmowę i pożegna się.',
             parameters: { type: 'OBJECT', properties: {} }
@@ -107,6 +148,18 @@ export class BookingService {
 
       // Dla VIP i GOŚCI w profilu personal:
       return [
+        {
+          name: 'verify_confidential_pin',
+          description: 'Weryfikuje kod PIN do Wiedzy Poufnej i odblokowuje chronioną treść na poufne pytanie z Bazy Wiedzy.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              pin: { type: 'STRING', description: 'Kod PIN podyktowany przez rozmówcę (same cyfry)' },
+              topic: { type: 'STRING', description: 'Temat lub pytanie poufne, o które pyta rozmówca' }
+            },
+            required: ['pin']
+          }
+        },
         {
           name: 'checkAvailability',
           description: 'Sprawdza wolne okna w kalendarzu na dany dzień z uwzględnieniem bufora czasowego i dyskrecji.',
@@ -170,17 +223,51 @@ export class BookingService {
             required: ['customerPhone', 'reason']
           }
         },
+        ...(callerRole === 'VIP' ? [{
+          name: 'transferCallToOwner',
+          description: 'Wywołaj to narzędzie, jeśli dzwoni kontakt VIP/Rodzina z pilną sprawą i kategorycznie prosi o bezpośrednie połączenie z właścicielem.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              reason: { type: 'STRING', description: 'Powód pilnego połączenia podany przez rozmówcę' }
+            }
+          }
+        }] : []),
         {
           name: 'endCall',
-          description: 'Kończy połączenie i odkłada słuchawkę po pożegnaniu.',
-          parameters: { type: 'OBJECT', properties: {} }
+          description: 'Kończy połączenie i odkłada słuchawkę po pożegnaniu. ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              callSummary: {
+                type: 'STRING',
+                description: 'Szczegółowe podsumowanie z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[📅 Rezerwacja] Spotkanie w sprawie MDM 74 na wtorek 11:00. Dodatkowo pytał o: pompę ciepła i terminy. Nastrój i zachowanie: poddenerwowany, używał wulgaryzmów, po wyjaśnieniach spokojniejszy."'
+              },
+              callerName: {
+                type: 'STRING',
+                description: 'Imię lub nazwisko rozmówcy ustalone podczas rozmowy (jeśli padło)'
+              }
+            }
+          }
         }
       ];
     }
 
     const allTools = [
-          {
-            name: 'send_nps_surveys',
+      {
+        name: 'verify_confidential_pin',
+        description: 'Weryfikuje kod PIN do Wiedzy Poufnej i odblokowuje chronioną treść na poufne pytanie z Bazy Wiedzy.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            pin: { type: 'STRING', description: 'Kod PIN podyktowany przez rozmówcę (same cyfry)' },
+            topic: { type: 'STRING', description: 'Temat lub pytanie poufne, o które pyta rozmówca' }
+          },
+          required: ['pin']
+        }
+      },
+      {
+        name: 'send_nps_surveys',
             description: 'Wysyła ankiety badania zadowolenia do klientów po wizycie (np. dla ostatnich wizyt). Prosi o wpisanie message_content w którym określamy treść ankiety. ZAWSZE JAKO DOMYŚLNY message_content UŻYJ DOKŁADNIE TEGO TEKSTU: "Dzień dobry! Jak oceniasz Naszą usługę w skali od 0 do 5? Twoja opinia jest dla nas bardzo ważna. Odpowiedz na tę wiadomość, wpisując samą cyfrę. Dziękujemy!"',
             parameters: {
               type: 'OBJECT',
@@ -341,8 +428,30 @@ export class BookingService {
       },
       {
         name: 'endCall',
-        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. Użyj tego narzędzia, gdy klient pożegna się (np. "Dziękuję, do widzenia", "Na razie", "To wszystko"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy.',
-        parameters: { type: 'OBJECT', properties: {} },
+        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. Użyj tego narzędzia, gdy klient pożegna się, sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            callSummary: {
+              type: 'STRING',
+              description: 'Szczegółowe podsumowanie z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy."'
+            },
+            callerName: {
+              type: 'STRING',
+              description: 'Imię lub nazwisko klienta (jeśli padło)'
+            }
+          }
+        }
+      },
+      {
+        name: 'transferCallToOwner',
+        description: 'Wywołaj to narzędzie, jeśli dzwoni kontakt VIP/Rodzina z pilną sprawą i kategorycznie prosi o bezpośrednie połączenie z właścicielem.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            reason: { type: 'STRING', description: 'Powód pilnego połączenia podany przez rozmówcę' }
+          }
+        }
       },
     ];
 
@@ -382,12 +491,23 @@ export class BookingService {
   /**
    * 2. Sprawdza wolne terminy w bazie danych na podstawie bookingMode
    */
-  public async checkAvailability(tenantId: string, date: string, serviceName: string, durationMinutes: number, preferredStaffName?: string, bookingMode: string = "hourly", numberOfNights?: number): Promise<string[]> {
+  public async checkAvailability(
+    tenantId: string, 
+    date: string, 
+    serviceName: string, 
+    durationMinutes: number, 
+    preferredStaffName?: string, 
+    bookingMode: string = "hourly", 
+    numberOfNights?: number,
+    callerRole: string = "GUEST",
+    vipCategory?: string,
+    allowPrioritySlots?: boolean
+  ): Promise<string[]> {
     try {
       const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
       const isTeam = tenant?.businessProfile === 'team' || tenant?.businessProfile === 'facility';
 
-      const reqDate = new Date(`${date}T00:00:00+02:00`);
+      const reqDate = parseWarsawDateTime(`${date}T00:00:00`);
       const bufferMinutes = tenant?.bufferMinutes || 0;
       const bufferMs = bufferMinutes * 60000;
       
@@ -460,14 +580,54 @@ export class BookingService {
           return [`Niestety brak wolnych pokoi w podanym terminie.`];
         }
       } else {
-        const dayOfWeek = new Date(`${date}T12:00:00Z`).getDay(); 
+        const originalDayOfWeek = new Date(`${date}T12:00:00Z`).getDay(); 
         const nextDate = new Date(reqDate.getTime() + 24 * 60 * 60 * 1000);
 
         const timeOffs = await prisma.timeOff.findMany({
           where: { tenantId, startDate: { lt: nextDate }, endDate: { gte: reqDate } }
         });
 
-        if (timeOffs.some(t => t.staffId === null)) return [];
+        // Sprawdź czy data przypada na święto państwowe, urlop lub dni wolne z AnnualEvents
+        const parsedDate = new Date(`${date}T00:00:00Z`);
+        const reqMonth = parsedDate.getUTCMonth() + 1; // 1-12
+        const reqDay = parsedDate.getUTCDate();
+
+        const annualEvents = await prisma.annualEvent.findMany({
+          where: { tenantId }
+        });
+
+        const isAnnualHolidayOrVacation = annualEvents.some(ae => {
+          const isHolidayCat = ['statutory', 'vacation', 'holiday'].includes(ae.category) || 
+            /urlop|wolne|święto|swieto/i.test(ae.title);
+          if (!isHolidayCat) return false;
+
+          if (!ae.endMonth || !ae.endDay || (ae.endMonth === ae.month && ae.endDay === ae.day)) {
+            return ae.month === reqMonth && ae.day === reqDay;
+          }
+          const startVal = ae.month * 100 + ae.day;
+          const endVal = ae.endMonth * 100 + ae.endDay;
+          const currVal = reqMonth * 100 + reqDay;
+          if (startVal <= endVal) {
+            return currVal >= startVal && currVal <= endVal;
+          } else {
+            return currVal >= startVal || currVal <= endVal;
+          }
+        });
+
+        const hasGeneralTimeOff = timeOffs.some(t => t.staffId === null);
+        const isOffDay = isAnnualHolidayOrVacation || hasGeneralTimeOff;
+
+        // Jeśli to salon i jest dzień wolny / urlop -> brak slotów
+        if (isOffDay && tenant?.businessProfile !== 'personal') {
+          return [];
+        }
+
+        // Dla pakietu osobistego: na dni wolne, święta państwowe i urlop
+        // automatycznie nakłada się reguła Niedzieli (dayKey = "0")
+        const effectiveDayOfWeek = (isOffDay && tenant?.businessProfile === 'personal') 
+          ? 0 
+          : originalDayOfWeek;
+        const dayOfWeek = effectiveDayOfWeek;
 
         const appointments = await prisma.appointment.findMany({
           where: { tenantId, startTime: { gte: reqDate, lt: nextDate }, status: { in: ['confirmed', 'confirmed_by_client'] } },
@@ -491,7 +651,94 @@ export class BookingService {
 
           let hasSlot = false;
 
-          if (targetStaffIds.length > 0) {
+          if (tenant?.businessProfile === 'personal') {
+            const pSchedule = (tenant?.personalSchedule as any) || {};
+            const workStart = pSchedule.workStart || "08:00";
+            const workEnd = pSchedule.workEnd || "16:00";
+            const workDays: number[] = Array.isArray(pSchedule.workDays) ? pSchedule.workDays : [1, 2, 3, 4, 5];
+            
+            const privateStart = pSchedule.privateStart || "16:00";
+            const privateEnd = pSchedule.privateEnd || "20:00";
+            const privateDays: number[] = Array.isArray(pSchedule.privateDays) ? pSchedule.privateDays : [1, 2, 3, 4, 5, 6];
+            
+            const prioritySlots: Array<{ day: number; time: string }> = Array.isArray(pSchedule.prioritySlots) ? pSchedule.prioritySlots : [];
+            const nightProtection = pSchedule.nightProtection !== false;
+            const focusBlocks: Array<{ id?: string; name?: string; days: number[]; start: string; end: string; dayTimes?: Record<string, { start: string; end: string }> }> = 
+              Array.isArray(pSchedule.focusBlocks) ? pSchedule.focusBlocks : [];
+            
+            const slotDate = new Date(currentSlot);
+            const timeStr = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).format(slotDate);
+            
+            // 0. Sprawdź czy termin koliduje z Czasem Skupienia & Lekcji (z uwzględnieniem godzin per-dzień i pełnego przedziału slotu)
+            const isInFocusBlock = focusBlocks.some((fb: any) => {
+              if (!Array.isArray(fb.days) || !fb.days.includes(effectiveDayOfWeek)) return false;
+              const dt = fb.dayTimes?.[effectiveDayOfWeek] || fb.dayTimes?.[String(effectiveDayOfWeek)];
+              const bStart = dt?.start || fb.start;
+              const bEnd = dt?.end || fb.end;
+              if (!bStart || !bEnd) return false;
+              const blockStartMs = parseWarsawDateTime(`${date}T${bStart.padStart(5, '0')}:00`).getTime();
+              const blockEndMs = parseWarsawDateTime(`${date}T${bEnd.padStart(5, '0')}:00`).getTime();
+              return currentSlot < blockEndMs && slotEnd > blockStartMs;
+            });
+
+            // 1. Sprawdź czy to slot priorytetowy
+            const isPrioritySlot = prioritySlots.some(ps => ps.day === effectiveDayOfWeek && ps.time === timeStr);
+            
+            let isAllowedTime = false;
+            if (callerRole === 'OWNER') {
+              isAllowedTime = true;
+            } else if (isInFocusBlock) {
+              // W Czasie Skupienia (lekcje, wykłady, sesje deep work) żaden slot nie może być zaoferowany osobom z zewnątrz
+              isAllowedTime = false;
+            } else if (isPrioritySlot) {
+              // Dostępny tylko jeśli rozmówca ma uprawnienie do terminów priorytetowych
+              isAllowedTime = callerRole === 'VIP' && Boolean(allowPrioritySlots);
+            } else {
+              // Sprawdź czy to strefa pracy oraz strefa prywatna
+              let isWorkTime = false;
+              let isPrivateTime = false;
+
+              const dayKey = String(effectiveDayOfWeek);
+              if (pSchedule.days && (pSchedule.days[dayKey] || pSchedule.days[effectiveDayOfWeek])) {
+                const dayConf = pSchedule.days[dayKey] || pSchedule.days[effectiveDayOfWeek];
+                const workStartMs = parseWarsawDateTime(`${date}T${(dayConf.workStart || "08:00").padStart(5, '0')}:00`).getTime();
+                const workEndMs = parseWarsawDateTime(`${date}T${(dayConf.workEnd || "16:00").padStart(5, '0')}:00`).getTime();
+                isWorkTime = Boolean(dayConf.workEnabled) && currentSlot >= workStartMs && slotEnd <= workEndMs;
+
+                const privateStartMs = parseWarsawDateTime(`${date}T${(dayConf.privateStart || "16:00").padStart(5, '0')}:00`).getTime();
+                const privateEndMs = parseWarsawDateTime(`${date}T${(dayConf.privateEnd || "20:00").padStart(5, '0')}:00`).getTime();
+                isPrivateTime = Boolean(dayConf.privateEnabled) && currentSlot >= privateStartMs && slotEnd <= privateEndMs;
+              } else {
+                // Kompatybilność wsteczna z dotychczasowym modelem
+                const workStartMs = parseWarsawDateTime(`${date}T${(workStart || "08:00").padStart(5, '0')}:00`).getTime();
+                const workEndMs = parseWarsawDateTime(`${date}T${(workEnd || "16:00").padStart(5, '0')}:00`).getTime();
+                isWorkTime = workDays.includes(effectiveDayOfWeek) && currentSlot >= workStartMs && slotEnd <= workEndMs;
+
+                const privateStartMs = parseWarsawDateTime(`${date}T${(privateStart || "16:00").padStart(5, '0')}:00`).getTime();
+                const privateEndMs = parseWarsawDateTime(`${date}T${(privateEnd || "20:00").padStart(5, '0')}:00`).getTime();
+                isPrivateTime = privateDays.includes(effectiveDayOfWeek) && currentSlot >= privateStartMs && slotEnd <= privateEndMs;
+              }
+              
+              if (isWorkTime) {
+                // Strefa pracy dostępna dla każdego (goście, klienci, praca)
+                isAllowedTime = true;
+              } else if (isPrivateTime) {
+                // Strefa prywatna dostępna tylko dla kontaktów prywatnych / rodziny / z prawem do priorytetu
+                isAllowedTime = callerRole === 'VIP' && (vipCategory === 'Rodzina' || vipCategory === 'Prywatne' || Boolean(allowPrioritySlots));
+              } else if (nightProtection && (timeStr >= "22:00" || timeStr < "07:00")) {
+                isAllowedTime = false;
+              }
+            }
+            
+            if (isAllowedTime) {
+              const conflict = appointments.some(a => {
+                const aStart = a.startTime.getTime() - bufferMs;
+                const aEnd = a.endTime.getTime() + bufferMs;
+                return currentSlot < aEnd && slotEnd > aStart;
+              });
+              if (!conflict) hasSlot = true;
+            }
+          } else if (targetStaffIds.length > 0) {
             for (const staffId of targetStaffIds) {
               const staff = allStaffList.find(s => s.id === staffId);
               if (timeOffs.some(t => t.staffId === staffId)) continue;
@@ -554,17 +801,113 @@ export class BookingService {
   }
 
   /**
-   * Pobiera sekcję FAQ z bazy danych
+   * Pobiera sekcję FAQ z bazy danych (domyślnie tylko wpisy publiczne, niepoufne)
    */
-  public async getFAQ(tenantId: string): Promise<{ question: string, answer: string }[]> {
+  public async getFAQ(tenantId: string, includeConfidential: boolean = false): Promise<{ question: string, answer: string }[]> {
     try {
       const faqs = await prisma.faqEntry.findMany({
-        where: { tenantId }
+        where: includeConfidential ? { tenantId } : { tenantId, isConfidential: false }
       });
       return faqs.map(f => ({ question: f.question, answer: f.answer }));
     } catch (error) {
       console.error('Błąd pobierania FAQ z DB:', error);
       return []; 
+    }
+  }
+
+  /**
+   * Pobiera listę tematów/pytań poufnych (BEZ ujawniania treści odpowiedzi!)
+   */
+  public async getConfidentialTopics(tenantId: string): Promise<string[]> {
+    try {
+      const faqs = await prisma.faqEntry.findMany({
+        where: { tenantId, isConfidential: true },
+        select: { question: true }
+      });
+      return faqs.map(f => f.question);
+    } catch (error) {
+      console.error('Błąd pobierania tematów poufnych z DB:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Weryfikuje PIN do wiedzy poufnej (domyślnie 7777, niezależny od PIN właściciela)
+   */
+  public async verifyConfidentialPin(tenantId: string, pin: string, topic?: string): Promise<{ success: boolean; message: string; answer?: string; allUnlockedAnswers?: { question: string, answer: string }[] }> {
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { confidentialPin: true }
+      });
+      const validPin = tenant?.confidentialPin?.trim() || '7777';
+      const cleanPin = String(pin || '').replace(/\D/g, '');
+
+      if (cleanPin !== validPin) {
+        return {
+          success: false,
+          message: "Podany kod PIN do wiedzy poufnej jest niepoprawny. Odmowa dostępu do informacji."
+        };
+      }
+
+      // Poprawny PIN - pobierz poufne wpisy
+      const confidentialEntries = await prisma.faqEntry.findMany({
+        where: { tenantId, isConfidential: true }
+      });
+
+      if (topic) {
+        const lowerTopic = topic.toLowerCase();
+        const matched = confidentialEntries.find(e => 
+          e.question.toLowerCase().includes(lowerTopic) || lowerTopic.includes(e.question.toLowerCase())
+        );
+        if (matched) {
+          return {
+            success: true,
+            message: "PIN poprawny. Dostęp do wiedzy poufnej przyznany.",
+            answer: `Odpowiedź na pytanie "${matched.question}": ${matched.answer}`
+          };
+        }
+      }
+
+      const allAnswersText = confidentialEntries.map(e => `[Poufne - ${e.question}]: ${e.answer}`).join('\n');
+      return {
+        success: true,
+        message: "PIN poprawny. Autoryzacja pomyślna. Odblokowano wiedzę poufną.",
+        answer: allAnswersText || "Brak zdefiniowanych dodatkowych wpisów poufnych.",
+        allUnlockedAnswers: confidentialEntries.map(e => ({ question: e.question, answer: e.answer }))
+      };
+    } catch (error) {
+      console.error('Błąd weryfikacji PIN wiedzy poufnej:', error);
+      return { success: false, message: "Wystąpił błąd podczas weryfikacji PIN." };
+    }
+  }
+
+  /**
+   * Weryfikuje kod PIN Właściciela (dostęp do trybu zarządczego, kalendarza i podsumowań)
+   */
+  public async verifyOwnerPin(tenantId: string, pin: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { pinCode: true }
+      });
+      const validPin = tenant?.pinCode?.trim() || '7777';
+      const cleanPin = String(pin || '').replace(/\D/g, '');
+
+      if (cleanPin === validPin) {
+        return {
+          success: true,
+          message: "Kod PIN Właściciela poprawny. Tryb zarządczy i funkcje właścicielskie zostały odblokowane."
+        };
+      } else {
+        return {
+          success: false,
+          message: "Niepoprawny kod PIN Właściciela. Odmowa autoryzacji."
+        };
+      }
+    } catch (error) {
+      console.error('Błąd weryfikacji PIN Właściciela:', error);
+      return { success: false, message: "Wystąpił błąd podczas sprawdzania PIN." };
     }
   }
 
@@ -655,9 +998,24 @@ export class BookingService {
     bookingMode: string = "hourly",
     numberOfNights?: number,
     promoCode?: string,
-    callerPhone?: string
+    callerPhone?: string,
+    contactLevel?: string,
+    callerRole: string = "GUEST",
+    vipCategory?: string,
+    allowPrioritySlots?: boolean
   ): Promise<boolean> {
     try {
+      // Jeśli LLM przekazał niekompletny/błędny numer telefonu, a mamy Caller ID (callerPhone), użyj Caller ID
+      let effectivePhone = (customerPhone || '').trim();
+      if (callerPhone) {
+        const cleanCaller = callerPhone.replace(/[\s\-\+]/g, '');
+        const cleanProvided = effectivePhone.replace(/[\s\-\+]/g, '');
+        if ((!cleanProvided || cleanProvided.length < 9) && cleanCaller.length >= 9) {
+          effectivePhone = callerPhone.trim();
+        }
+      }
+      customerPhone = effectivePhone;
+
       let isForeign = false;
       if (customerPhone.trim().startsWith('+') && !customerPhone.replace(/\s/g, '').startsWith('+48')) {
         isForeign = true;
@@ -680,7 +1038,8 @@ export class BookingService {
          throw new Error("BŁĄD DANYCH: Imię klienta '" + cleanName + "' jest za krótkie lub zawiera cyfry. Poproś klienta o przeliterowanie imienia.");
       }
 
-      const startDate = new Date(startTime);
+      // Precyzyjne parsowanie w strefie czasowej Europe/Warsaw
+      const startDate = parseWarsawDateTime(startTime);
       let endDate: Date;
       
       if (bookingMode === 'daily') {
@@ -818,6 +1177,82 @@ export class BookingService {
             throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już w pełni zajęty! Zaoferuj klientowi inną godzinę.`);
           }
         } else {
+          // Dla profilu osobistego (businessProfile === 'personal') - rygorystyczna ochrona czasu skupienia, godzin pracy i dni wolnych
+          if (tenant?.businessProfile === 'personal') {
+            const pSchedule = (tenant?.personalSchedule as any) || {};
+            const reqDateStrLocal = startDate.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
+            const originalDayOfWeek = new Date(`${reqDateStrLocal}T12:00:00Z`).getDay();
+
+            // Sprawdź czy data przypada na święto państwowe, urlop lub dni wolne z AnnualEvents
+            const parsedDate = new Date(`${reqDateStrLocal}T00:00:00Z`);
+            const reqMonth = parsedDate.getUTCMonth() + 1;
+            const reqDay = parsedDate.getUTCDate();
+
+            const annualEvents = await prisma.annualEvent.findMany({ where: { tenantId } });
+            const isAnnualHolidayOrVacation = annualEvents.some(ae => {
+              const isHolidayCat = ['statutory', 'vacation', 'holiday'].includes(ae.category) || 
+                /urlop|wolne|święto|swieto/i.test(ae.title);
+              if (!isHolidayCat) return false;
+              if (!ae.endMonth || !ae.endDay || (ae.endMonth === ae.month && ae.endDay === ae.day)) {
+                return ae.month === reqMonth && ae.day === reqDay;
+              }
+              const startVal = ae.month * 100 + ae.day;
+              const endVal = ae.endMonth * 100 + ae.endDay;
+              const currVal = reqMonth * 100 + reqDay;
+              return startVal <= endVal ? (currVal >= startVal && currVal <= endVal) : (currVal >= startVal || currVal <= endVal);
+            });
+
+            const timeOffs = await prisma.timeOff.findMany({
+              where: { tenantId, startDate: { lt: endDate }, endDate: { gt: startDate } }
+            });
+            const hasGeneralTimeOff = timeOffs.some(t => t.staffId === null);
+            const isOffDay = isAnnualHolidayOrVacation || hasGeneralTimeOff;
+            const effectiveDayOfWeek = isOffDay ? 0 : originalDayOfWeek;
+
+            // 1. Ochrona Czasu Skupienia & Lekcji (Focus Blocks)
+            const focusBlocks: Array<{ id?: string; name?: string; days: number[]; start: string; end: string; dayTimes?: Record<string, { start: string; end: string }> }> = 
+              Array.isArray(pSchedule.focusBlocks) ? pSchedule.focusBlocks : [];
+
+            for (const fb of focusBlocks) {
+              if (!Array.isArray(fb.days) || !fb.days.includes(effectiveDayOfWeek)) continue;
+              const dt = fb.dayTimes?.[effectiveDayOfWeek] || fb.dayTimes?.[String(effectiveDayOfWeek)];
+              const bStart = dt?.start || fb.start;
+              const bEnd = dt?.end || fb.end;
+              if (!bStart || !bEnd) continue;
+
+              const blockStartMs = parseWarsawDateTime(`${reqDateStrLocal}T${bStart.padStart(5, '0')}:00`).getTime();
+              const blockEndMs = parseWarsawDateTime(`${reqDateStrLocal}T${bEnd.padStart(5, '0')}:00`).getTime();
+
+              if (startDate.getTime() < blockEndMs && endDate.getTime() > blockStartMs) {
+                throw new Error(`KRYTYCZNY BŁĄD: Wybrany termin (${startTime}) koliduje z chronionym blokiem '${fb.name || 'Czas Skupienia / Lekcje'}' (${bStart}-${bEnd})! Właściciel nie może w tym czasie odbywać spotkań. Wywołaj narzędzie 'checkAvailability', aby pobrać dostępne wolne godziny i zaproponuj rozmówcy inny termin.`);
+              }
+            }
+
+            // 2. Weryfikacja godzin pracy i strefy prywatnej
+            if (callerRole !== 'OWNER') {
+              const dayKey = String(effectiveDayOfWeek);
+              if (pSchedule.days && (pSchedule.days[dayKey] || pSchedule.days[effectiveDayOfWeek])) {
+                const dayConf = pSchedule.days[dayKey] || pSchedule.days[effectiveDayOfWeek];
+                if (!dayConf.workEnabled && !dayConf.privateEnabled) {
+                  throw new Error(`KRYTYCZNY BŁĄD: W tym dniu (${reqDateStrLocal}) właściciel ma dzień wolny od spotkań. Użyj narzędzia 'checkAvailability', aby zaproponować wolny dzień.`);
+                }
+                const workStartMs = parseWarsawDateTime(`${reqDateStrLocal}T${(dayConf.workStart || "08:00").padStart(5, '0')}:00`).getTime();
+                const workEndMs = parseWarsawDateTime(`${reqDateStrLocal}T${(dayConf.workEnd || "16:00").padStart(5, '0')}:00`).getTime();
+                const isWithinWork = Boolean(dayConf.workEnabled) && startDate.getTime() >= workStartMs && endDate.getTime() <= workEndMs;
+
+                const privateStartMs = parseWarsawDateTime(`${reqDateStrLocal}T${(dayConf.privateStart || "16:00").padStart(5, '0')}:00`).getTime();
+                const privateEndMs = parseWarsawDateTime(`${reqDateStrLocal}T${(dayConf.privateEnd || "20:00").padStart(5, '0')}:00`).getTime();
+                const isWithinPrivate = Boolean(dayConf.privateEnabled) && startDate.getTime() >= privateStartMs && endDate.getTime() <= privateEndMs;
+
+                const isPriorityAllowed = callerRole === 'VIP' && (vipCategory === 'Rodzina' || vipCategory === 'Prywatne' || Boolean(allowPrioritySlots));
+
+                if (!isWithinWork && !(isWithinPrivate && isPriorityAllowed)) {
+                  throw new Error(`KRYTYCZNY BŁĄD: Podana godzina (${startTime}) wykracza poza dozwolone godziny spotkań (${dayConf.workStart || "08:00"} - ${dayConf.workEnd || "16:00"}). Wywołaj narzędzie 'checkAvailability', aby zaproponować wolny termin.`);
+                }
+              }
+            }
+          }
+
           const conflict = await prisma.appointment.findFirst({
             where: {
               tenantId,
@@ -828,7 +1263,7 @@ export class BookingService {
             }
           });
           if (conflict) {
-            throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już zajęty!`);
+            throw new Error(`KRYTYCZNY BŁĄD: Podany termin (${startTime}) jest już zajęty! Użyj narzędzia 'checkAvailability', aby sprawdzić wolne terminy.`);
           }
         }
       }
@@ -856,7 +1291,8 @@ export class BookingService {
           endTime: endDate,
           status: 'confirmed',
           promoCode: promoCode || null,
-          callerPhone: callerPhone || null
+          callerPhone: callerPhone || null,
+          contactLevel: contactLevel || 'MEETING'
         }
       });
 
@@ -879,20 +1315,22 @@ export class BookingService {
       });
 
 
-      // 4. Wyślij powiadomienie SMS o potwierdzeniu z możliwością anulowania
-      const formattedDate = startDate.toLocaleString('pl-PL', { 
-        timeZone: 'Europe/Warsaw',
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit'
-      });
-      
-      const smsBody = `Potwierdzamy rezerwację na ${service.name} w dniu ${formattedDate}. Jeśli chcesz anulować wizytę, wyślij SMS o treści ANULUJ na ten numer.`;
-      
-      SMSService.sendSMS(customerPhone, smsBody).catch(console.error);
+      // 4. Wyślij powiadomienie SMS o potwierdzeniu z możliwością anulowania (tylko dla salonów)
+      if (tenant?.businessProfile !== 'personal') {
+        const formattedDate = startDate.toLocaleString('pl-PL', { 
+          timeZone: 'Europe/Warsaw',
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit'
+        });
+        
+        const smsBody = `Potwierdzamy rezerwację na ${service.name} w dniu ${formattedDate}. Jeśli chcesz anulować wizytę, wyślij SMS o treści ANULUJ na ten numer.`;
+        
+        SMSService.sendSMS(customerPhone, smsBody).catch(console.error);
+      }
 
       return true;
     } catch (error: any) {
@@ -911,12 +1349,13 @@ export class BookingService {
   public async getOwnerActivitySummary(tenantId: string, timeRange: string = "TODAY") {
     try {
       const now = new Date();
-      let fromDate = new Date();
+      let fromDate = new Date(now);
       fromDate.setHours(0, 0, 0, 0);
+      let toDate: Date | undefined = undefined;
 
       if (timeRange === "YESTERDAY") {
         fromDate.setDate(fromDate.getDate() - 1);
-        const toDate = new Date(fromDate);
+        toDate = new Date(fromDate);
         toDate.setHours(23, 59, 59, 999);
       } else if (timeRange === "THIS_WEEK") {
         const day = fromDate.getDay();
@@ -924,19 +1363,24 @@ export class BookingService {
         fromDate.setDate(diff);
       }
 
+      const dateFilter: any = { gte: fromDate };
+      if (toDate) {
+        dateFilter.lte = toDate;
+      }
+
       const [callLogs, appointments] = await Promise.all([
         prisma.callLog.findMany({
           where: {
             tenantId,
             callerRole: { not: 'OWNER' },
-            createdAt: { gte: fromDate }
+            createdAt: dateFilter
           },
           orderBy: { createdAt: 'desc' }
         }),
         prisma.appointment.findMany({
           where: {
             tenantId,
-            startTime: { gte: fromDate },
+            startTime: dateFilter,
             status: { not: 'cancelled' }
           },
           orderBy: { startTime: 'asc' },
@@ -944,27 +1388,65 @@ export class BookingService {
         })
       ]);
 
+      const formatWarsawTime = (d: Date) => {
+        return new Intl.DateTimeFormat('pl-PL', {
+          timeZone: 'Europe/Warsaw',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(new Date(d));
+      };
+
+      const formatWarsawDateTime = (d: Date) => {
+        return new Intl.DateTimeFormat('pl-PL', {
+          timeZone: 'Europe/Warsaw',
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(new Date(d));
+      };
+
+      const urgentCalls = callLogs.filter(c => c.urgency === 'HIGH' || c.urgency === 'CRITICAL' || (c.summary && c.summary.includes('[🚨')));
       const messagesWaiting = callLogs.filter(c => c.isMessageLeft);
-      const urgentMessages = callLogs.filter(c => c.urgency === 'HIGH' || c.urgency === 'CRITICAL');
+      const otherCompletedCalls = callLogs.filter(c => !c.isMessageLeft && !(c.urgency === 'HIGH' || c.urgency === 'CRITICAL'));
 
       return {
         timeRange,
         totalCalls: callLogs.length,
+        urgentCount: urgentCalls.length,
         messagesCount: messagesWaiting.length,
-        urgentCount: urgentMessages.length,
         appointmentsCount: appointments.length,
-        messages: messagesWaiting.map(m => ({
-          who: m.callerName || m.callerPhone,
-          role: m.callerRole,
-          urgency: m.urgency,
-          summary: m.summary || 'Brak skrótu',
-          action: m.actionItems || 'Brak'
+        // 1. Sprawy pilne (najwyższy priorytet do natychmiastowego oddzwonienia)
+        urgentCalls: urgentCalls.map(c => ({
+          callerName: c.callerName || 'Nieznany',
+          callerPhone: c.callerPhone,
+          time: formatWarsawTime(c.createdAt),
+          urgency: c.urgency,
+          summary: c.summary || 'Pilna sprawa bez notatki',
+          action: c.actionItems || 'Wymagany pilny kontakt telefoniczny'
         })),
+        // 2. Wiadomości zostawione dla właściciela
+        messages: messagesWaiting.map(m => ({
+          callerName: m.callerName || 'Nieznany',
+          callerPhone: m.callerPhone,
+          time: formatWarsawTime(m.createdAt),
+          summary: m.summary || 'Zostawiono wiadomość',
+          action: m.actionItems || 'Prośba o kontakt'
+        })),
+        // 3. Pozostałe przeprowadzone rozmowy z podsumowaniami (oferty, doradztwo, zapytania)
+        completedCalls: otherCompletedCalls.map(c => ({
+          callerName: c.callerName || 'Nieznany',
+          callerPhone: c.callerPhone,
+          time: formatWarsawTime(c.createdAt),
+          durationSeconds: c.durationSeconds,
+          summary: c.summary || 'Krótka rozmowa zakończona'
+        })),
+        // 4. Spotkania z kalendarza
         upcomingAppointments: appointments.map(a => ({
           client: a.customerName,
           phone: a.customerPhone,
-          start: new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' }).format(a.startTime),
-          topic: a.service?.name || 'Spotkanie'
+          start: formatWarsawDateTime(a.startTime),
+          topic: a.service?.name || a.callSummary || 'Spotkanie'
         }))
       };
     } catch (err: any) {
@@ -976,30 +1458,223 @@ export class BookingService {
   /**
    * WYSYŁA RAPORT NA E-MAIL WŁAŚCICIELA NA JEGO ŻĄDANIE ("wyślij mi to na maila")
    */
-  public async sendSummaryEmail(tenantId: string, subject: string, contentMarkdown: string) {
+  public async sendSummaryEmail(tenantId: string, subject: string, contentMarkdown: string, timeRange: string = "TODAY") {
     try {
-      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        include: { annualEvents: true }
+      });
       const email = tenant?.contactEmail || tenant?.betaContactEmail;
       if (!email) {
         return { error: "Brak skonfigurowanego adresu e-mail w Twoim profilu. Uzupełnij e-mail w Ustawieniach." };
       }
 
-      const { EmailService } = await import('./email/EmailService');
-      const html = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
-          <h2 style="color: #111827; margin-top: 0; font-size: 20px;">${subject}</h2>
-          <p style="color: #6b7280; font-size: 14px;">Zestawienie wygenerowane przez Twojego Asystenta Głosowego EVA na Twoje żądanie podczas rozmowy telefonicznej.</p>
-          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-          <div style="color: #374151; font-size: 15px; line-height: 1.6; white-space: pre-line;">
-            ${contentMarkdown}
+      // 1. Pobieramy pełne, zsynchronizowane dane z bazy za dany okres
+      const activity: any = await this.getOwnerActivitySummary(tenantId, timeRange);
+      const ownerName = (tenant.personalSchedule as any)?.ownerName || tenant.name || 'Właścicielu';
+      const year = new Date().getFullYear();
+
+      // 2. Formatujemy sekcję PILNE SPRAWY
+      let urgentSectionHtml = '';
+      if (activity.urgentCalls && activity.urgentCalls.length > 0) {
+        const rows = activity.urgentCalls.map((c: any) => `
+          <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 8px; padding: 14px; margin-bottom: 12px;">
+            <div style="margin-bottom: 6px;">
+              <strong style="color: #991b1b; font-size: 15px;">${c.callerName}</strong>
+              <span style="font-size: 12px; color: #b91c1c; background: #fee2e2; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 8px;">🚨 PILNE (${c.time})</span>
+            </div>
+            <div style="margin-bottom: 6px;">
+              <a href="tel:${c.callerPhone}" style="color: #b91c1c; font-weight: 600; text-decoration: underline; font-size: 14px;">📞 ${c.callerPhone}</a>
+            </div>
+            <div style="font-size: 13px; color: #374151; line-height: 1.5;">${c.summary}</div>
+            ${c.action ? `<div style="font-size: 12px; color: #6b7280; margin-top: 6px; font-style: italic;">Sugerowane działanie: ${c.action}</div>` : ''}
           </div>
-          <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-          <p style="color: #9ca3af; font-size: 12px; margin-bottom: 0;">EVA Voice Assistant &copy; ${new Date().getFullYear()}</p>
+        `).join('');
+
+        urgentSectionHtml = `
+          <div style="margin-top: 24px;">
+            <div style="font-size: 16px; font-weight: bold; color: #991b1b; margin-bottom: 12px;">
+              🚨 Pilne Sprawy i Prośby o Kontakt (${activity.urgentCalls.length})
+            </div>
+            ${rows}
+          </div>
+        `;
+      }
+
+      // 3. Formatujemy sekcję POZOSTAŁE WIADOMOŚCI
+      let messagesSectionHtml = '';
+      if (activity.messages && activity.messages.length > 0) {
+        const nonUrgentMessages = activity.messages.filter((m: any) => !activity.urgentCalls?.some((u: any) => u.callerPhone === m.callerPhone && u.time === m.time));
+        if (nonUrgentMessages.length > 0) {
+          const rows = nonUrgentMessages.map((m: any) => `
+            <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+              <div style="margin-bottom: 4px;">
+                <strong style="color: #1e3a8a; font-size: 14px;">${m.callerName}</strong>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">(${m.time})</span>
+              </div>
+              <div style="margin-bottom: 4px;">
+                <a href="tel:${m.callerPhone}" style="color: #2563eb; font-size: 13px; text-decoration: underline;">📞 ${m.callerPhone}</a>
+              </div>
+              <div style="font-size: 13px; color: #334155; line-height: 1.4;">${m.summary}</div>
+            </div>
+          `).join('');
+
+          messagesSectionHtml = `
+            <div style="margin-top: 20px;">
+              <div style="font-size: 15px; font-weight: bold; color: #1e3a8a; margin-bottom: 10px;">
+                📩 Zostawione Wiadomości (${nonUrgentMessages.length})
+              </div>
+              ${rows}
+            </div>
+          `;
+        }
+      }
+
+      // 4. Formatujemy sekcję POŁĄCZENIA I ROZMOWY
+      let completedCallsSectionHtml = '';
+      if (activity.completedCalls && activity.completedCalls.length > 0) {
+        const rows = activity.completedCalls.map((c: any) => `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 10px 8px; font-size: 13px; color: #64748b; white-space: nowrap; vertical-align: top;">${c.time}</td>
+            <td style="padding: 10px 8px; font-size: 13px; vertical-align: top; white-space: nowrap;">
+              <strong style="color: #1e293b; display: block;">${c.callerName}</strong>
+              <a href="tel:${c.callerPhone}" style="color: #64748b; font-size: 12px; text-decoration: none;">${c.callerPhone}</a>
+            </td>
+            <td style="padding: 10px 8px; font-size: 13px; color: #334155; line-height: 1.4; vertical-align: top;">
+              ${c.summary}
+            </td>
+          </tr>
+        `).join('');
+
+        completedCallsSectionHtml = `
+          <div style="margin-top: 24px;">
+            <div style="font-size: 15px; font-weight: bold; color: #334155; margin-bottom: 10px;">
+              📞 Pozostałe Rozmowy i Konsultacje (${activity.completedCalls.length})
+            </div>
+            <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+              <thead>
+                <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: left;">
+                  <th style="padding: 8px; font-size: 12px; color: #64748b; width: 60px;">Czas</th>
+                  <th style="padding: 8px; font-size: 12px; color: #64748b; width: 140px;">Rozmówca</th>
+                  <th style="padding: 8px; font-size: 12px; color: #64748b;">Temat i Ustalenia</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      // 5. Formatujemy sekcję SPOTKANIA W KALENDARZU
+      let appointmentsSectionHtml = '';
+      if (activity.upcomingAppointments && activity.upcomingAppointments.length > 0) {
+        const rows = activity.upcomingAppointments.map((a: any) => `
+          <div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; border-radius: 8px; padding: 12px; margin-bottom: 8px;">
+            <div style="margin-bottom: 4px;">
+              <strong style="color: #166534; font-size: 14px;">${a.start} • ${a.client}</strong>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <a href="tel:${a.phone}" style="color: #15803d; font-size: 13px; text-decoration: underline;">📞 ${a.phone}</a>
+            </div>
+            <div style="font-size: 13px; color: #334155;">Temat: ${a.topic}</div>
+          </div>
+        `).join('');
+
+        appointmentsSectionHtml = `
+          <div style="margin-top: 24px;">
+            <div style="font-size: 15px; font-weight: bold; color: #166534; margin-bottom: 10px;">
+              📅 Spotkania w Kalendarzu (${activity.upcomingAppointments.length})
+            </div>
+            ${rows}
+          </div>
+        `;
+      }
+
+      // Komentarz asystenta
+      const commentaryHtml = contentMarkdown ? `
+        <div style="background: #fdfbf7; border: 1px solid #fef3c7; border-radius: 10px; padding: 14px 16px; margin: 16px 0; font-size: 14px; line-height: 1.6;">
+          <div style="font-weight: bold; margin-bottom: 4px; color: #78350f;">💬 Komentarz Asystenta AI:</div>
+          <div style="white-space: pre-line; color: #451a03;">${contentMarkdown}</div>
         </div>
+      ` : '';
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b; }
+            .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+            .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; padding: 28px 24px; text-align: left; }
+            .content { padding: 24px; }
+            .footer { background: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
+            .btn { display: inline-block; background-color: #0f172a; color: #ffffff !important; padding: 12px 24px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 14px; margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 4px;">Raport Wykonawczy na Żądanie</div>
+              <h1 style="margin: 0; font-size: 22px; font-weight: bold; letter-spacing: -0.5px;">${subject}</h1>
+              <div style="font-size: 13px; color: #cbd5e1; margin-top: 6px;">Przygotowane dla: ${ownerName}</div>
+            </div>
+            <div class="content">
+              ${commentaryHtml}
+              
+              <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 100px; background: #f1f5f9; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 20px; font-weight: bold; color: #0f172a;">${activity.totalCalls || 0}</div>
+                  <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Połączeń</div>
+                </div>
+                <div style="flex: 1; min-width: 100px; background: #fef2f2; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 20px; font-weight: bold; color: #dc2626;">${activity.urgentCount || 0}</div>
+                  <div style="font-size: 11px; color: #b91c1c; text-transform: uppercase;">Pilnych</div>
+                </div>
+                <div style="flex: 1; min-width: 100px; background: #f0fdf4; padding: 10px; border-radius: 8px; text-align: center;">
+                  <div style="font-size: 20px; font-weight: bold; color: #16a34a;">${activity.appointmentsCount || 0}</div>
+                  <div style="font-size: 11px; color: #15803d; text-transform: uppercase;">Spotkań</div>
+                </div>
+              </div>
+
+              ${urgentSectionHtml}
+              ${messagesSectionHtml}
+              ${completedCallsSectionHtml}
+              ${appointmentsSectionHtml}
+
+              <div style="text-align: center; margin-top: 24px;">
+                <a href="https://beautyvoice-bff.web.app/dashboard" class="btn">Otwórz Panel Zarządzania</a>
+              </div>
+            </div>
+            <div class="footer">
+              Wygenerowano przez Osobistego Asystenta AI • Veritas Platform &copy; ${year}
+            </div>
+          </div>
+        </body>
+        </html>
       `;
 
+      const { EmailService } = await import('./email/EmailService');
       const sent = await EmailService.sendEmail(email, subject, html, contentMarkdown);
-      return { success: sent, message: sent ? `Raport został wysłany na Twój adres e-mail (${email}).` : "Błąd podczas wysyłki wiadomości e-mail." };
+
+      // Dodatkowo wysyłamy powiadomienie Push do telefonu właściciela
+      if (tenant.fcmTokens && tenant.fcmTokens.length > 0) {
+        try {
+          const { PushService } = await import('./PushService');
+          await PushService.sendNotification(
+            tenant.fcmTokens,
+            `📊 ${subject}`,
+            `Szczegółowy raport (${activity.totalCalls} połączeń, ${activity.urgentCount} pilnych) został wysłany na Twój e-mail (${email}).`,
+            'https://beautyvoice-bff.web.app/dashboard'
+          );
+        } catch (pushErr) {
+          console.error('[sendSummaryEmail] Błąd wysyłki Push:', pushErr);
+        }
+      }
+
+      return { success: sent, message: sent ? `Szczegółowy raport z numerami i podsumowaniami został wysłany na Twój e-mail (${email}) oraz powiadomienie na telefon.` : "Błąd podczas wysyłki wiadomości e-mail." };
     } catch (err: any) {
       console.error('[BookingService] Błąd w sendSummaryEmail:', err);
       return { error: err.message || "Błąd wysyłki e-mail." };
@@ -1053,7 +1728,44 @@ export class BookingService {
         console.error('[BookingService] Błąd wysyłki Push w saveCallMessage:', pushErr);
       }
 
-      return { success: true, message: "Wiadomość została zapisana i przekazana właścicielowi w powiadomieniu." };
+      // Jeśli dzwoniący prosi o kontakt / oddzwonienie, automatycznie dodaj zadanie telefonu do kalendarza właściciela
+      if (callbackRequested) {
+        try {
+          const now = new Date();
+          const startMin = Math.ceil(now.getMinutes() / 15) * 15;
+          const taskStart = new Date(now);
+          taskStart.setMinutes(startMin, 0, 0);
+          const taskEnd = new Date(taskStart.getTime() + 15 * 60000);
+
+          let service = await prisma.service.findFirst({
+            where: { tenantId, name: { contains: 'Telefon', mode: 'insensitive' } }
+          }) || await prisma.service.findFirst({ where: { tenantId } });
+
+          await prisma.appointment.create({
+            data: {
+              tenantId,
+              customerName: `📞 Oddzwonić: ${callerName || 'Rozmówca'}`,
+              customerPhone: callerPhone || '',
+              callerPhone: callerPhone || '',
+              serviceId: service?.id || null,
+              startTime: taskStart,
+              endTime: taskEnd,
+              status: 'confirmed',
+              contactLevel: 'CALL',
+              notes: rawMessage,
+              callSummary: rawMessage,
+              actionItems: callbackRequested ? 'Prośba o pilny kontakt telefoniczny' : undefined,
+              callDuration: 0,
+              isProcessed: false,
+              callLogId: callLog.id
+            }
+          });
+        } catch (calErr) {
+          console.error('[BookingService] Błąd tworzenia zadania telefonu w kalendarzu:', calErr);
+        }
+      }
+
+      return { success: true, message: "Wiadomość została zapisana, przekazana właścicielowi w powiadomieniu oraz wpisana do kalendarza jako telefon do wykonania." };
     } catch (err: any) {
       console.error('[BookingService] Błąd w saveCallMessage:', err);
       return { error: err.message || "Błąd zapisu wiadomości." };

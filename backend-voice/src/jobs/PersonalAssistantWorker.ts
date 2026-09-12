@@ -40,19 +40,23 @@ export class PersonalAssistantWorker {
           : callLog.callerPhone;
 
         if (callLog.durationSeconds < 10) {
-          summary = `Krótkie połączenie od ${callerDesc}. Rozłączono po ${callLog.durationSeconds} sek.`;
+          summary = `Krótkie połączenie od: ${callerDesc}. Rozłączono po ${callLog.durationSeconds} sek.`;
         } else {
-          summary = `Połączenie od: ${callerDesc}. Czas trwania: ${durationMin} min. Asystentka obsłużyła zapytanie.`;
+          summary = `Rozmowa informacyjna od: ${callerDesc} (${durationMin} min). Dzwoniący rozłączył się przed formalnym zakończeniem.`;
         }
       }
 
       // Wysyłka Push FCM jeśli nie była jeszcze wysłana
       if (!callLog.pushSent && tenant.fcmTokens && tenant.fcmTokens.length > 0) {
-        const isUrgent = callLog.urgency === 'HIGH' || callLog.urgency === 'CRITICAL';
+        const isUrgent = callLog.urgency === 'HIGH' || callLog.urgency === 'CRITICAL' || summary.includes('[🚨');
         const isVip = callLog.callerRole === 'VIP';
+        const isLead = summary.includes('[💼');
+        const isBooking = summary.includes('[📅');
         
         let prefix = '📞';
-        if (isUrgent) prefix = '🚨 [PILNE]';
+        if (isUrgent) prefix = '🚨 [PILNE / ZGŁOSZENIE]';
+        else if (isLead) prefix = '💼 [NOWY LEAD]';
+        else if (isBooking) prefix = '📅 [TERMIN]';
         else if (isVip) prefix = '⭐ [VIP]';
 
         const callerLabel = callLog.callerName || callLog.callerPhone || 'Nieznany';
@@ -70,15 +74,93 @@ export class PersonalAssistantWorker {
         console.log(`📲 [PersonalAssistantWorker] Wysłano Push powiadomienie do właściciela (${tenant.name})`);
       }
 
-      // Aktualizacja rekordu w bazie
+      // Aktualizacja rekordu CallLog w bazie (domyślnie isProcessed = false: "Do załatwienia")
       await prisma.callLog.update({
         where: { id: callLogId },
         data: {
           summary,
           pushSent: true,
-          isProcessed: true
+          isProcessed: false
         }
       });
+
+      // Synchronizacja zdarzenia z Kalendarzem (Appointment)
+      try {
+        const existingAppt = await prisma.appointment.findFirst({
+          where: {
+            tenantId: tenant.id,
+            OR: [
+              { callLogId: callLog.id },
+              {
+                customerPhone: callLog.callerPhone,
+                createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) }
+              }
+            ]
+          }
+        });
+
+        const apptStartTime = callLog.createdAt || new Date();
+        const apptEndTime = new Date(apptStartTime.getTime() + Math.max(15 * 60000, (callLog.durationSeconds || 0) * 1000));
+        const callerDisplayName = callLog.callerName 
+          ? `📞 ${callLog.callerName}` 
+          : `📞 Połączenie: ${callLog.callerPhone}`;
+
+        if (existingAppt) {
+          await prisma.appointment.update({
+            where: { id: existingAppt.id },
+            data: {
+              callLogId: callLog.id,
+              customerName: existingAppt.customerName || callerDisplayName,
+              customerPhone: callLog.callerPhone,
+              callerPhone: callLog.callerPhone,
+              callDuration: callLog.durationSeconds,
+              callSummary: summary,
+              actionItems: callLog.actionItems,
+              notes: summary,
+              isProcessed: false
+            }
+          });
+          console.log(`📅 [PersonalAssistantWorker] Zaktualizowano powiązany Appointment (${existingAppt.id}) w kalendarzu.`);
+        } else {
+          let service = await prisma.service.findFirst({
+            where: { tenantId: tenant.id, name: { contains: 'Telefon', mode: 'insensitive' } }
+          }) || await prisma.service.findFirst({ where: { tenantId: tenant.id } });
+
+          if (!service) {
+            service = await prisma.service.create({
+              data: {
+                tenantId: tenant.id,
+                name: 'Połączenie telefoniczne',
+                price: 0,
+                durationMinutes: 15
+              }
+            });
+          }
+
+          const createdAppt = await prisma.appointment.create({
+            data: {
+              tenantId: tenant.id,
+              serviceId: service.id,
+              customerName: callerDisplayName,
+              customerPhone: callLog.callerPhone,
+              callerPhone: callLog.callerPhone,
+              startTime: apptStartTime,
+              endTime: apptEndTime,
+              status: 'confirmed',
+              contactLevel: 'CALL',
+              callDuration: callLog.durationSeconds,
+              callSummary: summary,
+              actionItems: callLog.actionItems,
+              notes: summary,
+              isProcessed: false,
+              callLogId: callLog.id
+            }
+          });
+          console.log(`📅 [PersonalAssistantWorker] Utworzono wpis w kalendarzu dla połączenia (${createdAppt.id}).`);
+        }
+      } catch (apptErr) {
+        console.error('[PersonalAssistantWorker] Błąd synchronizacji Appointment z CallLog:', apptErr);
+      }
     } catch (err) {
       console.error('[PersonalAssistantWorker] Błąd w processPostCall:', err);
     }
@@ -309,6 +391,49 @@ export class PersonalAssistantWorker {
       });
 
       console.log(`✉️ [Morning Briefing] Pomyślnie wysłano poranny raport do: ${email} (${tenant.name})`);
+
+      // 4. Wysyłka powiadomienia PUSH do telefonu właściciela
+      if (tenant.fcmTokens && tenant.fcmTokens.length > 0) {
+        try {
+          const { PushService } = await import('../services/PushService');
+          const pushTitle = `🌅 Poranny Raport: ${formattedDate}`;
+          const parts: string[] = [];
+          if (appointments.length > 0) {
+            parts.push(`📅 Spotkania (${appointments.length})`);
+          } else {
+            parts.push(`📅 Brak spotkań`);
+          }
+          if (todayEvents.length > 0) {
+            parts.push(`🎂 ${todayEvents.map(e => e.title).join(', ')}`);
+          }
+          if (messagesWaiting.length > 0) {
+            parts.push(`📩 Wiadomości (${messagesWaiting.length})`);
+          }
+          
+          let pushBody = parts.join(' • ') + '\n';
+          if (appointments.length > 0) {
+            const firstAppt = appointments[0];
+            const firstTime = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).format(firstAppt.startTime);
+            pushBody += `Najbliższe: ${firstTime} - ${firstAppt.customerName}`;
+          } else if (messagesWaiting.length > 0) {
+            const firstMsg = messagesWaiting[0];
+            pushBody += `Sprawa od: ${firstMsg.callerName || firstMsg.callerPhone}`;
+          } else {
+            pushBody += `Wszystko pod kontrolą. Miłego i produktywnego dnia!`;
+          }
+
+          await PushService.sendNotification(
+            tenant.fcmTokens,
+            pushTitle,
+            pushBody,
+            'https://beautyvoice-bff.web.app/dashboard'
+          );
+          console.log(`📱 [Morning Briefing] Pomyślnie wysłano powiadomienie PUSH do ${tenant.fcmTokens.length} urządzeń (${tenant.name})`);
+        } catch (pushErr) {
+          console.error('[Morning Briefing] Błąd wysyłki powiadomienia Push:', pushErr);
+        }
+      }
+
       return {
         success: true,
         appointmentsCount: appointments.length,
@@ -328,14 +453,23 @@ export class PersonalAssistantWorker {
     console.log('⏰ [Morning Briefing Cron] Sprawdzam harmonogram porannych raportów...');
     try {
       const now = new Date();
-      const warsawHour = parseInt(
-        new Intl.DateTimeFormat('pl-PL', {
-          timeZone: 'Europe/Warsaw',
-          hour: 'numeric',
-          hourCycle: 'h23'
-        }).format(now),
-        10
-      );
+      const warsawParts = new Intl.DateTimeFormat('pl-PL', {
+        timeZone: 'Europe/Warsaw',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        hourCycle: 'h23'
+      }).formatToParts(now);
+
+      const warsawHour = parseInt(warsawParts.find(p => p.type === 'hour')?.value || '0', 10);
+      const day = parseInt(warsawParts.find(p => p.type === 'day')?.value || '1', 10);
+      const month = parseInt(warsawParts.find(p => p.type === 'month')?.value || '1', 10);
+      const year = parseInt(warsawParts.find(p => p.type === 'year')?.value || '2026', 10);
+      const currentWarsawDate = `${day < 10 ? '0' + day : day}.${month < 10 ? '0' + month : month}.${year}`;
+
+      // Granica bezpieczeństwa: 18 godzin wstecz pokrywa cały dzisiejszy dzień (zabezpiecza przed ponowną wysyłką)
+      const todayThreshold = new Date(Date.now() - 18 * 60 * 60 * 1000);
 
       const personalTenants = await prisma.tenant.findMany({
         where: {
@@ -353,7 +487,7 @@ export class PersonalAssistantWorker {
           continue; // Jeszcze za wcześnie dla tego tenanta
         }
 
-        // Sprawdzamy czy raport nie został już wysłany dzisiaj w strefie Warszawa
+        // 1. Sprawdzenie w pamięci czy raport nie został już wysłany dzisiaj w strefie Warszawa
         if (tenant.lastBriefingSentAt) {
           const lastSentWarsaw = new Intl.DateTimeFormat('pl-PL', {
             timeZone: 'Europe/Warsaw',
@@ -362,21 +496,46 @@ export class PersonalAssistantWorker {
             day: 'numeric'
           }).format(new Date(tenant.lastBriefingSentAt));
 
-          const currentWarsaw = new Intl.DateTimeFormat('pl-PL', {
-            timeZone: 'Europe/Warsaw',
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric'
-          }).format(now);
-
-          if (lastSentWarsaw === currentWarsaw) {
+          if (lastSentWarsaw === currentWarsawDate) {
             // Raport na dzisiaj już został wysłany
             continue;
           }
         }
 
+        // 2. KRYTYCZNY DISTRIBUTED MUTEX W BAZIE DANYCH:
+        // Zanim jakakolwiek instancja Cloud Run zacznie generować i wysyłać raport,
+        // atomowo rezerwujemy lastBriefingSentAt na 'now'.
+        // Dzięki warunkowi updateMany, TYLKO JEDNA instancja otrzyma count = 1!
+        // Pozostałe współbieżne kontenery Cloud Run otrzymają count = 0 i natychmiast pominą wysyłkę.
+        const claim = await prisma.tenant.updateMany({
+          where: {
+            id: tenant.id,
+            OR: [
+              { lastBriefingSentAt: null },
+              { lastBriefingSentAt: { lt: todayThreshold } }
+            ]
+          },
+          data: {
+            lastBriefingSentAt: now
+          }
+        });
+
+        if (claim.count === 0) {
+          console.log(`🔒 [Morning Briefing Cron] Raport dla ${tenant.name} został już zarezerwowany/wysłany przez inną instancję.`);
+          continue;
+        }
+
         console.log(`🚀 [Morning Briefing Cron] Rozpoczynam wysyłkę raportu dla tenanta: ${tenant.name} (${tenant.id})`);
-        await this.generateMorningBriefingForTenant(tenant.id);
+        try {
+          await this.generateMorningBriefingForTenant(tenant.id);
+        } catch (sendErr) {
+          console.error(`❌ [Morning Briefing Cron] Błąd podczas wysyłki dla ${tenant.id}:`, sendErr);
+          // W razie błędu cofamy znacznik, by umożliwić ponowienie w kolejnym cyklu
+          await prisma.tenant.update({
+            where: { id: tenant.id },
+            data: { lastBriefingSentAt: null }
+          });
+        }
       }
     } catch (err) {
       console.error('[Morning Briefing Cron] Błąd globalny:', err);

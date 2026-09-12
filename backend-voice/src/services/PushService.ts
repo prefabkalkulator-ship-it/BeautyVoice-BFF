@@ -1,4 +1,4 @@
-﻿import { getApps, initializeApp, applicationDefault } from 'firebase-admin/app';
+import { getApps, initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 
 // Initialize firebase admin if not already initialized
@@ -17,12 +17,23 @@ export class PushService {
   static async sendNotification(tokens: string[], title: string, body: string, url?: string, phone?: string) {
     if (!tokens || tokens.length === 0) return;
     
+    const clickUrl = url || 'https://beautyvoice-bff.web.app/dashboard';
+
     const message = {
+      notification: {
+        title,
+        body
+      },
       data: {
         title,
         body,
-        click_action: url || 'https://beautyvoice-bff.web.app/dashboard',
+        click_action: clickUrl,
         phone: phone || ''
+      },
+      webpush: {
+        fcmOptions: {
+          link: clickUrl
+        }
       },
       tokens
     };

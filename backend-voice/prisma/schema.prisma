@@ -35,15 +35,26 @@ model Tenant {
   
   contactEmail        String?
   emailPublicForAi    Boolean        @default(false)
+  proactiveMode       Boolean        @default(false) // Tryb proaktywny AI - proponowanie powiązanych Q&A / usług
+
+  // Tożsamość Właściciela i Firmy
+  ownerName           String?        // np. Jan Kowalski / Dymitr Mitrafanau
+  ownerGender         String         @default("MALE") // MALE, FEMALE
+  companyName         String?        // np. MDM Energy / Studio Projektowe
+  businessCategory    String?        // np. Architektura i Budownictwo, Kancelaria, Salon Beauty
+  assistantRole       String         @default("executive_gatekeeper") // executive_gatekeeper, sales_consultant, support_complaints, hr_recruiter_pr, company_receptionist, proactive_sales, medical_legal
+  defaultFormalityLevel String       @default("formal_pan_pani") // formal_pan_pani, professional_friendly, direct_ty
 
   // Pola Asystenta Osobistego Profesjonalisty
   profession          String?        // np. Architekt, Programista, Lekarz, Adwokat, Konsultant
   bioSummary          String?        @db.Text // Baza wiedzy o właścicielu wstrzykiwana do promptu
   bufferMinutes       Int            @default(15) // Bufor logistyczny między spotkaniami
   ownerRequirePin     Boolean        @default(false) // Wymóg autoryzacji PIN-em przy połączeniu z komórki właściciela
+  confidentialPin     String?        @default("7777") // Dedykowany PIN do Wiedzy Poufnej
   morningBriefingEnabled Boolean     @default(true) // Codzienny e-mail podsumowujący o poranku
   morningBriefingHour Int            @default(8) // Godzina wysyłki porannego briefingu (np. 8:00)
   lastBriefingSentAt  DateTime?      // Data i godzina ostatniej wysyłki porannego raportu
+  personalSchedule    Json?          // Harmonogram hybrydowy: godziny pracy, strefa prywatna, sloty priorytetowe, ochrona nocna
 
   betaStatus          String         @default("none") // none, pending, approved, rejected
   betaContactPerson   String?
@@ -133,13 +144,14 @@ model StaffService {
 }
 
 model FaqEntry {
-  id       String  @id @default(uuid())
-  tenantId String
-  question String
-  answer   String
-  category String?
+  id             String  @id @default(uuid())
+  tenantId       String
+  question       String
+  answer         String
+  category       String?
+  isConfidential Boolean @default(false)
   
-  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model Appointment {
@@ -158,6 +170,14 @@ model Appointment {
   promoCode     String?
   npsScore      Int?
   surveySent    Boolean      @default(false)
+  contactLevel  String?      @default("MEETING") // MEETING, CALL, TASK
+  notes         String?      @db.Text
+  callDuration  Int?         // Czas polaczenia w sekundach
+  callSummary   String?      @db.Text // Podsumowanie z AI
+  actionItems   String?      @db.Text // Sugerowane dzialanie
+  isProcessed   Boolean      @default(false) // Czy zalatwione
+  callLogId     String?      // ID powiazanego wpisu z rejestru polaczen
+  createdAt     DateTime     @default(now())
   
   tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   service       Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -204,6 +224,7 @@ model Customer {
   tenantId      String
   name          String
   phone         String
+  formalityLevel String       @default("default") // default, formal_pan_pani, professional_friendly, direct_ty
   tags          String[]
   notes         String?       @db.Text
   lastVisitAt   DateTime?
@@ -270,6 +291,7 @@ model VipContact {
   phoneNumber        String   // E.164 (np. +48500100200)
   contactName        String
   category           String   @default("OTHER") // FAMILY, FRIEND, COWORKER, KEY_CLIENT, OTHER
+  formalityLevel     String   @default("default") // default, formal_pan_pani, professional_friendly, direct_ty
   customNotes        String?  @db.Text // Indywidualne wskazówki dla bota (np. "Możesz łączyć bezpośrednio")
   allowPrioritySlots Boolean  @default(true)
   createdAt          DateTime @default(now())
@@ -288,7 +310,9 @@ model AnnualEvent {
   title             String   // np. "Urodziny Mamy", "Rocznica ślubu", "Termin podatku VAT"
   month             Int      // 1 - 12
   day               Int      // 1 - 31
-  category          String   @default("OTHER") // BIRTHDAY, ANNIVERSARY, TAX, HOLIDAY, OTHER
+  endMonth          Int?     // Opcjonalny koniec zakresu (np. urlop)
+  endDay            Int?     // Opcjonalny koniec zakresu (np. urlop)
+  category          String   @default("OTHER") // BIRTHDAY, ANNIVERSARY, TAX, HOLIDAY, VACATION, OTHER
   reminderDaysAhead Int      @default(1)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { HelpCircle, X, ArrowRight, Lightbulb, CheckCircle2, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -12,6 +13,8 @@ interface PageHelpButtonProps {
     actionLabel: string;
   };
   guideSectionId?: string;
+  variant?: 'button' | 'circle_i';
+  label?: string;
 }
 
 export default function PageHelpButton({
@@ -19,25 +22,63 @@ export default function PageHelpButton({
   description,
   tips,
   nextStepRecommendation,
-  guideSectionId
+  guideSectionId,
+  variant = 'button',
+  label = 'Instrukcja i pomoc'
 }: PageHelpButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
   return (
     <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gold-400 bg-gold-50/90 text-gold-900 hover:bg-gold-600 hover:text-white hover:border-gold-600 text-xs font-semibold transition-all shadow-xs"
-        title="Wskazówki i pomoc"
-      >
-        <HelpCircle className="w-4 h-4 text-gold-700 hover:text-white" />
-        <span>Instrukcja i pomoc</span>
-      </button>
+      {variant === 'circle_i' ? (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gold-100 hover:bg-gold-200 text-gold-800 border border-gold-300 inline-flex items-center justify-center text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
+          title={title || "Informacje i wskazówki"}
+          aria-label={title || "Informacje i wskazówki"}
+        >
+          i
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gold-400 bg-gold-50/90 text-gold-900 hover:bg-gold-600 hover:text-white hover:border-gold-600 text-xs font-semibold transition-all shadow-xs cursor-pointer shrink-0"
+          title="Wskazówki i pomoc"
+        >
+          <HelpCircle className="w-4 h-4 text-gold-700 hover:text-white shrink-0" />
+          <span>{label}</span>
+        </button>
+      )}
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-surface-200 relative max-h-[92vh] flex flex-col">
+      {isOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsOpen(false);
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-surface-200 relative max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
             
             {/* Nagłówek modalu z bezpiecznie osadzonym przyciskiem zamknięcia */}
             <div className="flex items-start justify-between gap-3 mb-4 shrink-0">
@@ -120,7 +161,8 @@ export default function PageHelpButton({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
