@@ -35,6 +35,8 @@ gcloud run deploy beautyvoice-bff `
     --allow-unauthenticated `
     --project beautyvoice-bff `
     --timeout=3600 `
+    --no-cpu-throttling `
+    --min-instances=1 `
     --set-env-vars="$envVars"
 
 if ($LASTEXITCODE -eq 0) {

@@ -2196,13 +2196,13 @@ app.post('/api/callback/request', async (req, res) => {
       });
     }
 
-    // Zarejestruj zadanie połączenia wychodzącego
+    // Zarejestruj zadanie połączenia wychodzącego ze statusem in_progress (zapobiega dublowaniu przez cron OutboundProcessor)
     const outboundTask = await prisma.outboundQueue.create({
       data: {
         tenantId: targetTenant.id,
         targetPhone: cleaned,
         channel: 'voice',
-        status: 'pending',
+        status: 'in_progress',
         scheduledFor: new Date(),
         payload: {
           type: 'live_callback_30s',
@@ -2214,18 +2214,30 @@ app.post('/api/callback/request', async (req, res) => {
 
     console.log(`⚡ [LiveCallback] Zainicjowano Live Callback do ${cleaned} dla: ${targetTenant.name} (task: ${outboundTask.id})`);
 
-    // Natychmiastowe uruchomienie połączenia wychodzącego (nie czekamy na cron)
-    import('./services/voice/VoiceOutboundService').then(async ({ VoiceOutboundService }) => {
-      try {
-        await VoiceOutboundService.initiateCall(outboundTask.id, cleaned);
-      } catch (callErr: any) {
-        console.error('[LiveCallback] Błąd wywołania VoiceOutboundService:', callErr.message);
-      }
-    });
+    // Natychmiastowe synchroniczne wywołanie połączenia z AWAIT
+    // Zapobiega zamrożeniu CPU przez Cloud Run przed wykonaniem żądania do Twilio REST API
+    let callInitiated = false;
+    try {
+      callInitiated = await VoiceOutboundService.initiateCall(outboundTask.id, cleaned);
+    } catch (callErr: any) {
+      console.error('[LiveCallback] Błąd wywołania VoiceOutboundService:', callErr.message);
+    }
+
+    if (!callInitiated) {
+      // Jeśli natychmiastowe połączenie zwróciło błąd, oznacz jako failed i zwróć błąd
+      await prisma.outboundQueue.update({
+        where: { id: outboundTask.id },
+        data: { status: 'failed', errorMessage: 'Błąd inicjacji połączenia telefonicznego' }
+      }).catch(() => {});
+
+      return res.status(500).json({
+        error: 'Nie udało się nawiązać połączenia telefonicznego. Spróbuj ponownie lub zadzwoń bezpośrednio.'
+      });
+    }
 
     res.json({
       success: true,
-      message: 'Zlecono połączenie. Odbierz telefon w ciągu 30 sekund!',
+      message: 'Zlecono połączenie. Odbierz telefon w ciągu kilku sekund!',
       taskId: outboundTask.id,
       countdownSeconds: 30,
       targetPhone: cleaned
