@@ -1,7 +1,7 @@
 import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock } from 'lucide-react';
+import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check } from 'lucide-react';
 
 const defaultSchedule = {
   "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
@@ -81,6 +81,14 @@ export default function Settings() {
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Nowo dodane pola: ścieżka hybrydowa, zasięg, odmowa SMS, kwalifikacja
+  const [bookingExternalUrl, setBookingExternalUrl] = useState('');
+  const [serviceAreaDescription, setServiceAreaDescription] = useState('');
+  const [rejectionSmsTemplate, setRejectionSmsTemplate] = useState('');
+  const [qualificationPrompt, setQualificationPrompt] = useState('');
+  const [copiedWidgetLink, setCopiedWidgetLink] = useState(false);
+  const [copiedWidgetEmbed, setCopiedWidgetEmbed] = useState(false);
+
   const [ownerName, setOwnerName] = useState('');
   const [ownerGender, setOwnerGender] = useState('MALE');
   const [companyName, setCompanyName] = useState('');
@@ -146,6 +154,11 @@ export default function Settings() {
         setEmailPublicForAi(tData.emailPublicForAi || false);
         setAssignedPhoneNumber(tData.assignedPhoneNumber || '');
 
+        setBookingExternalUrl(tData.bookingExternalUrl || '');
+        setServiceAreaDescription(tData.serviceAreaDescription || '');
+        setRejectionSmsTemplate(tData.rejectionSmsTemplate || '');
+        setQualificationPrompt(tData.qualificationPrompt || '');
+
         setOwnerName(tData.ownerName || tData.name || '');
         setOwnerGender(tData.ownerGender || 'MALE');
         setCompanyName(tData.companyName || (tData.businessProfile !== 'personal' ? tData.name : '') || '');
@@ -188,38 +201,42 @@ export default function Settings() {
   const saveTenantSettings = async () => {
     setIsSaving(true);
     try {
-        await fetch('/api/tenant', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            name: businessProfile === 'personal' ? ownerName : (companyName || ownerName),
-            businessProfile, 
-            aiVoice, 
-            bookingMode, 
-            botName, 
-            toneOfVoice, 
-            proactiveMode,
-            reviewLink1, 
-            reviewLink2, 
-            contactEmail, 
-            emailPublicForAi,
-            profession,
-            bioSummary,
-            bufferMinutes,
-            ownerRequirePin,
-            pinCode,
-            confidentialPin,
-            morningBriefingEnabled,
-            morningBriefingHour,
-            personalSchedule,
-            ownerName,
-            ownerGender,
-            companyName,
-            businessCategory,
-            assistantRole,
-            defaultFormalityLevel
-          })
-        });
+      await fetch('/api/tenant', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: businessProfile === 'personal' ? ownerName : (companyName || ownerName),
+          businessProfile, 
+          aiVoice, 
+          bookingMode, 
+          botName, 
+          toneOfVoice, 
+          proactiveMode,
+          reviewLink1, 
+          reviewLink2, 
+          contactEmail, 
+          emailPublicForAi,
+          profession,
+          bioSummary,
+          bufferMinutes,
+          ownerRequirePin,
+          pinCode,
+          confidentialPin,
+          morningBriefingEnabled,
+          morningBriefingHour,
+          personalSchedule,
+          ownerName,
+          ownerGender,
+          companyName,
+          businessCategory,
+          assistantRole,
+          defaultFormalityLevel,
+          bookingExternalUrl,
+          serviceAreaDescription,
+          rejectionSmsTemplate,
+          qualificationPrompt
+        })
+      });
       alert('Zapisano ustawienia.');
     } catch (err) {
       alert('Błąd zapisu');
@@ -695,6 +712,62 @@ export default function Settings() {
                   className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary text-sm bg-white"
                 />
                 <p className="text-[11px] text-surface-500 mt-1">Wirtualna asystentka zapozna się z tym tekstem i będzie się nim kierować podczas rozmowy.</p>
+              </div>
+
+              {/* Zasięg działania & Kwalifikacja (Pakiet Osobisty Ekspert) */}
+              <div className="md:col-span-2 p-3.5 sm:p-4 rounded-xl border border-purple-200 bg-purple-50/40 space-y-3">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-purple-700 shrink-0" />
+                  <span className="text-sm font-bold text-surface-900">Zasięg Działania & Kwalifikacja Spraw (Pakiet Ekspert)</span>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                    Obszar terytorialny / Rejon obsługi dzwoniących
+                  </label>
+                  <input
+                    type="text"
+                    value={serviceAreaDescription}
+                    onChange={e => setServiceAreaDescription(e.target.value)}
+                    placeholder="np. Warszawa i powiaty ościenne (Piaseczno, Pruszków, Legionowo, Wołomin) do 30 km"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Asystent poinformuje dzwoniącego o rejonie Twojej działalności i zapyta o miejscowość, której dotyczy sprawa.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                    Wytyczne kwalifikacji sprawy i budżetu
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={qualificationPrompt}
+                    onChange={e => setQualificationPrompt(e.target.value)}
+                    placeholder="np. Wypytaj o rodzaj sprawy (karne / cywilne / gospodarcze) oraz upewnij się, czy klient dysponuje budżetem min. 1000 zł na wstępną analizę."
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Asystent przeprowadzi wstępny wywiad merytoryczny przed zaproponowaniem spotkania.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                    Szablon SMS odrzucenia sprawy (1-kliknięcie w rejestrze połączeń)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={rejectionSmsTemplate}
+                    onChange={e => setRejectionSmsTemplate(e.target.value)}
+                    placeholder="Dzień dobry, dziękujemy za kontakt z naszą kancelarią. Uprzejmie informujemy, że ze względu na specjalizację oraz rejon działania, nie podejmujemy się prowadzenia tej sprawy. Pozdrawiamy."
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white"
+                  />
+                  <p className="text-[11px] text-surface-500 mt-1">
+                    Treść gotowej wiadomości SMS, którą wyślesz jednym kliknięciem z poziomu „Wiadomości i Połączenia”.
+                  </p>
+                </div>
               </div>
 
               {/* Harmonogram Hybrydowy: Strefa Pracy vs Strefa Prywatna per-dzień */}
@@ -1313,6 +1386,26 @@ export default function Settings() {
                 </label>
               </div>
             </div>
+            {/* Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz / Zewnętrzny Kalendarz WWW) */}
+            <div className="md:col-span-2 mt-2 p-3.5 sm:p-4 rounded-xl border border-gold-200 bg-gold-50/40 space-y-2">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <ExternalLink className="w-4 h-4 text-gold-700 shrink-0" />
+                <span className="text-sm font-bold text-surface-900">Ścieżka Hybrydowa SMS (Link do rezerwacji / cennika)</span>
+              </div>
+              <p className="text-xs text-surface-600 leading-relaxed">
+                Podaj adres URL do Twojego zewnętrznego systemu rezerwacji (np. Booksy, ZnanyLekarz, Moment.pl lub podstrona z formularzem WWW). Jeśli dzwoniący poprosi o link lub woli zapisać się samodzielnie, asystent wyśle ten adres w wiadomości SMS wprost na jego numer komórkowy.
+              </p>
+              <div>
+                <input 
+                  type="url" 
+                  value={bookingExternalUrl} 
+                  onChange={e => setBookingExternalUrl(e.target.value)}
+                  placeholder="np. https://booksy.com/pl-pl/twoj-salon lub https://znanylekarz.pl/twoj-profil"
+                  className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-gold-500 text-xs sm:text-sm bg-white font-medium"
+                />
+              </div>
+            </div>
+
             <div className="md:col-span-2 mt-2">
               <label className="block text-sm font-medium text-surface-700 mb-1">Twój Wirtualny Numer Telefonu (SIP / SMS)</label>
               <input 
@@ -1337,6 +1430,90 @@ export default function Settings() {
         >
           <Save className="w-4 h-4" /> Zapisz Profil
         </button>
+      </div>
+
+      {/* Widżet Live Callback w 30 sekund na stronę WWW */}
+      <div className="glass-card rounded-2xl p-4 sm:p-6 shadow-sm border border-surface-200/60 mt-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold">
+              <PhoneCall className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider mb-0.5">
+                <Zap className="w-3 h-3 text-amber-600" /> Widżet Zewnętrzny
+              </div>
+              <h3 className="text-xl font-serif text-surface-900">Widżet „Live Callback w 30 sekund”</h3>
+            </div>
+          </div>
+          <a
+            href="/widget/callback"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-surface-100 hover:bg-surface-200 text-surface-800 rounded-xl text-xs font-semibold transition self-start sm:self-auto"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Otwórz widżet w nowej karcie
+          </a>
+        </div>
+
+        <p className="text-xs sm:text-sm text-surface-600 leading-relaxed mb-5">
+          Zainstaluj interaktywny formularz na dowolnej stronie zewnętrznej (WordPress, Wix, Webflow, sklep online). Gdy klient wpisze numer, asystent zadzwoni do niego automatycznie w 30 sekund.
+        </p>
+
+        <div className="space-y-4">
+          {/* Kod iframe do wklejenia */}
+          <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-surface-800 flex items-center gap-1.5">
+                <Code className="w-4 h-4 text-amber-600" />
+                Kod osadzenia &lt;iframe&gt; na stronę WWW
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const embedCode = `<iframe src="${window.location.origin}/widget/callback?embed=true" width="100%" height="320" frameborder="0" style="border-radius: 16px; border: 1px solid #e5e7eb;"></iframe>`;
+                  navigator.clipboard.writeText(embedCode);
+                  setCopiedWidgetEmbed(true);
+                  setTimeout(() => setCopiedWidgetEmbed(false), 2000);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1 bg-white hover:bg-surface-100 text-surface-700 border border-surface-200 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+              >
+                {copiedWidgetEmbed ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedWidgetEmbed ? 'Skopiowano kod!' : 'Kopiuj kod iframe'}
+              </button>
+            </div>
+            <code className="block bg-white p-3 rounded-lg border border-surface-200 font-mono text-[11px] text-surface-800 overflow-x-auto select-all">
+              {`<iframe src="${window.location.origin}/widget/callback?embed=true" width="100%" height="320" frameborder="0" style="border-radius: 16px; border: 1px solid #e5e7eb;"></iframe>`}
+            </code>
+          </div>
+
+          {/* Bezpośredni link */}
+          <div className="bg-surface-50 border border-surface-200 rounded-xl p-4 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-surface-800 flex items-center gap-1.5">
+                <ExternalLink className="w-4 h-4 text-amber-600" />
+                Bezpośredni link (do bio Instagram, Facebook, link w SMS)
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const directLink = `${window.location.origin}/widget/callback`;
+                  navigator.clipboard.writeText(directLink);
+                  setCopiedWidgetLink(true);
+                  setTimeout(() => setCopiedWidgetLink(false), 2000);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1 bg-white hover:bg-surface-100 text-surface-700 border border-surface-200 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+              >
+                {copiedWidgetLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedWidgetLink ? 'Skopiowano link!' : 'Kopiuj link'}
+              </button>
+            </div>
+            <code className="block bg-white p-3 rounded-lg border border-surface-200 font-mono text-[11px] text-amber-900 overflow-x-auto select-all">
+              {`${window.location.origin}/widget/callback`}
+            </code>
+          </div>
+        </div>
       </div>
 
       {/* Automatyzacje NPS (tylko profile firmowe) */}

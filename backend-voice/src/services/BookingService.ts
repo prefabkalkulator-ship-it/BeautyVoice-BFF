@@ -331,6 +331,11 @@ export class BookingService {
             }
           },
           {
+            name: 'send_booking_sms_link',
+            description: 'Wysyła SMS do dzwoniącego z bezpośrednim linkiem do internetowej rezerwacji terminu (np. Booksy, ZnanyLekarz, Bookero lub strona WWW salonu/gabinetu), gdy klient woli zarezerwować termin samodzielnie online, chce obejrzeć cennik ze zdjęciami lub prosi o link SMS podczas rozmowy.',
+            parameters: { type: 'OBJECT', properties: {} }
+          },
+          {
             name: 'create_informational_campaign',
           description: 'Przygotowuje kampanię informacyjną lub promocyjną (SMS / Voice) dla wybranej grupy lub pojedynczego klienta. Zwróć to ZAWSZE, gdy właściciel prosi o wysłanie promocji, powiadomień lub SMSów.',
           parameters: {
@@ -1808,6 +1813,33 @@ export class BookingService {
     } catch (err: any) {
       console.error('[BookingService] Błąd w blockCalendarTime:', err);
       return { error: err.message || "Błąd blokowania czasu." };
+    }
+  }
+
+  /**
+   * WYSYŁA SMS Z LINKIEM DO REZERWACJI ONLINE (Ścieżka Hybrydowa Booksy / ZnanyLekarz / Bookero)
+   */
+  public async sendBookingSmsLink(tenantId: string, customerPhone: string) {
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant) return { error: "Brak profilu firmy w bazie danych." };
+
+      const rawUrl = tenant.bookingExternalUrl || tenant.reviewLink || 'https://beautyvoice-bff.web.app';
+      const companyDisplayName = tenant.companyName || tenant.name;
+      const smsText = `Dzień dobry! Przesyłamy link do rezerwacji online w ${companyDisplayName}: ${rawUrl}`;
+
+      if (customerPhone && customerPhone !== 'nieznany') {
+        const { SMSService } = await import('./sms/SMSService');
+        await SMSService.sendSMS(customerPhone, smsText);
+      }
+
+      return {
+        success: true,
+        message: `Link do rezerwacji online (${rawUrl}) został pomyślnie wysłany SMS-em na numer telefonu rozmówcy (${customerPhone}). Poinformuj klienta, że SMS właśnie dotarł i zapytaj, czy możesz pomóc w czymś jeszcze.`
+      };
+    } catch (err: any) {
+      console.error('[BookingService] Błąd w sendBookingSmsLink:', err);
+      return { error: err.message || "Błąd wysyłania linku SMS." };
     }
   }
 }

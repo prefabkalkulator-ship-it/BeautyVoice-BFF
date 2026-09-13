@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { 
-  Bot, 
   Calendar, 
   Clock, 
   Star, 
@@ -19,7 +18,15 @@ import {
   Share,
   PlusSquare,
   Smartphone,
-  CheckCircle2
+  CheckCircle2,
+  PhoneCall,
+  Loader2,
+  Code,
+  Lock,
+  Server,
+  Trash2,
+  Scale,
+  Briefcase
 } from 'lucide-react';
 
 export default function LandingPage() {
@@ -30,6 +37,69 @@ export default function LandingPage() {
   const [isIos, setIsIos] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+
+  // Stan Live Callback 30s
+  const [callbackPhone, setCallbackPhone] = useState('');
+  const [callbackName, setCallbackName] = useState('');
+  const [callbackLoading, setCallbackLoading] = useState(false);
+  const [callbackError, setCallbackError] = useState('');
+  const [callbackCountdown, setCallbackCountdown] = useState<number | null>(null);
+  const [callbackStatus, setCallbackStatus] = useState('');
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (callbackCountdown !== null && callbackCountdown > 0) {
+      timer = setTimeout(() => {
+        setCallbackCountdown(callbackCountdown - 1);
+        if (callbackCountdown > 20) {
+          setCallbackStatus('Łączenie z cyfrową centralą...');
+        } else if (callbackCountdown > 10) {
+          setCallbackStatus('Asystentka EVA wybiera Twój numer...');
+        } else {
+          setCallbackStatus('Twój telefon za moment zadzwoni – odbierz połączenie!');
+        }
+      }, 1000);
+    } else if (callbackCountdown === 0) {
+      setCallbackStatus('Połączenie zainicjowane. Sprawdź swój telefon!');
+    }
+    return () => clearTimeout(timer);
+  }, [callbackCountdown]);
+
+  const handleCallbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCallbackError('');
+
+    const clean = callbackPhone.replace(/[\s\-()]/g, '');
+    if (!clean || clean.length < 9) {
+      setCallbackError('Wpisz poprawny 9-cyfrowy numer telefonu.');
+      return;
+    }
+
+    setCallbackLoading(true);
+    try {
+      const res = await fetch('/api/callback/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumber: clean,
+          name: callbackName.trim() || undefined,
+          source: 'landing_page_hero'
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się zamówić połączenia.');
+      }
+
+      setCallbackCountdown(30);
+      setCallbackStatus('Inicjowanie bezpiecznego połączenia...');
+    } catch (err: any) {
+      setCallbackError(err.message || 'Błąd zamawiania połączenia');
+    } finally {
+      setCallbackLoading(false);
+    }
+  };
 
   useEffect(() => {
     // 1. Sprawdzenie czy aplikacja już działa w trybie zainstalowanym (standalone PWA)
@@ -144,6 +214,102 @@ export default function LandingPage() {
                 <ArrowRight className="w-5 h-5 shrink-0" />
               </Link>
             </div>
+
+            {/* Widżet Live Callback w 30 sekund */}
+            <div className="mt-10 sm:mt-12 max-w-xl mx-auto bg-gradient-to-b from-amber-50/90 to-white border-2 border-amber-300/80 rounded-3xl p-5 sm:p-7 shadow-xl shadow-amber-500/10 text-left relative overflow-hidden">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+                    <PhoneCall className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200">
+                      Sprawdź na żywo • Oddzwonimy w 30s
+                    </span>
+                    <h3 className="text-base sm:text-lg font-serif font-bold text-surface-900 leading-tight mt-0.5">
+                      Przetestuj asystenta na swoim telefonie
+                    </h3>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs sm:text-sm text-surface-600 mb-4 leading-relaxed">
+                Wpisz swój numer, a cyfrowa asystentka EVA zadzwoni do Ciebie <strong>w ciągu 30 sekund</strong>, aby zaprezentować naturalną rozmowę w języku polskim.
+              </p>
+
+              {callbackError && (
+                <div className="mb-3 p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                  <span>{callbackError}</span>
+                </div>
+              )}
+
+              {callbackCountdown === null ? (
+                <form onSubmit={handleCallbackSubmit} className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-surface-400 select-none">
+                        +48
+                      </span>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="np. 500 123 456"
+                        value={callbackPhone}
+                        onChange={(e) => setCallbackPhone(e.target.value)}
+                        className="w-full pl-12 pr-4 py-3 bg-white border border-surface-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={callbackLoading}
+                      className="py-3 px-5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.99] disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {callbackLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Łączenie...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PhoneCall className="w-4 h-4" />
+                          <span>Zadzwoń do mnie teraz (30s)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-surface-400">
+                      🔒 Bezpieczne połączenie testowe bez spamu
+                    </span>
+                    <Link
+                      to="/widget/callback?embed=true"
+                      className="text-[11px] text-amber-700 hover:text-amber-800 font-semibold flex items-center gap-1 transition"
+                    >
+                      <Code className="w-3 h-3" />
+                      Pobierz widżet na stronę WWW &rarr;
+                    </Link>
+                  </div>
+                </form>
+              ) : (
+                <div className="bg-white rounded-2xl p-4 border border-amber-200 text-center space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center font-mono font-bold text-base shadow-md shadow-amber-500/25">
+                      {callbackCountdown}s
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-surface-900">
+                        Zlecono połączenie na numer {callbackPhone}
+                      </div>
+                      <div className="text-xs text-amber-700 font-semibold">
+                        {callbackStatus}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Features Grid - 4 Kafelki */}
@@ -195,9 +361,9 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-stretch">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
               {/* 1. Pakiet Osobisty */}
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-surface-200 hover:border-indigo-300 shadow-sm transition-all flex flex-col justify-between">
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border-2 border-surface-200 hover:border-indigo-300 shadow-sm transition-all flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <span className="px-3 py-1 bg-indigo-50 text-indigo-800 text-xs font-bold rounded-lg uppercase tracking-wider">
@@ -208,43 +374,39 @@ export default function LandingPage() {
                   <h3 className="text-xl sm:text-2xl font-serif font-bold text-surface-900 mb-1">Pakiet Osobisty</h3>
                   <div className="mb-4">
                     <div className="text-3xl sm:text-4xl font-bold text-surface-900">149 zł<span className="text-xs sm:text-sm font-normal text-surface-500"> / mc netto</span></div>
-                    <p className="text-xs sm:text-sm text-indigo-700 font-semibold mt-1">100 minut w cenie (0,60 zł / min po wyczerpaniu)</p>
+                    <p className="text-xs text-indigo-700 font-semibold mt-1">100 minut w cenie (0,60 zł / min)</p>
                   </div>
                   <p className="text-xs sm:text-sm text-surface-600 mb-6 leading-relaxed">
-                    Dla profesjonalistów, menedżerów i wolnych zawodów. Prywatna sekretarka executive: dyskretne odbieranie połączeń, kontakty VIP, kalendarz spraw prywatnych i ochrona prywatności.
+                    Dla profesjonalistów, menedżerów i wolnych zawodów. Dyskretne odbieranie połączeń, kontakty VIP, kalendarz spraw i ochrona tożsamości.
                   </p>
-                  <ul className="text-xs sm:text-sm space-y-2.5 sm:space-y-3 text-surface-700 border-t border-surface-100 pt-6">
+                  <ul className="text-xs sm:text-sm space-y-2.5 text-surface-700 border-t border-surface-100 pt-5">
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>1 dedykowany techniczny numer telefonu komórkowego</span>
+                      <span>1 dedykowany techniczny numer telefonu</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Dwuetapowe inteligentne powitanie (ochrona tożsamości)</span>
+                      <span>Dwuetapowe powitanie (ochrona tożsamości)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Rozpoznawanie kontaktów VIP (Rodzina, Wspólnik, Klient)</span>
+                      <span>Rozpoznawanie kontaktów VIP (Rodzina, Klient)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Autoryzacja kodem PIN z telefonu właściciela (sprawy poufne)</span>
+                      <span>Autoryzacja kodem PIN z numeru właściciela</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Baza wiedzy ogólnej oraz poufnej (chronionej PIN-em)</span>
+                      <span>Baza wiedzy ogólnej oraz poufnej (PIN)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Raporty dnia: poranny push oraz podsumowanie głosowe i e-mail</span>
+                      <span>Raporty dnia: poranny push i e-mail</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Czas skupienia (Deep Work) z automatycznym filtrowaniem połączeń</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>Rejestr ważnych dat (urodziny, rocznice, polisy)</span>
+                      <span>Czas skupienia (Deep Work) z filtrem połączeń</span>
                     </li>
                   </ul>
                 </div>
@@ -252,15 +414,77 @@ export default function LandingPage() {
                 <div className="mt-8 pt-6 border-t border-surface-100">
                   <Link
                     to="/register"
-                    className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm sm:text-base font-bold shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition"
+                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition text-center"
                   >
-                    Wybierz Pakiet Osobisty <ArrowRight className="w-4 h-4" />
+                    Wybierz Osobisty <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>
               </div>
 
-              {/* 2. Pakiet Standard B2B */}
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-surface-200 hover:border-surface-300 shadow-sm transition-all flex flex-col justify-between">
+              {/* 2. Pakiet Osobisty Ekspert */}
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border-2 border-indigo-500/40 hover:border-indigo-600 shadow-md transition-all flex flex-col justify-between relative ring-1 ring-indigo-500/20">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1 whitespace-nowrap">
+                  <Briefcase className="w-3 h-3" /> Kancelarie & Eksperci
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-4 mt-1">
+                    <span className="px-3 py-1 bg-purple-50 text-purple-800 text-xs font-bold rounded-lg uppercase tracking-wider">
+                      Osobisty Ekspert
+                    </span>
+                    <span className="text-xs font-semibold text-purple-700">Doradztwo / Kancelarie</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-surface-900 mb-1">Pakiet Osobisty Ekspert</h3>
+                  <div className="mb-4">
+                    <div className="text-3xl sm:text-4xl font-bold text-surface-900">349 zł<span className="text-xs sm:text-sm font-normal text-surface-500"> / mc netto</span></div>
+                    <p className="text-xs text-purple-700 font-semibold mt-1">300 minut w cenie (tylko 0,50 zł / min)</p>
+                  </div>
+                  <p className="text-xs sm:text-sm text-surface-600 mb-6 leading-relaxed">
+                    Dla kancelarii, doradców i rzeczoznawców. Wywiad wstępny ze sprawdzaniem budżetu, filtr zasięgu i natychmiastowe uczenie z rozmów.
+                  </p>
+                  <ul className="text-xs sm:text-sm space-y-2.5 text-surface-700 border-t border-surface-100 pt-5">
+                    <li className="flex items-start gap-2.5 font-semibold text-purple-950">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>Wszystko z Pakietu Osobistego, oraz:</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>300 minut rozmów w pakiecie co miesiąc</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>Kwalifikacja Sprawy i Budżetu klienta</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>Filtr Zasięgu Działania (rejon obsługi)</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>1-kliknięcie SMS Odrzucenia z szablonu</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>Moduł „Audyt Rozmów i Doszkalanie” (1-click FAQ)</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                      <span>SMS/tel. potwierdzenia spotkań konsultacyjnych</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-surface-100">
+                  <Link
+                    to="/register"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition text-center"
+                  >
+                    Wybierz Osobisty Ekspert <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* 3. Pakiet Standard B2B */}
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border-2 border-surface-200 hover:border-surface-300 shadow-sm transition-all flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <span className="px-3 py-1 bg-surface-100 text-surface-800 text-xs font-bold rounded-lg uppercase tracking-wider">
@@ -271,15 +495,15 @@ export default function LandingPage() {
                   <h3 className="text-xl sm:text-2xl font-serif font-bold text-surface-900 mb-1">Pakiet Standard B2B</h3>
                   <div className="mb-4">
                     <div className="text-3xl sm:text-4xl font-bold text-surface-900">199 zł<span className="text-xs sm:text-sm font-normal text-surface-500"> / mc netto</span></div>
-                    <p className="text-xs sm:text-sm text-surface-600 font-semibold mt-1">100 darmowych minut na rozmowy z klientami co miesiąc</p>
+                    <p className="text-xs text-surface-600 font-semibold mt-1">100 minut na rozmowy w pakiecie</p>
                   </div>
                   <p className="text-xs sm:text-sm text-surface-600 mb-6 leading-relaxed">
-                    Dla jednoosobowych gabinetów i salonów beauty potrzebujących automatycznej recepcji.
+                    Dla jednoosobowych gabinetów i salonów. Automatyczna recepcja, rezerwacje w kalendarzu i wysyłka SMS.
                   </p>
-                  <ul className="text-xs sm:text-sm space-y-2.5 sm:space-y-3 text-surface-700 border-t border-surface-100 pt-6">
+                  <ul className="text-xs sm:text-sm space-y-2.5 text-surface-700 border-t border-surface-100 pt-5">
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>100 darmowych minut na rozmowy z klientami co miesiąc</span>
+                      <span>100 minut na rozmowy z klientami co miesiąc</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
@@ -287,31 +511,27 @@ export default function LandingPage() {
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>4 naturalne głosy AI do wyboru (2 żeńskie i 2 męskie)</span>
+                      <span>4 naturalne głosy AI (2 żeńskie, 2 męskie)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>Obsługa ponad 140 języków (automatyczna detekcja)</span>
+                      <span>Obsługa ponad 140 języków (automatyczna)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>Baza Wiedzy AI ze zdjęć cenników i plików PDF</span>
+                      <span>Baza Wiedzy AI ze zdjęć i plików PDF</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>Grafiki pracowników i obsługa świąt / dni wolnych</span>
+                      <span>Automatyczne umawianie w kalendarzu</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>Automatyczne umawianie terminów w kalendarzu</span>
+                      <span>Potwierdzenia SMS po rezerwacji</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>Potwierdzenia SMS do klientów po rezerwacji</span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      <span>Samodzielna konfiguracja w 10 minut</span>
+                      <span>Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz)</span>
                     </li>
                   </ul>
                 </div>
@@ -319,17 +539,17 @@ export default function LandingPage() {
                 <div className="mt-8 pt-6 border-t border-surface-100">
                   <Link
                     to="/register"
-                    className="w-full py-3.5 px-4 bg-surface-900 hover:bg-surface-800 text-white rounded-xl text-sm sm:text-base font-bold shadow-md flex items-center justify-center gap-2 transition"
+                    className="w-full py-3 px-4 bg-surface-900 hover:bg-surface-800 text-white rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2 transition text-center"
                   >
                     Wybierz Standard B2B <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>
               </div>
 
-              {/* 3. Pakiet Premium B2B */}
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border-2 border-amber-400 shadow-xl relative flex flex-col justify-between ring-2 ring-amber-400/20">
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] sm:text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1 whitespace-nowrap">
-                  <Crown className="w-3.5 h-3.5" /> Rekomendowany – Pełna Automatyzacja
+              {/* 4. Pakiet Premium B2B */}
+              <div className="bg-white rounded-3xl p-6 sm:p-7 border-2 border-amber-400 shadow-xl relative flex flex-col justify-between ring-2 ring-amber-400/20">
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm flex items-center gap-1 whitespace-nowrap">
+                  <Crown className="w-3.5 h-3.5" /> Rekomendowany B2B
                 </div>
 
                 <div>
@@ -337,44 +557,48 @@ export default function LandingPage() {
                     <span className="px-3 py-1 bg-amber-100 text-amber-900 text-xs font-bold rounded-lg uppercase tracking-wider flex items-center gap-1">
                       <Crown className="w-3.5 h-3.5 text-amber-600" /> Premium B2B
                     </span>
-                    <span className="text-xs font-semibold text-amber-700">Maksymalizacja Przychodów</span>
+                    <span className="text-xs font-semibold text-amber-700">Marketing AI</span>
                   </div>
                   <h3 className="text-xl sm:text-2xl font-serif font-bold text-surface-900 mb-1">Pakiet Premium B2B</h3>
                   <div className="mb-4">
                     <div className="text-3xl sm:text-4xl font-bold text-surface-900">399 zł<span className="text-xs sm:text-sm font-normal text-surface-500"> / mc netto</span></div>
-                    <p className="text-xs sm:text-sm text-amber-700 font-semibold mt-1">300 darmowych minut na rozmowy w pakiecie co miesiąc</p>
+                    <p className="text-xs text-amber-700 font-semibold mt-1">300 minut na rozmowy w pakiecie</p>
                   </div>
                   <p className="text-xs sm:text-sm text-surface-600 mb-6 leading-relaxed">
-                    Dla rozwijających się zespołów, klinik i salonów z aktywnym modułem Marketing AI. Aktywnie zapełnia kalendarz, bada opinie i eliminuje problem „no-show”.
+                    Dla rozwijających się zespołów, klinik i salonów z aktywnym modułem Marketing AI i ratowaniem terminów.
                   </p>
-                  <ul className="text-xs sm:text-sm space-y-2.5 sm:space-y-3 text-surface-700 border-t border-surface-100 pt-6">
+                  <ul className="text-xs sm:text-sm space-y-2.5 text-surface-700 border-t border-surface-100 pt-5">
                     <li className="flex items-start gap-2.5 font-semibold text-amber-950">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>Wszystko z pakietu Standard B2B, oraz dodatkowo:</span>
+                      <span>Wszystko z pakietu Standard B2B, oraz:</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>300 darmowych minut na rozmowy w pakiecie co miesiąc</span>
+                      <span>300 darmowych minut na rozmowy w pakiecie</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>Wypełnianie okienek (Last Minute) – ratowanie odwołanych terminów</span>
+                      <span>Wypełnianie okienek (Last Minute)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>Badanie satysfakcji (NPS) – automatyczne zbieranie opinii po wizycie</span>
+                      <span>Badanie satysfakcji (NPS) po wizycie</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>Reaktywacja bazy 90+ dni – powrót dawnych klientów do firmy</span>
+                      <span>Reaktywacja bazy 90+ dni (powrót klientów)</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>Telefoniczne potwierdzanie wizyt dzień wcześniej (zero „no-show”)</span>
+                      <span>Wielokanałowość – do 5 rozmów naraz</span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>Wielokanałowość – do 5 jednoczesnych rozmów naraz bez sygnału zajętości</span>
+                      <span>Moduł „Audyt Rozmów i Doszkalanie” (1-click FAQ)</span>
+                    </li>
+                    <li className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <span>Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz)</span>
                     </li>
                   </ul>
                 </div>
@@ -382,10 +606,72 @@ export default function LandingPage() {
                 <div className="mt-8 pt-6 border-t border-surface-100">
                   <Link
                     to="/register"
-                    className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-sm sm:text-base font-bold shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition text-center"
                   >
                     Wybierz Premium B2B <ArrowRight className="w-4 h-4" />
                   </Link>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Sekcja Bezpieczeństwa, RODO i Europejskiego AI Act */}
+          <section id="bezpieczenstwo-rodo" className="mt-20 sm:mt-32">
+            <div className="bg-surface-900 text-white rounded-3xl p-6 sm:p-12 border border-surface-800 relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-96 h-96 bg-gold-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative z-10 max-w-3xl mx-auto text-center space-y-3 mb-12">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Bezpieczeństwo, RODO i AI Act
+                </div>
+                <h2 className="text-2xl sm:text-4xl font-serif text-white tracking-tight">
+                  Europejskie Standardy Prywatności i Bezpieczeństwa Danych
+                </h2>
+                <p className="text-surface-300 text-sm sm:text-base leading-relaxed">
+                  Twoje rozmowy, dane klientów i baza wiedzy są chronione zgodnie z prawem polskim i unijnym. Zero kompromisów w kwestii poufności.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+                <div className="bg-surface-800/60 backdrop-blur-xs border border-surface-700/60 rounded-2xl p-5 sm:p-6 space-y-3 hover:border-emerald-500/40 transition">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Server className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">Suwerenność Danych: Warszawa</h3>
+                  <p className="text-xs sm:text-sm text-surface-300 leading-relaxed">
+                    Centrum danych zlokalizowane w Europie (region Google Cloud Warszawa <code className="text-emerald-400 text-xs">europe-central2</code>). Żadne dane nie opuszczają jurysdykcji UE.
+                  </p>
+                </div>
+
+                <div className="bg-surface-800/60 backdrop-blur-xs border border-surface-700/60 rounded-2xl p-5 sm:p-6 space-y-3 hover:border-emerald-500/40 transition">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">Zero Trenowania Modeli</h3>
+                  <p className="text-xs sm:text-sm text-surface-300 leading-relaxed">
+                    Żadne Twoje rozmowy, dane wrażliwe ani transkrypcje nie są i nigdy nie będą wykorzystywane do trenowania publicznych modeli sztucznej inteligencji.
+                  </p>
+                </div>
+
+                <div className="bg-surface-800/60 backdrop-blur-xs border border-surface-700/60 rounded-2xl p-5 sm:p-6 space-y-3 hover:border-emerald-500/40 transition">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Scale className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">Zgodność z AI Act (Art. 50)</h3>
+                  <p className="text-xs sm:text-sm text-surface-300 leading-relaxed">
+                    Transparentność prawna: asystent nie podszywa się pod człowieka, lecz kulturalnie przedstawia się jako inteligentna recepcja, gwarantując 100% legalności.
+                  </p>
+                </div>
+
+                <div className="bg-surface-800/60 backdrop-blur-xs border border-surface-700/60 rounded-2xl p-5 sm:p-6 space-y-3 hover:border-emerald-500/40 transition">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-white">Prawo do Bycia Zapomnianym</h3>
+                  <p className="text-xs sm:text-sm text-surface-300 leading-relaxed">
+                    Pełna zgodność z art. 17 RODO. Jednym kliknięciem w panelu możesz trwale skasować historię połączenia, nagranie audio oraz dane klienta bez śladu.
+                  </p>
                 </div>
               </div>
             </div>
@@ -410,7 +696,7 @@ export default function LandingPage() {
             </a>
             <span className="text-surface-300">•</span>
             <a href="tel:+48343433088" className="hover:text-gold-600 transition-colors font-medium">
-              Infolinia DEMO AI: +48 34 343 30 88
+              Linia testowa DEMO AI: +48 34 343 30 88
             </a>
           </div>
           <div className="flex items-center justify-center gap-2 mb-3">

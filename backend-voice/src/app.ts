@@ -388,7 +388,11 @@ app.put('/api/tenant', async (req, res) => {
         companyName: req.body.companyName !== undefined ? req.body.companyName : undefined,
         businessCategory: req.body.businessCategory !== undefined ? req.body.businessCategory : undefined,
         assistantRole: req.body.assistantRole !== undefined ? req.body.assistantRole : undefined,
-        defaultFormalityLevel: req.body.defaultFormalityLevel !== undefined ? req.body.defaultFormalityLevel : undefined
+        defaultFormalityLevel: req.body.defaultFormalityLevel !== undefined ? req.body.defaultFormalityLevel : undefined,
+        bookingExternalUrl: req.body.bookingExternalUrl !== undefined ? req.body.bookingExternalUrl : undefined,
+        serviceAreaDescription: req.body.serviceAreaDescription !== undefined ? req.body.serviceAreaDescription : undefined,
+        rejectionSmsTemplate: req.body.rejectionSmsTemplate !== undefined ? req.body.rejectionSmsTemplate : undefined,
+        qualificationPrompt: req.body.qualificationPrompt !== undefined ? req.body.qualificationPrompt : undefined
       }
     });
 
@@ -1320,14 +1324,19 @@ app.post('/api/subscription/change-plan', async (req, res) => {
     let newPlanName = targetPlan;
     if (!newPlanName) {
       if (sub?.planName === 'standard') newPlanName = 'premium';
-      else if (sub?.planName === 'premium') newPlanName = 'personal';
+      else if (sub?.planName === 'premium') newPlanName = 'personal_expert';
+      else if (sub?.planName === 'personal_expert') newPlanName = 'personal';
       else newPlanName = 'standard';
     }
 
     let newMinutesIncluded = 100;
-    if (newPlanName === 'premium') newMinutesIncluded = 300;
-    else if (newPlanName === 'standard') newMinutesIncluded = 100;
-    else if (newPlanName === 'personal') newMinutesIncluded = 100;
+    if (newPlanName === 'premium' || newPlanName === 'personal_expert' || newPlanName === 'personal_pro') {
+      newMinutesIncluded = 300;
+    } else {
+      newMinutesIncluded = 100;
+    }
+
+    const isTargetPersonal = newPlanName === 'personal' || newPlanName === 'personal_expert' || newPlanName === 'personal_pro';
 
     const updatedSub = await prisma.subscription.upsert({
       where: { tenantId: tenant.id },
@@ -1344,7 +1353,7 @@ app.post('/api/subscription/change-plan', async (req, res) => {
       }
     });
 
-    if (newPlanName === 'personal' && tenant.businessProfile !== 'personal') {
+    if (isTargetPersonal && tenant.businessProfile !== 'personal') {
       await prisma.tenant.update({
         where: { id: tenant.id },
         data: {
@@ -1352,7 +1361,7 @@ app.post('/api/subscription/change-plan', async (req, res) => {
           name: tenant.ownerName || tenant.name
         }
       });
-    } else if (newPlanName !== 'personal' && tenant.businessProfile === 'personal') {
+    } else if (!isTargetPersonal && tenant.businessProfile === 'personal') {
       await prisma.tenant.update({
         where: { id: tenant.id },
         data: {
@@ -1941,6 +1950,184 @@ app.delete('/api/call-logs/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Odrzucenie zlecenia poza rejonem (Pakiet Osobisty Ekspert) z wysyłką SMS ---
+app.post('/api/call-logs/:id/reject-out-of-area', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    const callLog = await prisma.callLog.findFirst({
+      where: { id, tenantId: tenant.id }
+    });
+
+    if (!callLog) return res.status(404).json({ error: 'Nie znaleziono wpisu rozmowy' });
+
+    const defaultSms = `Dzień dobry, dziękujemy za kontakt. Ze względu na lokalizację poza naszym bieżącym rejonem dojazdów, z przykrością informujemy, że nie możemy zrealizować tego zlecenia. Pozdrawiamy, ${tenant.companyName || tenant.ownerName || tenant.name}`;
+    const smsText = (req.body && req.body.smsText) ? req.body.smsText.trim() : (tenant.rejectionSmsTemplate || defaultSms);
+
+    let smsSuccess = false;
+    if (callLog.callerPhone && callLog.callerPhone !== 'nieznany') {
+      try {
+        const { SMSService } = await import('./services/sms/SMSService');
+        await SMSService.sendSMS(callLog.callerPhone, smsText);
+        smsSuccess = true;
+      } catch (smsErr: any) {
+        console.error('[RejectOutOfArea] Błąd wysyłki SMS:', smsErr);
+      }
+    }
+
+    const updated = await prisma.callLog.update({
+      where: { id: callLog.id },
+      data: {
+        status: 'REJECTED_OUT_OF_AREA',
+        rejectionReason: 'OUT_OF_AREA',
+        isProcessed: true
+      }
+    });
+
+    res.json({
+      success: true,
+      smsSent: smsSuccess,
+      callLog: updated
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Moduł Audyt Rozmów i Doszkalanie (1-klik FAQ) ---
+app.post('/api/call-logs/:id/train-faq', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { question, answer, category, isConfidential } = req.body || {};
+    if (!question || !answer) {
+      return res.status(400).json({ error: 'Pytanie i odpowiedź są wymagane.' });
+    }
+
+    const newFaq = await prisma.faqEntry.create({
+      data: {
+        tenantId: tenant.id,
+        question: question.trim(),
+        answer: answer.trim(),
+        category: category?.trim() || 'Audyt Rozmów',
+        isConfidential: Boolean(isConfidential)
+      }
+    });
+
+    res.json({
+      success: true,
+      faq: newFaq
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Widżet Live Callback w 30 sekund (Landing Page i Zewnętrzne WWW) ---
+app.post('/api/callback/request', async (req, res) => {
+  try {
+    const { phoneNumber, tenantId, name, source } = req.body || {};
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      return res.status(400).json({ error: 'Podaj poprawny numer telefonu' });
+    }
+
+    let cleaned = phoneNumber.replace(/[\s\-()]/g, '');
+    if (!cleaned.startsWith('+')) {
+      if (cleaned.length === 9) {
+        cleaned = '+48' + cleaned;
+      } else if (cleaned.startsWith('48') && cleaned.length === 11) {
+        cleaned = '+' + cleaned;
+      } else {
+        cleaned = '+48' + cleaned;
+      }
+    }
+
+    if (!/^\+\d{9,15}$/.test(cleaned)) {
+      return res.status(400).json({ error: 'Nieprawidłowy format numeru telefonu. Wymagane min. 9 cyfr.' });
+    }
+
+    // Wyznacz tenanta dla połączenia
+    let targetTenant = null;
+    if (tenantId) {
+      targetTenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        include: { subscription: true }
+      });
+    }
+    if (!targetTenant) {
+      targetTenant = await prisma.tenant.findFirst({
+        where: { name: 'DEMO' },
+        include: { subscription: true }
+      });
+    }
+    if (!targetTenant) {
+      targetTenant = await prisma.tenant.findFirst({
+        include: { subscription: true }
+      });
+    }
+
+    if (!targetTenant) {
+      return res.status(404).json({ error: 'Nie znaleziono aktywnego profilu asystenta' });
+    }
+
+    // Ochrona przed spamem (Rate limit: maks 3 zapytania na ten sam numer w ciągu 10 minut)
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const recentAttempts = await prisma.outboundQueue.count({
+      where: {
+        targetPhone: cleaned,
+        createdAt: { gte: tenMinutesAgo }
+      }
+    });
+
+    if (recentAttempts >= 3) {
+      return res.status(429).json({
+        error: 'Przekroczono limit prób szybkiego kontaktu. Prosimy spróbować ponownie za kilkanaście minut lub zadzwonić bezpośrednio.'
+      });
+    }
+
+    // Zarejestruj zadanie połączenia wychodzącego
+    const outboundTask = await prisma.outboundQueue.create({
+      data: {
+        tenantId: targetTenant.id,
+        targetPhone: cleaned,
+        channel: 'voice',
+        status: 'pending',
+        scheduledFor: new Date(),
+        payload: {
+          type: 'live_callback_30s',
+          name: name || 'Klient ze strony WWW',
+          source: source || 'landing_page_widget'
+        }
+      }
+    });
+
+    console.log(`⚡ [LiveCallback] Zainicjowano Live Callback do ${cleaned} dla: ${targetTenant.name} (task: ${outboundTask.id})`);
+
+    // Natychmiastowe uruchomienie połączenia wychodzącego (nie czekamy na cron)
+    import('./services/voice/VoiceOutboundService').then(async ({ VoiceOutboundService }) => {
+      try {
+        await VoiceOutboundService.initiateCall(outboundTask.id, cleaned);
+      } catch (callErr: any) {
+        console.error('[LiveCallback] Błąd wywołania VoiceOutboundService:', callErr.message);
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Zlecono połączenie. Odbierz telefon w ciągu 30 sekund!',
+      taskId: outboundTask.id,
+      countdownSeconds: 30,
+      targetPhone: cleaned
+    });
+  } catch (err: any) {
+    console.error('[LiveCallback] Błąd:', err);
+    res.status(500).json({ error: err.message || 'Wystąpił błąd podczas zamawiania połączenia' });
   }
 });
 

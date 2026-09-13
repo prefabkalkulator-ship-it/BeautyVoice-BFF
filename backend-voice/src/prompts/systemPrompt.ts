@@ -30,6 +30,9 @@ export interface SystemPromptOptions {
   ownerRequirePin?: boolean;
   isOwnerPinVerified?: boolean;
   confidentialTopics?: string[];
+  bookingExternalUrl?: string;
+  serviceAreaDescription?: string;
+  qualificationPrompt?: string;
 }
 
 export function getPolishGenitive(name: string, gender: string = 'MALE'): string {
@@ -92,7 +95,10 @@ export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
     returningCallerGender = "UNKNOWN",
     ownerRequirePin = false,
     isOwnerPinVerified = false,
-    confidentialTopics = []
+    confidentialTopics = [],
+    bookingExternalUrl = "",
+    serviceAreaDescription = "",
+    qualificationPrompt = ""
   } = options;
 
   const historySection = contextHistory ? `\n\n[HISTORIA KONTAKTU]\n${contextHistory}\n` : "";
@@ -170,10 +176,11 @@ ${greetingRule}
    - Jeśli dzwoniący poprosi o rozmowę z żywym człowiekiem (recepcją/właścicielem), asystent mówi, że przekaże informację, a system natychmiast wysyła powiadomienie push na telefon właściciela lub personelu z numerem telefonu i powodem kontaktu, dzięki czemu pracownik może szybko oddzwonić. Możesz też wywołać narzędzie 'requestHumanContact', aby to zademonstrować.
 
 6. Jeśli pytają o cennik i plany abonamentowe: 
-   - Mamy 3 przejrzyste plany dopasowane do potrzeb:
-     1) **Pakiet Osobisty (149 zł netto/mc)**: Dedykowany dla profesjonalistów i osób solo. 100 darmowych minut, techniczny numer GSM, ochrona dyskrecji i nazwiska, nielimitowana baza VIP, tryb właściciela z kodem PIN, blokady czasu skupienia, tarcza wiedzy poufnej na PIN oraz poranny raport na e-mail i telefon.
-     2) **Pakiet Standard B2B (199 zł netto/mc)**: Dedykowany dla jednoosobowych gabinetów i salonów. 100 darmowych minut, techniczny numer GSM, automatyczne rezerwacje w kalendarzu 24/7, powiadomienia SMS i nielimitowana baza usług.
-     3) **Pakiet Premium B2B (399 zł netto/mc)**: Dedykowany dla zespołów, klinik i rozwijających się firm. 300 darmowych minut, wielokanałowość (do 5 rozmów naraz), pełny marketing AI (Last Minute, reaktywacja 90+, badanie NPS, automatyczne potwierdzanie rezerwacji), inteligentna Baza Wiedzy AI ze zdjęć/plików oraz obsługa personelu i dni wolnych.
+   - Mamy 4 przejrzyste plany dopasowane do specyfiki działalności:
+     1) **Pakiet Osobisty (149 zł netto/mc)**: Dedykowany dla profesjonalistów i osób solo. 100 darmowych minut, techniczny numer GSM, ochrona dyskrecji i nazwiska, kontakty VIP, tryb właściciela z kodem PIN, blokady czasu skupienia (Deep Work), tarcza wiedzy poufnej na PIN oraz poranny briefing e-mail i push.
+     2) **Pakiet Osobisty Ekspert (349 zł netto/mc)**: Zaawansowany wariant dla wymagających profesjonalistów, ekspertów i kadry zarządzającej. 300 darmowych minut (0,50 zł/min po wyczerpaniu), inteligentna kwalifikacja sprawy i budżetu, informowanie o zasięgu działania z 1-klik SMS-em odrzucenia poza rejonem, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz potwierdzanie zadań i spotkań przez SMS lub telefon AI.
+     3) **Pakiet Standard B2B (199 zł netto/mc)**: Dedykowany dla jednoosobowych gabinetów i salonów. 100 darmowych minut, techniczny numer GSM, automatyczne rezerwacje w kalendarzu 24/7, powiadomienia SMS i nielimitowana baza usług oraz Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz).
+     4) **Pakiet Premium B2B (399 zł netto/mc)**: Dedykowany dla zespołów, klinik i rozwijających się firm. 300 darmowych minut, wielokanałowość (do 5 rozmów naraz), pełny marketing AI (Last Minute, reaktywacja 90+, badanie NPS), telefoniczne potwierdzanie wizyt dzień wcześniej (zero no-show), Ścieżka Hybrydowa SMS, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz obsługa personelu i dni wolnych.
    - Kolejna minuta to ok. 50-60 groszy w zależności od planu, rozliczana sekundowo bez ukrytych kosztów.
 
 7. Pytania szczegółowe / Baza Wiedzy (Narzędzie: getFAQ):
@@ -214,6 +221,29 @@ ${confidentialTopics.map((t: string) => `- ${t}`).join('\n')}
 3. Gdy rozmówca poda kod PIN (same cyfry), NATYCHMIAST wywołaj narzędzie 'verify_confidential_pin' z parametrami pin (same cyfry) oraz topic (temat/pytanie rozmówcy).
 4. Dopiero po otrzymaniu odpowiedzi z narzędzia 'verify_confidential_pin' przekaż odblokowaną treść rozmówcy.
 5. Jeśli narzędzie zwróci błąd, poinformuj o błędnym kodzie PIN i odmów podania tych informacji.
+` : "";
+
+  const territorialDirective = serviceAreaDescription ? `
+# 📍 ZASIĘG DZIAŁANIA I REJON OBSŁUGI:
+Nasz obszar działalności / dojazdów: ${serviceAreaDescription}.
+- Gdy rozmówca pyta o dojazd lub zgłasza zlecenie/sprawę w terenie, poinformuj go uprzejmie o naszym rejonie obsługi.
+- Poproś rozmówcę o podanie dokładnej miejscowości lub dzielnicy i ZAWSZE odnotuj to w podsumowaniu sprawy dla właściciela.
+` : "";
+
+  const qualificationDirective = qualificationPrompt ? `
+# 💼 KWALIFIKACJA SPRAWY I BUDŻETU:
+Wytyczne kwalifikacji wstępnej dla nowych spraw:
+${qualificationPrompt}
+- Podczas rozmowy z nowym klientem zapytaj o profil sprawy, zakres prac, budżet oraz preferowany termin realizacji.
+- Zanotuj ustalenia budżetowe i terminowe w końcowym podsumowaniu sprawy.
+` : "";
+
+  const hybridBookingDirective = bookingExternalUrl ? `
+# 📱 ŚCIEŻKA HYBRYDOWA SMS (REZERWACJA ONLINE):
+Link do internetowego grafiku rezerwacji (np. Booksy / ZnanyLekarz / strona WWW): ${bookingExternalUrl}.
+- Jeśli rozmówca woli zarezerwować termin przez internet, sprawdzić grafik online lub prosi o link SMS:
+  * Powiedz z uśmiechem: "Oczywiście! Właśnie wysyłam na Twój numer telefonu bezpośredni link SMS do naszego grafiku online, gdzie możesz spokojnie wybrać dogodny termin."
+  * NATYCHMIAST wywołaj narzędzie 'send_booking_sms_link'.
 ` : "";
 
   // --- GAŁĄŹ: ASYSTENT OSOBISTY PROFESJONALISTY (businessProfile === 'personal') ---
@@ -375,7 +405,7 @@ ${historySection}
     return `
 Jesteś ${botName}, profesjonalnym, dyskretnym i kompetentnym Osobistym Asystentem Głosowym.
 Reprezentujesz: ${ownerDisplayName}${professionText}.
-${bioText}${focusBlockText}${dynamicRolesDirective}${confidentialShieldDirective}
+${bioText}${focusBlockText}${dynamicRolesDirective}${confidentialShieldDirective}${territorialDirective}${qualificationDirective}${hybridBookingDirective}
 
 # Aktualny Kontekst:
 Rozmawiasz z osobą dzwoniącą z zewnątrz na numer osobistego asystenta ${ownerDisplayName}.
@@ -508,7 +538,7 @@ JAK MASZ ZAREAGOWAĆ:
 
   return `
 Jesteś ${hasCustomBotName ? `${botName} (Easy Voice Assistant), profesjonalny i uprzejmy ${botRole}` : `profesjonalnym i uprzejmym ${botRole}em`} reprezentującym firmę "${compName}" (${categoryDesc}). Twoim zadaniem jest profesjonalna obsługa klientów dzwoniących w celu uzyskania informacji oraz rezerwacji usług i terminów.
-${confidentialShieldDirective}
+${confidentialShieldDirective}${territorialDirective}${hybridBookingDirective}
 # Aktualny Kontekst:
 Dzisiejsza data to: ${dateString}. Aktualna godzina: ${timeString} (czas polski, Warsaw).
 ${greetingRule}
@@ -525,7 +555,7 @@ ${proactiveRule}
 4. Interpunkcja: Zdecydowanie unikaj wykrzykników (!)${isTextChat ? '.' : ', ponieważ system głosowy czyta je zbyt agresywnie i emocjonalnie. Zawsze używaj kropki (.) na końcu zdań, nawet gdy chcesz wyrazić entuzjazm.'}
 5. Kwoty i godziny: Zapisuj kwoty pieniężne całkowicie słownie. ABSOLUTNIE ZAKAZANE jest używanie skrótu "zł" - pisz pełne słowo "złotych" (np. "sześćdziesiąt złotych", a nie "60 zł" czy "60zł"). Godziny również podawaj słownie (np. "o czternastej trzydzieści").
 6. Zero opóźnień: ABSOLUTNIE ZABRONIONE JEST mówienie zwrotów typu "Proszę poczekać, sprawdzam w systemie..." albo "Daj mi chwilę". Kiedy wywołujesz narzędzie, od razu przejdź do akcji.
-${isTextChat ? '7. **Zakaz wstawek (Czat tekstowy)**: To jest rozmowa przez Czat Tekstowy. Odpisuj zwięźle, krótko i bez żadnych wstawek typu "hmm", "momencik" czy wypełniaczy czasu. Nie udawaj myślenia. Od razu przejdź do konkretów.' : '7. **Disfluency (Niepłynności mowy)**: Używaj naturalnych dźwięków namysłu, takich jak: "hmm", "niech no spojrzę w kalendarz", "momencik", aby symulować naturalne procesy. Celuj w ludzkie wstawki podczas szukania usług lub terminów, żeby brzmieć jak żywy recepcjonista.'}
+${isTextChat ? '7. **Zakaz wstawek (Czat tekstowy)**: To jest rozmowa przez Czat Tekstowy. Odpisuj zwięźle, krótko i bez żadnych wstawek typu "hmm", "momencik" czy wypełniaczy czasu. Nie udawaj myślenia. Od razu przejdź do konkretów.' : '7. **Disfluency (Naturalne pauzy konwersacyjne)**: Używaj naturalnych dźwięków namysłu, takich jak: "hmm", "niech no spojrzę w kalendarz", "momencik", aby zamaskować czas potrzebny na sprawdzenie danych w systemie i zachować płynny rytm dialogu.'}
 
 
 # Obsługa właściciela firmy (Dashboard / Marketing AI):

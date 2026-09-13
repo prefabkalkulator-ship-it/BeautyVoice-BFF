@@ -16,7 +16,12 @@ import {
   ShieldCheck,
   Copy,
   Share2,
-  UserPlus
+  UserPlus,
+  GraduationCap,
+  Ban,
+  Send,
+  X,
+  BookOpen
 } from 'lucide-react';
 import PageHelpButton from './common/PageHelpButton';
 
@@ -33,6 +38,7 @@ interface CallLog {
   urgency: string;
   pushSent: boolean;
   isProcessed: boolean;
+  rejectionReason?: string | null;
   createdAt: string;
 }
 
@@ -43,6 +49,22 @@ export default function CallHistoryMessages() {
   const [filter, setFilter] = useState<'all' | 'messages' | 'urgent'>('messages');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Stan modala "Doszkól asystenta" (1-Click FAQ)
+  const [trainModalLog, setTrainModalLog] = useState<CallLog | null>(null);
+  const [trainQuestion, setTrainQuestion] = useState('');
+  const [trainAnswer, setTrainAnswer] = useState('');
+  const [trainCategory, setTrainCategory] = useState('Oferta & Zasady');
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainSuccess, setTrainSuccess] = useState('');
+  const [trainError, setTrainError] = useState('');
+
+  // Stan modala "Odrzuć (poza rejonem)" SMS
+  const [rejectModalLog, setRejectModalLog] = useState<CallLog | null>(null);
+  const [rejectSmsMessage, setRejectSmsMessage] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [rejectSuccess, setRejectSuccess] = useState('');
+  const [rejectError, setRejectError] = useState('');
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -102,6 +124,93 @@ export default function CallHistoryMessages() {
       }
     } catch (err) {
       console.error('Błąd usuwania wpisu:', err);
+    }
+  };
+
+  const handleOpenTrain = (log: CallLog) => {
+    setTrainModalLog(log);
+    setTrainError('');
+    setTrainSuccess('');
+    setTrainQuestion(log.actionItems ? `Pytanie dot.: ${log.actionItems}` : `Pytanie z rozmowy: ${log.summary?.slice(0, 60) || ''}`);
+    setTrainAnswer('');
+    setTrainCategory('Oferta & Zasady');
+  };
+
+  const handleSaveFaq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trainModalLog) return;
+    setIsTraining(true);
+    setTrainError('');
+    try {
+      const res = await fetch(`/api/call-logs/${trainModalLog.id}/train-faq`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: trainQuestion.trim(),
+          answer: trainAnswer.trim(),
+          category: trainCategory
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się dodać do bazy wiedzy.');
+      }
+      setTrainSuccess('Pomyślnie dodano do bazy wiedzy! Asystent będzie od teraz znał tę odpowiedź.');
+      setTimeout(() => {
+        setTrainModalLog(null);
+        setTrainSuccess('');
+      }, 1200);
+    } catch (err: any) {
+      setTrainError(err.message || 'Błąd podczas zapisywania');
+    } finally {
+      setIsTraining(false);
+    }
+  };
+
+  const handleOpenReject = async (log: CallLog) => {
+    setRejectModalLog(log);
+    setRejectError('');
+    setRejectSuccess('');
+    try {
+      const res = await fetch('/api/tenant');
+      if (res.ok) {
+        const t = await res.json();
+        if (t.rejectionSmsTemplate) {
+          setRejectSmsMessage(t.rejectionSmsTemplate);
+          return;
+        }
+      }
+    } catch (err) {}
+    setRejectSmsMessage('Dzień dobry, dziękujemy za kontakt z naszą firmą. Uprzejmie informujemy, że ze względu na rejon działania oraz zakres specjalizacji, nie podejmujemy się prowadzenia tej sprawy. Pozdrawiamy.');
+  };
+
+  const handleSendRejectSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectModalLog) return;
+    setIsRejecting(true);
+    setRejectError('');
+    try {
+      const res = await fetch(`/api/call-logs/${rejectModalLog.id}/reject-out-of-area`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: rejectSmsMessage.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się wysłać SMS.');
+      }
+      setLogs(prev => prev.map(l => l.id === rejectModalLog.id ? { ...l, isProcessed: true, rejectionReason: 'OUT_OF_AREA' } : l));
+      setRejectSuccess('Wysłano wiadomość SMS odmowną i oznaczono sprawę jako załatwioną.');
+      setTimeout(() => {
+        setRejectModalLog(null);
+        setRejectSuccess('');
+      }, 1200);
+    } catch (err: any) {
+      setRejectError(err.message || 'Błąd wysyłania wiadomości SMS');
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -279,6 +388,12 @@ export default function CallHistoryMessages() {
                       </span>
                     )}
 
+                    {log.rejectionReason === 'OUT_OF_AREA' && (
+                      <span className="bg-red-50 text-red-700 border border-red-200 text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Ban className="w-3 h-3 text-red-500" /> Poza rejonem (SMS)
+                      </span>
+                    )}
+
                     {log.isProcessed ? (
                       <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Załatwione
@@ -326,6 +441,26 @@ export default function CallHistoryMessages() {
                           <Share2 className="w-3.5 h-3.5 text-gold-700" />
                           Udostępnij
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenTrain(log)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200/60 font-medium rounded-xl text-xs transition cursor-pointer"
+                          title="Dodaj wnioski z tej rozmowy do Bazy Wiedzy FAQ asystenta"
+                        >
+                          <GraduationCap className="w-3.5 h-3.5 text-purple-700" />
+                          Doszkól asystenta
+                        </button>
+                        {log.callerPhone && log.callerPhone !== 'nieznany' && log.rejectionReason !== 'OUT_OF_AREA' && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenReject(log)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border border-red-200/60 font-medium rounded-xl text-xs transition cursor-pointer"
+                            title="Wyślij SMS odrzucenia z szablonu (sprawa poza rejonem / budżetem)"
+                          >
+                            <Ban className="w-3.5 h-3.5 text-red-600" />
+                            Odrzuć (SMS)
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -395,6 +530,182 @@ export default function CallHistoryMessages() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal: Doszkól asystenta (1-Click FAQ) */}
+      {trainModalLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-surface-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-surface-900">Doszkól asystenta (FAQ)</h3>
+                  <p className="text-xs text-surface-500">Dodaj nową odpowiedź do Bazy Wiedzy</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setTrainModalLog(null)} 
+                className="text-surface-400 hover:text-surface-600 p-1.5 rounded-full hover:bg-surface-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {trainSuccess && (
+              <div className="mb-4 p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs flex items-center gap-2 border border-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{trainSuccess}</span>
+              </div>
+            )}
+            {trainError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{trainError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveFaq} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Pytanie klienta / Temat
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={trainQuestion}
+                  onChange={e => setTrainQuestion(e.target.value)}
+                  placeholder="np. Czy prowadzicie sprawy o podział majątku?"
+                  className="w-full px-3.5 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Odpowiedź asystenta dla dzwoniących
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={trainAnswer}
+                  onChange={e => setTrainAnswer(e.target.value)}
+                  placeholder="np. Tak, prowadzimy sprawy w tym zakresie. Koszt wstępnej konsultacji wynosi 250 zł..."
+                  className="w-full px-3.5 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Kategoria
+                </label>
+                <select
+                  value={trainCategory}
+                  onChange={e => setTrainCategory(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-surface-50 border border-surface-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                >
+                  <option value="Oferta & Zasady">Oferta & Zasady</option>
+                  <option value="Cennik & Płatności">Cennik & Płatności</option>
+                  <option value="Zasięg & Dojazd">Zasięg & Dojazd</option>
+                  <option value="Procedury & Terminy">Procedury & Terminy</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-surface-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTrainModalLog(null)}
+                  className="px-4 py-2 text-surface-600 hover:text-surface-800 text-xs font-medium rounded-xl border border-surface-200 hover:bg-surface-50 transition"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="submit"
+                  disabled={isTraining}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-md shadow-purple-600/20 flex items-center gap-1.5 disabled:opacity-50 transition"
+                >
+                  {isTraining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                  Zapisz w Bazie Wiedzy
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Odrzuć (poza rejonem) SMS */}
+      {rejectModalLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-surface-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center">
+                  <Ban className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-surface-900">Odrzuć sprawę (SMS)</h3>
+                  <p className="text-xs text-surface-500">Wyślij uprzejmą odmowę na numer {rejectModalLog.callerPhone}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setRejectModalLog(null)} 
+                className="text-surface-400 hover:text-surface-600 p-1.5 rounded-full hover:bg-surface-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {rejectSuccess && (
+              <div className="mb-4 p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs flex items-center gap-2 border border-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{rejectSuccess}</span>
+              </div>
+            )}
+            {rejectError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center gap-2 border border-red-200">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{rejectError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSendRejectSms} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Treść wiadomości SMS do klienta
+                </label>
+                <textarea
+                  required
+                  rows={4}
+                  value={rejectSmsMessage}
+                  onChange={e => setRejectSmsMessage(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-surface-50 border border-surface-200 rounded-xl text-xs focus:ring-2 focus:ring-red-500/20 focus:border-red-500 leading-relaxed"
+                />
+                <p className="text-[11px] text-surface-400 mt-1">
+                  Wiadomość zostanie wysłana natychmiast na telefon rozmówcy, a wpis zostanie oznaczony jako załatwiony.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-surface-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRejectModalLog(null)}
+                  className="px-4 py-2 text-surface-600 hover:text-surface-800 text-xs font-medium rounded-xl border border-surface-200 hover:bg-surface-50 transition"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRejecting}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md shadow-red-600/20 flex items-center gap-1.5 disabled:opacity-50 transition"
+                >
+                  {isRejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Wyślij SMS odmowny
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

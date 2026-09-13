@@ -56,6 +56,13 @@ model Tenant {
   lastBriefingSentAt  DateTime?      // Data i godzina ostatniej wysyłki porannego raportu
   personalSchedule    Json?          // Harmonogram hybrydowy: godziny pracy, strefa prywatna, sloty priorytetowe, ochrona nocna
 
+  // Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz / Bookero / własny link)
+  bookingExternalUrl     String?
+  // Zasięg Działania & Filtr Terytorialny z 1-Klik SMS
+  serviceAreaDescription String?        @db.Text // np. Warszawa i okolice do 30 km, powiaty piaseczyński i pruszkowski
+  rejectionSmsTemplate   String?        @db.Text // Szablon wiadomości SMS przy odrzuceniu zlecenia
+  qualificationPrompt    String?        @db.Text // Wytyczne kwalifikacji sprawy i budżetu
+
   betaStatus          String         @default("none") // none, pending, approved, rejected
   betaContactPerson   String?
   betaContactEmail    String?
@@ -201,6 +208,7 @@ model CallLog {
   urgency         String   @default("NORMAL")  // LOW, NORMAL, HIGH, CRITICAL
   pushSent        Boolean  @default(false)
   isProcessed     Boolean  @default(false)
+  rejectionReason String?  // np. OUT_OF_AREA
   createdAt       DateTime @default(now())
   
   tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)

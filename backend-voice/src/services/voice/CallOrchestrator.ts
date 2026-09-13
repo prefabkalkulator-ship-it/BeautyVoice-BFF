@@ -403,7 +403,10 @@ export class CallOrchestrator {
       returningCallerGender: this.returningCallerGender,
       ownerRequirePin: this.ownerRequirePin,
       isOwnerPinVerified: this.isOwnerPinVerified,
-      confidentialTopics: this.confidentialTopics
+      confidentialTopics: this.confidentialTopics,
+      bookingExternalUrl: tenant?.bookingExternalUrl || undefined,
+      serviceAreaDescription: tenant?.serviceAreaDescription || undefined,
+      qualificationPrompt: tenant?.qualificationPrompt || undefined
     });
 
     this.geminiClient.connect();
@@ -445,13 +448,17 @@ export class CallOrchestrator {
               contextText = `UWAGA: Próba bezpośredniego połączenia z właścicielem nie powiodła się (właściciel nie odebrał w ciągu 30 sekund lub odrzucił połączenie). Rozmówca (${fallbackVipName || 'kontakt VIP'}) powrócił na linię. NATYCHMIAST przemów jako pierwsza i powiedz dosłownie: "Właściciel nie mógł teraz odebrać. Zostaw wiadomość, a przekażę ją natychmiast." Następnie wysłuchaj i zapisz jego wiadomość narzędziem save_call_message. Pod żadnym pozorem NIE próbuj łączyć ponownie!`;
             } else if (outboundTaskId && this.tenantId) {
                // OUTBOUND CALL LOGIC
-               const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId } });
-               if (task) {
-                  const payload = typeof task.payload === 'object' && task.payload !== null ? task.payload as any : {};
-                  contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. Numer telefonu klienta to: ${task.targetPhone}. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie!`;
-                  // Oznacz task jako zakończony
-                  await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
-               }
+                const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId } });
+                if (task) {
+                   const payload = typeof task.payload === 'object' && task.payload !== null ? task.payload as any : {};
+                   if (payload.type === 'live_callback_30s') {
+                     contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony cyfrowa asystentka ${this.companyName || this.tenantName || 'naszej firmy'}. W czym mogę Ci dzisiaj pomóc?". Prowadź płynną rozmowę.`;
+                   } else {
+                     contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. Numer telefonu klienta to: ${task.targetPhone}. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie!`;
+                   }
+                   // Oznacz task jako zakończony
+                   await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
+                }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
               contextText = `To jest połączenie na linię testową platformy EasyVoiceAssistant, EVA. Numer dzwoniącego: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być dokładnie: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. Czy chcesz dowiedzieć się, jak działam, czy wolisz poznać, co obejmują nasze plany cenowe?". ZAKAZ mówienia, że ktoś nie może odebrać! KATEGORYCZNY ZAKAZ mówienia "Dobry wieczór" w ciągu dnia!`;
@@ -730,6 +737,8 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           return await bookingService.cancelAppointment(tenantId, args.customerPhone);
         case 'requestHumanContact':
           return await bookingService.requestHumanContact(tenantId, args.customerPhone, args.reason);
+        case 'send_booking_sms_link':
+          return await bookingService.sendBookingSmsLink(tenantId, this.callerPhone);
         case 'get_owner_activity_summary':
           if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
             return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };

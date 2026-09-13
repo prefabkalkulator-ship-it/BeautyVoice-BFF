@@ -17,7 +17,8 @@ import {
   Lock,
   CheckCircle2,
   ShieldAlert,
-  Crown
+  Crown,
+  Briefcase
 } from 'lucide-react';
 
 export default function Subscription() {
@@ -176,7 +177,7 @@ export default function Subscription() {
     setIsLoading(false);
   };
 
-  const handleChangePlan = async (targetPlan: 'personal' | 'standard' | 'premium') => {
+  const handleChangePlan = async (targetPlan: 'personal' | 'personal_expert' | 'standard' | 'premium') => {
     setIsChangingPlan(true);
     setError('');
     setChangePlanSuccess('');
@@ -203,7 +204,13 @@ export default function Subscription() {
       if (data.tenantId) {
         localStorage.setItem('tenantId', data.tenantId);
       }
-      setChangePlanSuccess(`Pomyślnie zmieniono pakiet na: ${targetPlan === 'personal' ? 'OSOBISTY' : targetPlan.toUpperCase()}! Przeładowuję widok...`);
+      const planNamesDisplay: Record<string, string> = {
+        personal: 'OSOBISTY',
+        personal_expert: 'OSOBISTY EKSPERT',
+        standard: 'STANDARD B2B',
+        premium: 'PREMIUM B2B'
+      };
+      setChangePlanSuccess(`Pomyślnie zmieniono pakiet na: ${planNamesDisplay[targetPlan] || targetPlan.toUpperCase()}! Przeładowuję widok...`);
       setTimeout(() => {
         setIsChangePlanModalOpen(false);
         setChangePlanSuccess('');
@@ -252,9 +259,10 @@ export default function Subscription() {
   };
 
   const renderModals = () => {
-    const isPersonal = subDetails?.planName === 'personal' || tenant?.businessProfile === 'personal';
+    const isPersonalExpert = subDetails?.planName === 'personal_expert';
+    const isPersonal = (subDetails?.planName === 'personal' || tenant?.businessProfile === 'personal') && !isPersonalExpert;
     const isPremium = subDetails?.planName === 'premium' || subDetails?.planName === 'beta_pilot' || subDetails?.planName === 'pilot';
-    const isStandard = !isPersonal && !isPremium;
+    const isStandard = !isPersonal && !isPersonalExpert && !isPremium;
 
     return (
       <>
@@ -264,7 +272,7 @@ export default function Subscription() {
             className="fixed inset-0 z-[9999] flex items-start sm:items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto"
             onClick={(e) => { if (e.target === e.currentTarget) setIsChangePlanModalOpen(false); }}
           >
-            <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-8 shadow-2xl border border-surface-200 relative my-3 sm:my-8 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-white rounded-3xl max-w-6xl w-full p-5 sm:p-8 shadow-2xl border border-surface-200 relative my-3 sm:my-8 animate-in fade-in zoom-in-95 duration-150">
               <button 
                 type="button"
                 onClick={() => setIsChangePlanModalOpen(false)}
@@ -280,7 +288,7 @@ export default function Subscription() {
                 </div>
                 <h3 className="text-xl sm:text-2xl font-serif text-surface-900">Zmień pakiet subskrypcji</h3>
                 <p className="text-xs sm:text-sm text-surface-600 mt-1">
-                  Możesz w dowolnym momencie zmienić plan. Przejście na pakiet osobisty automatycznie dostosuje interfejs asystenta (Executive / VIP / Kalendarz roczny).
+                  Możesz w dowolnym momencie zmienić plan. Przejście na pakiet osobisty automatycznie dostosuje interfejs asystenta (Executive / VIP / Kalendarz roczny / Zasięg działania).
                 </p>
               </div>
 
@@ -298,9 +306,9 @@ export default function Subscription() {
                 </div>
               )}
 
-              <div className="grid md:grid-cols-3 gap-6">
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
                 {/* 1. Pakiet Osobisty */}
-                <div className={`rounded-2xl p-5 sm:p-6 border-2 transition flex flex-col justify-between ${
+                <div className={`rounded-2xl p-5 border-2 transition flex flex-col justify-between ${
                   isPersonal ? 'border-indigo-600 bg-indigo-50/30 ring-2 ring-indigo-600/20' : 'border-surface-200 hover:border-indigo-300 bg-white'
                 }`}>
                   <div>
@@ -314,17 +322,17 @@ export default function Subscription() {
                         </span>
                       )}
                     </div>
-                    <div className="mb-4">
-                      <div className="text-3xl font-bold text-surface-900">149 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
-                      <p className="text-xs text-surface-500 mt-1 font-medium">100 minut w cenie (0,60 zł / min po wyczerpaniu)</p>
+                    <div className="mb-3">
+                      <div className="text-2xl font-bold text-surface-900">149 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
+                      <p className="text-xs text-surface-500 mt-0.5 font-medium">100 minut w cenie</p>
                     </div>
                     <p className="text-xs text-surface-600 mb-4 leading-relaxed">
-                      Prywatna sekretarka executive: dyskretne odbieranie połączeń, kontakty VIP, kalendarz spraw prywatnych i tarcza anty-spam.
+                      Prywatna sekretarka executive: dyskretne odbieranie, kontakty VIP, kalendarz prywatny.
                     </p>
-                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-4">
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-3">
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Dedykowany numer wirtualny GSM</span>
+                        <span>Dedykowany numer wirtualny</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
@@ -332,27 +340,19 @@ export default function Subscription() {
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Rozpoznawanie VIP (Rodzina, Wspólnik)</span>
+                        <span>Rozpoznawanie VIP (Rodzina, Klient)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Autoryzacja kodem PIN właściciela</span>
+                        <span>Autoryzacja kodem PIN</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Baza wiedzy poufnej (kod PIN)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Poranny push i raporty e-mail</span>
+                        <span>Poranny push i raport e-mail</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                         <span>Czas skupienia (Deep Work)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <span>Ważne daty (urodziny, polisy)</span>
                       </li>
                     </ul>
                   </div>
@@ -361,19 +361,84 @@ export default function Subscription() {
                     type="button"
                     onClick={() => handleChangePlan('personal')}
                     disabled={isChangingPlan || isPersonal}
-                    className={`w-full mt-6 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                    className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
                       isPersonal 
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20'
                     }`}
                   >
                     {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isPersonal ? 'Twój obecny pakiet' : 'Wybierz Pakiet Osobisty'}
+                    {isPersonal ? 'Twój obecny pakiet' : 'Wybierz Osobisty'}
                   </button>
                 </div>
 
-                {/* 2. Pakiet Standard B2B */}
-                <div className={`rounded-2xl p-5 sm:p-6 border-2 transition flex flex-col justify-between ${
+                {/* 2. Pakiet Osobisty Ekspert */}
+                <div className={`rounded-2xl p-5 border-2 transition flex flex-col justify-between relative ${
+                  isPersonalExpert ? 'border-purple-600 bg-purple-50/30 ring-2 ring-purple-600/20' : 'border-surface-200 hover:border-purple-300 bg-white'
+                }`}>
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="px-2.5 py-1 bg-purple-100 text-purple-900 text-[11px] font-bold rounded-lg uppercase tracking-wider flex items-center gap-1">
+                        <Briefcase className="w-3 h-3 text-purple-600" /> Ekspert
+                      </span>
+                      {isPersonalExpert && (
+                        <span className="text-[11px] font-bold text-purple-700 bg-white px-2 py-0.5 rounded border border-purple-200">
+                          Aktualny
+                        </span>
+                      )}
+                    </div>
+                    <div className="mb-3">
+                      <div className="text-2xl font-bold text-surface-900">349 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
+                      <p className="text-xs text-purple-700 mt-0.5 font-semibold">300 minut (0,50 zł / min)</p>
+                    </div>
+                    <p className="text-xs text-surface-600 mb-4 leading-relaxed">
+                      Dla kancelarii i ekspertów: kwalifikacja spraw, filtr rejonu, SMS odrzucenia i doszkalanie.
+                    </p>
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-3">
+                      <li className="flex items-start gap-2 font-semibold text-purple-950">
+                        <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                        <span>Wszystko z Osobistego + 300 min</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                        <span>Kwalifikacja Sprawy i Budżetu</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                        <span>Informowanie o Zasięgu Działania</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                        <span>1-kliknięcie SMS Odrzucenia</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                        <span>Moduł „Audyt Rozmów i FAQ”</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                        <span>SMS potwierdzenia konsultacji</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleChangePlan('personal_expert')}
+                    disabled={isChangingPlan || isPersonalExpert}
+                    className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                      isPersonalExpert 
+                        ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
+                        : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-md shadow-purple-600/20'
+                    }`}
+                  >
+                    {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {isPersonalExpert ? 'Twój obecny pakiet' : 'Wybierz Osobisty Ekspert'}
+                  </button>
+                </div>
+
+                {/* 3. Pakiet Standard B2B */}
+                <div className={`rounded-2xl p-5 border-2 transition flex flex-col justify-between ${
                   isStandard ? 'border-primary bg-primary/5 ring-2 ring-primary/20' : 'border-surface-200 hover:border-surface-300 bg-white'
                 }`}>
                   <div>
@@ -387,49 +452,37 @@ export default function Subscription() {
                         </span>
                       )}
                     </div>
-                    <div className="mb-4">
-                      <div className="text-3xl font-bold text-surface-900">199 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
-                      <p className="text-xs text-surface-500 mt-1 font-medium">100 minut w cenie (0,60 zł / min po wyczerpaniu)</p>
+                    <div className="mb-3">
+                      <div className="text-2xl font-bold text-surface-900">199 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
+                      <p className="text-xs text-surface-500 mt-0.5 font-medium">100 minut w cenie</p>
                     </div>
                     <p className="text-xs text-surface-600 mb-4 leading-relaxed">
-                      Dla jednoosobowych gabinetów i salonów beauty potrzebujących automatycznej recepcji.
+                      Dla jednoosobowych gabinetów i salonów potrzebujących automatycznej recepcji.
                     </p>
-                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-4">
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-3">
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>100 darmowych minut na rozmowy co miesiąc</span>
+                        <span>100 darmowych minut co miesiąc</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>1 dedykowany techniczny numer telefonu</span>
+                        <span>4 naturalne głosy AI (PL/EN)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>4 naturalne głosy AI (2 żeńskie i 2 męskie)</span>
+                        <span>Baza Wiedzy AI ze zdjęć i PDF</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Obsługa ponad 140 języków (auto-detekcja)</span>
+                        <span>Umawianie w kalendarzu</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Baza Wiedzy AI ze zdjęć cenników i PDF</span>
+                        <span>Potwierdzenia SMS po rezerwacji</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Grafiki pracowników i obsługa świąt / dni wolnych</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Automatyczne umawianie terminów w kalendarzu</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Potwierdzenia SMS do klientów po rezerwacji</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                        <span>Samodzielna konfiguracja w 10 minut</span>
+                        <span>Ścieżka SMS (Booksy/ZnanyLekarz)</span>
                       </li>
                     </ul>
                   </div>
@@ -438,19 +491,19 @@ export default function Subscription() {
                     type="button"
                     onClick={() => handleChangePlan('standard')}
                     disabled={isChangingPlan || isStandard}
-                    className={`w-full mt-6 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                    className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
                       isStandard 
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-surface-900 hover:bg-surface-800 text-white shadow-md'
                     }`}
                   >
                     {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isStandard ? 'Twój obecny pakiet' : 'Wybierz Pakiet Standard B2B'}
+                    {isStandard ? 'Twój obecny pakiet' : 'Wybierz Standard B2B'}
                   </button>
                 </div>
 
-                {/* 3. Pakiet Premium B2B */}
-                <div className={`rounded-2xl p-5 sm:p-6 border-2 transition flex flex-col justify-between ${
+                {/* 4. Pakiet Premium B2B */}
+                <div className={`rounded-2xl p-5 border-2 transition flex flex-col justify-between ${
                   isPremium ? 'border-amber-500 bg-amber-50/30 ring-2 ring-amber-500/20' : 'border-surface-200 hover:border-amber-300 bg-white'
                 }`}>
                   <div>
@@ -464,41 +517,37 @@ export default function Subscription() {
                         </span>
                       )}
                     </div>
-                    <div className="mb-4">
-                      <div className="text-3xl font-bold text-surface-900">399 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
-                      <p className="text-xs text-amber-700 mt-1 font-semibold">300 darmowych minut w cenie (0,50 zł / min po wyczerpaniu)</p>
+                    <div className="mb-3">
+                      <div className="text-2xl font-bold text-surface-900">399 zł<span className="text-xs text-surface-500 font-normal"> / mc netto</span></div>
+                      <p className="text-xs text-amber-700 mt-0.5 font-semibold">300 minut w cenie (0,50 zł / min)</p>
                     </div>
                     <p className="text-xs text-surface-600 mb-4 leading-relaxed">
-                      Dla rozwijających się zespołów, klinik i salonów z aktywnym modułem Marketing AI.
+                      Dla klinik i salonów: Marketing AI, Last Minute, NPS, reaktywacja bazy 90+.
                     </p>
-                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-4">
+                    <ul className="text-xs space-y-2 text-surface-700 border-t border-surface-100 pt-3">
                       <li className="flex items-start gap-2 font-medium text-amber-950">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Wszystko z pakietu Standard B2B, oraz dodatkowo:</span>
+                        <span>Wszystko ze Standard + 300 min</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>300 darmowych minut na rozmowy co miesiąc</span>
+                        <span>Wypełnianie okienek (Last Minute)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Wypełnianie okienek (Last Minute) – ratowanie terminów</span>
+                        <span>Badanie satysfakcji (NPS)</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Badanie satysfakcji (NPS) – zbieranie opinii po wizycie</span>
+                        <span>Reaktywacja bazy 90+ dni</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Reaktywacja bazy 90+ dni – powrót dawnych klientów do firmy</span>
+                        <span>Wielokanałowość – do 5 rozmów naraz</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Telefoniczne potwierdzanie wizyt dzień wcześniej (zero „no-show”)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <span>Wielokanałowość – do 5 jednoczesnych rozmów naraz bez zajętości</span>
+                        <span>Moduł „Audyt Rozmów i FAQ”</span>
                       </li>
                     </ul>
                   </div>
@@ -507,14 +556,14 @@ export default function Subscription() {
                     type="button"
                     onClick={() => handleChangePlan('premium')}
                     disabled={isChangingPlan || isPremium}
-                    className={`w-full mt-6 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                    className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
                       isPremium 
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-md shadow-amber-500/20'
                     }`}
                   >
                     {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isPremium ? 'Twój obecny pakiet' : 'Wybierz Pakiet Premium B2B'}
+                    {isPremium ? 'Twój obecny pakiet' : 'Wybierz Premium B2B'}
                   </button>
                 </div>
               </div>
@@ -648,11 +697,18 @@ export default function Subscription() {
   // --- WIDOK 1: Subskrypcja aktywna / zawieszona ---
   if (subStatus !== 'none') {
     const isPilot = subDetails?.planName === 'beta_pilot' || subDetails?.planName === 'pilot';
-    const isPersonal = subDetails?.planName === 'personal' || tenant?.businessProfile === 'personal';
+    const isPersonalExpert = subDetails?.planName === 'personal_expert';
+    const isPersonal = (subDetails?.planName === 'personal' || tenant?.businessProfile === 'personal') && !isPersonalExpert;
 
     const planLabel = isPilot 
       ? 'Pakiet Pilotażowy Premium (Miesiąc Gratis)' 
-      : (subDetails?.planName === 'personal' ? 'Pakiet Osobisty (149 zł / mc)' : (subDetails?.planName ? subDetails.planName.toUpperCase() : 'STANDARD'));
+      : isPersonalExpert
+      ? 'Pakiet Osobisty Ekspert (349 zł / mc)'
+      : isPersonal 
+      ? 'Pakiet Osobisty (149 zł / mc)' 
+      : (subDetails?.planName === 'premium' ? 'Pakiet Premium B2B (399 zł / mc)' : (subDetails?.planName === 'standard' ? 'Pakiet Standard B2B (199 zł / mc)' : (subDetails?.planName ? subDetails.planName.toUpperCase() : 'STANDARD')));
+
+    const includedMinutes = subDetails?.minutesIncluded || ((subDetails?.planName === 'personal' || subDetails?.planName === 'standard') ? 100 : 300);
 
     return (
       <div className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -682,7 +738,7 @@ export default function Subscription() {
 
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
           <div className="mb-6">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-medium text-surface-900">
                 Aktualny plan: <span className="font-bold text-primary">
                   {planLabel}
@@ -693,6 +749,11 @@ export default function Subscription() {
                   <Sparkles className="w-3 h-3" /> Aktywny Pilotaż Premium
                 </span>
               )}
+              {isPersonalExpert && (
+                <span className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                  <Briefcase className="w-3 h-3" /> Pakiet Osobisty Ekspert
+                </span>
+              )}
               {isPersonal && !isPilot && (
                 <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
                   <Sparkles className="w-3 h-3" /> Pakiet Osobisty
@@ -701,7 +762,7 @@ export default function Subscription() {
             </div>
 
             <p className="text-surface-600 mt-2">Status: <strong className="uppercase">{subStatus}</strong></p>
-            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {subDetails?.minutesIncluded || (subDetails?.planName === 'personal' ? 100 : 300)}</strong></p>
+            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {includedMinutes}</strong></p>
             
             {tenant?.assignedPhoneNumber && (
               <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">

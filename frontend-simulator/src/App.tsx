@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
+import CallbackWidgetPage from './pages/CallbackWidgetPage';
 import Auth from './pages/Auth';
 import DashboardLayout from './layouts/DashboardLayout';
 
@@ -42,6 +43,7 @@ function App() {
       <ScrollToTop />
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/widget/callback" element={<CallbackWidgetPage />} />
         <Route path="/login" element={<Auth />} />
         <Route path="/register" element={<Auth />} />
         <Route path="/superadmin" element={<SuperAdminDashboard />} />

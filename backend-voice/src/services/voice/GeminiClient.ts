@@ -39,6 +39,9 @@ export interface GeminiClientCallbacks {
   ownerRequirePin?: boolean;
   isOwnerPinVerified?: boolean;
   confidentialTopics?: string[];
+  bookingExternalUrl?: string;
+  serviceAreaDescription?: string;
+  qualificationPrompt?: string;
 }
 
 export class GeminiClient {
@@ -111,7 +114,10 @@ export class GeminiClient {
               returningCallerGender: this.callbacks.returningCallerGender,
               ownerRequirePin: this.callbacks.ownerRequirePin,
               isOwnerPinVerified: this.callbacks.isOwnerPinVerified,
-              confidentialTopics: this.callbacks.confidentialTopics
+              confidentialTopics: this.callbacks.confidentialTopics,
+              bookingExternalUrl: this.callbacks.bookingExternalUrl,
+              serviceAreaDescription: this.callbacks.serviceAreaDescription,
+              qualificationPrompt: this.callbacks.qualificationPrompt
             }) }]
         },
         tools: [{
