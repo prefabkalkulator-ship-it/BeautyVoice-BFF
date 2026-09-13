@@ -273,7 +273,7 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij prośbę o potwierdzenie rezerwacji do klienta " + formData.customerPhone + " na datę " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
+                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij prośbę o potwierdzenie rezerwacji do klienta " + formData.customerPhone + " na datę " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź spotkanie (SMS/Tel)</button>
                       <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
                     </>
                   )}

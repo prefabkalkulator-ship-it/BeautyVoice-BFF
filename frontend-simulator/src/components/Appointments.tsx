@@ -1680,6 +1680,24 @@ export default function Appointments() {
                     <Phone className="w-4 h-4" /> Oddzwoń ({selectedAppt.customerPhone})
                   </a>
                 )}
+
+                {selectedAppt.customerPhone && selectedAppt.customerPhone !== 'nieznany' && (
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const apptDate = new Date(selectedAppt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+                      const apptTime = new Date(selectedAppt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+                      navigate('/dashboard/simulator', { 
+                        state: { 
+                          initialPrompt: `Wyślij prośbę o potwierdzenie spotkania do klienta ${selectedAppt.customerName ? selectedAppt.customerName + ' ' : ''}(${selectedAppt.customerPhone}) na termin ${apptDate} o godz. ${apptTime}`
+                        } 
+                      });
+                    }}
+                    className="flex items-center justify-center gap-2 w-full bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80 py-2.5 rounded-xl font-medium text-sm transition-colors text-center shadow-xs cursor-pointer"
+                  >
+                    <span>🗓</span> Potwierdź spotkanie (SMS / Telefon)
+                  </button>
+                )}
                 
                 <div className="flex gap-2 pt-2">
                   <button 

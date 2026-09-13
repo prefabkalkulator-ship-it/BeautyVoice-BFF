@@ -417,7 +417,7 @@ export default function Subscription() {
                       </li>
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
-                        <span>SMS potwierdzenia konsultacji</span>
+                        <span>Potwierdzenia spotkań (SMS & Telefon)</span>
                       </li>
                     </ul>
                   </div>

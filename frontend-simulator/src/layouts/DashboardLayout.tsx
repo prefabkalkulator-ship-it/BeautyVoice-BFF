@@ -80,6 +80,7 @@ export default function DashboardLayout() {
     { id: 'vip-contacts', path: '/dashboard/vip-contacts', label: 'Kontakty VIP', icon: Star },
     { id: 'annual-events', path: '/dashboard/annual-events', label: 'Ważne Daty', icon: Gift },
     { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
+    { id: 'simulator', path: '/dashboard/simulator', label: 'Potwierdzenia Spotkań', icon: MessageSquare },
     { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Asystenta', icon: Settings },
     { id: 'subscription', path: '/dashboard/subscription', label: 'Subskrypcja', icon: CreditCard },
     { id: 'guide', path: '/dashboard/guide', label: 'Instrukcja', icon: BookOpen },

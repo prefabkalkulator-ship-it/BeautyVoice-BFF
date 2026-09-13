@@ -2,6 +2,7 @@ import { SMSService } from './services/sms/SMSService';
 import { parseWarsawDateTime } from './services/BookingService';
 import express from 'express';
 import cors from 'cors';
+import twilio from 'twilio';
 import { webhookController } from './controllers/WebhookController';
 import { knowledgeService } from './services/KnowledgeExtractorService';
 import { VoiceOutboundService } from './services/voice/VoiceOutboundService';
@@ -265,37 +266,104 @@ app.post('/api/campaigns/execute', async (req, res) => {
     }
 
     if (toolName === 'schedule_confirmation_flow') {
-      const { confirmation_method } = args;
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowEnd = new Date(tomorrow);
-      tomorrow.setHours(0,0,0,0);
-      tomorrowEnd.setHours(23,59,59,999);
+      const { confirmation_method, target_scope, customerPhone, appointmentId } = args;
+      const isPersonal = tenant.businessProfile === 'personal';
 
-      const appointments = await prisma.appointment.findMany({
-        where: { tenantId: tenant.id, startTime: { gte: tomorrow, lte: tomorrowEnd }, status: 'confirmed' }
-      });
+      let appointments: any[] = [];
+
+      if (appointmentId) {
+        const singleAppt = await prisma.appointment.findFirst({
+          where: { id: appointmentId, tenantId: tenant.id }
+        });
+        if (singleAppt) appointments = [singleAppt];
+      } else if (customerPhone) {
+        const cleanPhone = customerPhone.replace(/[\s\-()]/g, '');
+        const phoneAppts = await prisma.appointment.findMany({
+          where: { 
+            tenantId: tenant.id,
+            customerPhone: { contains: cleanPhone.slice(-9) },
+            startTime: { gte: new Date() }
+          },
+          orderBy: { startTime: 'asc' },
+          take: 1
+        });
+        if (phoneAppts.length > 0) {
+          appointments = phoneAppts;
+        } else {
+          // Jeśli brak w kalendarzu, utwórz zadanie bezpośrednie dla podanego numeru
+          appointments = [{
+            id: 'adhoc_' + Date.now(),
+            customerPhone: cleanPhone,
+            customerName: 'Klient',
+            startTime: new Date(Date.now() + 24 * 3600 * 1000)
+          }];
+        }
+      } else if (target_scope === 'all_unconfirmed') {
+        appointments = await prisma.appointment.findMany({
+          where: {
+            tenantId: tenant.id,
+            startTime: { gte: new Date() },
+            status: { in: ['pending', 'unconfirmed', 'confirmed'] }
+          },
+          orderBy: { startTime: 'asc' }
+        });
+      } else {
+        // Domyślnie: jutrzejsze spotkania
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowEnd = new Date(tomorrow);
+        tomorrow.setHours(0,0,0,0);
+        tomorrowEnd.setHours(23,59,59,999);
+
+        appointments = await prisma.appointment.findMany({
+          where: { tenantId: tenant.id, startTime: { gte: tomorrow, lte: tomorrowEnd } }
+        });
+
+        // Jeśli na jutro brak spotkań, pobierz najbliższe nadchodzące spotkania
+        if (appointments.length === 0) {
+          appointments = await prisma.appointment.findMany({
+            where: { tenantId: tenant.id, startTime: { gte: new Date() } },
+            orderBy: { startTime: 'asc' },
+            take: 3
+          });
+        }
+      }
 
       let added = 0;
       for (const appt of appointments) {
-         if (!appt.customerPhone) continue;
-         
-         let text = '';
-         let channel = 'sms';
-         
-         if (confirmation_method === 'voice_call' || confirmation_method === 'voice') {
-           channel = 'voice';
-           text = `Dzwonisz do klienta by przypomnieć i poprosić o potwierdzenie rezerwacji, która odbędzie się jutro o godz. ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}.`;
-         } else {
-           text = `Przypomnienie: masz zaplanowaną rezerwację na jutro (godz. ${appt.startTime.toLocaleTimeString('pl-PL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Warsaw'})}). Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
-         }
-         
-         await prisma.outboundQueue.create({
+        if (!appt.customerPhone) continue;
+
+        const isVoice = confirmation_method === 'voice_call' || confirmation_method === 'voice' || confirmation_method === 'voice_interactive';
+        const channel = isVoice ? 'voice' : 'sms';
+
+        const timeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+        const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', timeZone: 'Europe/Warsaw' });
+
+        let text = '';
+        if (isPersonal) {
+          if (isVoice) {
+            text = `Dzwonisz do klienta by potwierdzić zaplanowane spotkanie konsultacyjne, które odbędzie się w dniu ${dateStr} o godz. ${timeStr}. Zapytaj uprzejmie, czy termin jest aktualny i czy klient potwierdza obecność.`;
+          } else {
+            text = `Dzień dobry, przypominam o zaplanowanym spotkaniu konsultacyjnym w dniu ${dateStr} o godz. ${timeStr}. Odpisz TAK, aby potwierdzić obecność, lub ANULUJ, aby zmienić termin.`;
+          }
+        } else {
+          if (isVoice) {
+            text = `Dzwonisz do klienta by przypomnieć i poprosić o potwierdzenie rezerwacji na dzień ${dateStr} o godz. ${timeStr}.`;
+          } else {
+            text = `Przypomnienie: masz zaplanowaną rezerwację na dzień ${dateStr} (godz. ${timeStr}). Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
+          }
+        }
+
+        await prisma.outboundQueue.create({
           data: {
             tenantId: tenant.id,
             targetPhone: appt.customerPhone,
             channel: channel,
-            payload: { appointmentId: appt.id, text: text, customerName: appt.customerName },
+            payload: {
+              appointmentId: appt.id,
+              text: text,
+              customerName: appt.customerName
+            },
             status: 'pending',
             scheduledFor: new Date()
           }
@@ -303,7 +371,20 @@ app.post('/api/campaigns/execute', async (req, res) => {
         added++;
       }
 
-      return res.json({ success: true, count: added });
+      // Jeśli nie ma ciszy nocnej, zainicjuj natychmiastowe przetwarzanie kolejki
+      const hourWarsaw = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Warsaw' })).getHours();
+      if (hourWarsaw >= 9 && hourWarsaw < 20) {
+        import('./jobs/OutboundProcessor').then(m => m.processOutboundQueue()).catch(console.error);
+      }
+
+      return res.json({
+        success: true,
+        count: added,
+        customersCount: added,
+        message: added > 0 
+          ? `Zaplanowano ${added} powiadomień potwierdzających spotkania (${confirmation_method === 'voice_call' || confirmation_method === 'voice' ? 'Voice / Telefon' : 'SMS'}).`
+          : 'Brak nadchodzących spotkań wymagających potwierdzenia.'
+      });
     }
 
     res.status(400).json({ error: 'Nieznane narzędzie' });
@@ -1415,6 +1496,30 @@ app.post("/api/twilio-incoming", async (req, res) => {
     else calledNumber = 'unknown';
   }
 
+  // 🔑 Automatyczna weryfikacja Outgoing Caller ID w Twilio (np. dla numeru EVA DEMO +48343433088)
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const pendingVerification = await prisma.outboundQueue.findFirst({
+    where: {
+      channel: 'verification',
+      status: 'pending',
+      scheduledFor: { gte: fiveMinutesAgo }
+    },
+    orderBy: { scheduledFor: 'desc' }
+  });
+
+  if (pendingVerification) {
+    const payload = pendingVerification.payload as any;
+    const code = payload?.code;
+    console.log(`🔑 [Twilio Validation] Wykryto połączenie weryfikacyjne dla numeru ${pendingVerification.targetPhone}. Odsyłam kod DTMF: ${code}`);
+    await prisma.outboundQueue.update({
+      where: { id: pendingVerification.id },
+      data: { status: 'done', processedAt: new Date() }
+    });
+
+    res.type("text/xml");
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Pause length="4"/><Play digits="${code}#"/><Pause length="4"/><Hangup/></Response>`);
+  }
+
   // Weryfikacja czy salon docelowy nie jest zawieszony lub zapauzowany
   let normalizedDialed = calledNumber;
   if (normalizedDialed !== 'unknown' && !normalizedDialed.startsWith('+')) {
@@ -2154,5 +2259,50 @@ app.post('/api/admin/fcm-token', adminAuthMiddleware, (req, res) => adminControl
 app.get('/api/admin/beta-applications', adminAuthMiddleware, (req, res) => adminController.getBetaApplications(req, res));
 app.post('/api/admin/beta-applications/:id/approve', adminAuthMiddleware, (req, res) => adminController.approveBetaApplication(req, res));
 app.delete('/api/admin/beta-applications/:id', adminAuthMiddleware, (req, res) => adminController.deleteBetaApplication(req, res));
+
+// Trasa automatycznej weryfikacji numeru wychodzącego w Twilio (np. +48343433088)
+app.post('/api/admin/verify-caller-id', async (req, res) => {
+  try {
+    const phoneNumber = req.body.phoneNumber || '+48343433088';
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    console.log(`[Twilio Verify] Rozpoczynam żądanie weryfikacji Caller ID dla: ${phoneNumber}...`);
+    
+    const validation = await client.validationRequests.create({
+      phoneNumber: phoneNumber,
+      friendlyName: `EVA DEMO ${phoneNumber}`
+    });
+    
+    console.log(`[Twilio Verify] Twilio przydzieliło kod ${validation.validationCode} dla ${phoneNumber}. Zapisuję do bazy...`);
+
+    const tenant = await prisma.tenant.findFirst({ where: { name: 'DEMO' } }) || await prisma.tenant.findFirst();
+    if (tenant) {
+      await prisma.outboundQueue.create({
+        data: {
+          tenantId: tenant.id,
+          targetPhone: phoneNumber,
+          channel: 'verification',
+          status: 'pending',
+          scheduledFor: new Date(),
+          payload: {
+            code: String(validation.validationCode),
+            callSid: validation.callSid
+          }
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      validationCode: validation.validationCode,
+      callSid: validation.callSid,
+      phoneNumber,
+      message: `Wysłano żądanie weryfikacji. Twilio zadzwoni na ${phoneNumber}, a serwer automatycznie przekaże kod ${validation.validationCode} przez DTMF.`
+    });
+  } catch (err: any) {
+    console.error('[Twilio Verify] Błąd:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 

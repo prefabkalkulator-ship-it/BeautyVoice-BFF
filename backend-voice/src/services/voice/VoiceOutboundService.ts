@@ -17,33 +17,51 @@ export class VoiceOutboundService {
 
     // Jeli mamy skonfigurowane Twilio, uywamy bezporednio Twilio REST API (BYOC/Verified Caller)
     if (this.twilioSid && this.twilioToken) {
-      console.log(`[VoiceOutbound] Inicjowanie poczenia przez Twilio REST API do: ${targetPhone}`);
-      try {
-        const client = twilio(this.twilioSid, this.twilioToken);
-        const twiml = `
-          <Response>
-            <Connect>
-              <Stream url="wss://${process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app'}/api/twilio-voice">
-                <Parameter name="outboundTaskId" value="${taskId}" />
-              </Stream>
-            </Connect>
-          </Response>
-        `;
-        
-        // Zapewniamy plus dla twilio do formatu E.164
-        const to = targetPhone.startsWith('+') ? targetPhone : '+' + targetPhone;
-        const from = process.env.TWILIO_CALLER_ID || '+48533989987';
+      console.log(`[VoiceOutbound] Inicjowanie połączenia przez Twilio REST API do: ${targetPhone}`);
+      const client = twilio(this.twilioSid, this.twilioToken);
+      const twiml = `
+        <Response>
+          <Connect>
+            <Stream url="wss://${process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app'}/api/twilio-voice">
+              <Parameter name="outboundTaskId" value="${taskId}" />
+            </Stream>
+          </Connect>
+        </Response>
+      `;
+      
+      // Zapewniamy plus dla twilio do formatu E.164
+      const to = targetPhone.startsWith('+') ? targetPhone : '+' + targetPhone;
+      const defaultCallerId = '+48343433088';
+      const from = process.env.TWILIO_CALLER_ID || defaultCallerId;
 
-        const call = await client.calls.create({
+      let call;
+      try {
+        call = await client.calls.create({
           twiml: twiml,
           to: to,
           from: from
         });
-        
-        console.log(`[VoiceOutbound] Twilio call created. SID: ${call.sid}`);
+        console.log(`[VoiceOutbound] Twilio call created with Caller ID: ${from}. SID: ${call.sid}`);
         return true;
       } catch (err: any) {
-        console.error('[VoiceOutbound] Bd inicjacji przez Twilio:', err.message);
+        // Jeśli Twilio odrzuci numer główny (np. oczekuje na weryfikację), natychmiast próbujemy ze zweryfikowanym polskim numerem komórkowym
+        if (from !== '+48533989987') {
+          console.warn(`[VoiceOutbound] Próba połączenia z ${from} zwróciła błąd: ${err.message}. Używam zweryfikowanego polskiego numeru zapasowego +48533989987...`);
+          try {
+            call = await client.calls.create({
+              twiml: twiml,
+              to: to,
+              from: '+48533989987'
+            });
+            console.log(`[VoiceOutbound] Twilio call created z numeru zapasowego +48533989987. SID: ${call.sid}`);
+            return true;
+          } catch (fallbackErr: any) {
+            console.error('[VoiceOutbound] Błąd fallback Twilio:', fallbackErr.message);
+            this.clearCall(targetPhone);
+            return false;
+          }
+        }
+        console.error('[VoiceOutbound] Błąd inicjacji przez Twilio:', err.message);
         this.clearCall(targetPhone);
         return false;
       }

@@ -13,10 +13,18 @@ export default function Simulator() {
   const navigate = useNavigate();
   const [sub, setSub] = useState<any>(null);
   const [subLoading, setSubLoading] = useState(true);
+  const [businessProfile, setBusinessProfile] = useState('solo');
   const [availableServices, setAvailableServices] = useState<any[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   useEffect(() => {
+    fetch('/api/tenant')
+      .then(res => res.json())
+      .then(t => {
+        if (t?.businessProfile) setBusinessProfile(t.businessProfile);
+      })
+      .catch(() => {});
+
     fetch('/api/subscription')
       .then(res => res.json())
       .then(data => { setSub(data); setSubLoading(false); })
@@ -263,8 +271,14 @@ export default function Simulator() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 h-[calc(100vh-8rem)] flex flex-col">
       <div className="flex items-center justify-between shrink-0">
         <div>
-          <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Marketing AI</h2>
-          <p className="text-surface-500 mt-1">Zarządzaj akcjami wychodzącymi (Outbound) i kampaniami informacyjnymi.</p>
+          <h2 className="text-3xl font-serif text-surface-900 tracking-tight">
+            {businessProfile === 'personal' ? 'Potwierdzenia Spotkań i Komunikacja AI' : 'Marketing AI'}
+          </h2>
+          <p className="text-surface-500 mt-1">
+            {businessProfile === 'personal' 
+              ? 'Zarządzaj potwierdzeniami spotkań konsultacyjnych oraz automatyczną komunikacją SMS i Voice.' 
+              : 'Zarządzaj akcjami wychodzącymi (Outbound) i kampaniami informacyjnymi.'}
+          </p>
         </div>
         <button onClick={() => { setMessages([{ id: '1', role: 'assistant', content: `Dzień dobry! Z tej strony EVA. Użyj poniższych przycisków, by uruchomić gotowe kampanie, lub po prostu napisz do mnie, co chcesz osiągnąć.` }]); localStorage.removeItem('marketing_chat_history'); }} className="text-surface-500 hover:text-surface-800 text-sm font-medium px-3 py-1.5 border border-surface-200 rounded-lg hover:bg-surface-100 transition-colors">
           Wyczyść czat
@@ -293,10 +307,26 @@ export default function Simulator() {
                   {msg.content}
                   {msg.id === '1' && (
                       <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-surface-100">
-                        <button onClick={() => handleSendDirect("Mamy wolną rezerwację na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
-                        <button onClick={() => handleSendDirect("Uruchom badanie zadowolenia klienta dla ostatnich wizyt")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
-                        <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
-                        <button onClick={() => handleSendDirect("Potwierdź jutrzejsze rezerwacje sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
+                        {businessProfile === 'personal' ? (
+                          <>
+                            <button onClick={() => handleSendDirect("Potwierdź jutrzejsze spotkania i konsultacje sms-em")} className="text-xs font-medium px-3.5 py-2 bg-surface-50 border border-surface-200 text-surface-800 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                              <span>📱</span> Potwierdź jutrzejsze spotkania (SMS)
+                            </button>
+                            <button onClick={() => handleSendDirect("Potwierdź jutrzejsze spotkania telefonicznie przez połączenie głosowe")} className="text-xs font-medium px-3.5 py-2 bg-surface-50 border border-surface-200 text-surface-800 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                              <span>📞</span> Potwierdź spotkania telefonicznie (Głos)
+                            </button>
+                            <button onClick={() => handleSendDirect("Wyślij SMS z prośbą o przygotowanie dokumentów do najbliższego klienta")} className="text-xs font-medium px-3.5 py-2 bg-surface-50 border border-surface-200 text-surface-800 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left flex items-center gap-1.5 shadow-2xs cursor-pointer">
+                              <span>📑</span> Przypomnienie o dokumentach
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => handleSendDirect("Mamy wolną rezerwację na dzisiaj na 16:00, stwórz ofertę Last Minute!")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
+                            <button onClick={() => handleSendDirect("Uruchom badanie zadowolenia klienta dla ostatnich wizyt")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
+                            <button onClick={() => handleSendDirect("Wyślij zniżkę na powrót do uśpionych klientów (brak wizyty od 90 dni)")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
+                            <button onClick={() => handleSendDirect("Potwierdź jutrzejsze rezerwacje sms-em")} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
+                          </>
+                        )}
                       </div>
                   )}
                   {(msg as any).actionCard && !(msg as any)._executed && (

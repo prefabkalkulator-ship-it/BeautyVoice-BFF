@@ -282,17 +282,10 @@ export default function LandingPage() {
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center justify-center pt-1">
                     <span className="text-[11px] text-surface-400">
                       🔒 Bezpieczne połączenie testowe bez spamu
                     </span>
-                    <Link
-                      to="/widget/callback?embed=true"
-                      className="text-[11px] text-amber-700 hover:text-amber-800 font-semibold flex items-center gap-1 transition"
-                    >
-                      <Code className="w-3 h-3" />
-                      Pobierz widżet na stronę WWW &rarr;
-                    </Link>
                   </div>
                 </form>
               ) : (
@@ -471,7 +464,7 @@ export default function LandingPage() {
                     </li>
                     <li className="flex items-start gap-2.5">
                       <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
-                      <span>SMS/tel. potwierdzenia spotkań konsultacyjnych</span>
+                      <span>Potwierdzenia spotkań (SMS & Telefon)</span>
                     </li>
                   </ul>
                 </div>
