@@ -8,6 +8,7 @@ import { PushService } from '../PushService';
 
 import { BookingService } from '../BookingService';
 import { getPolishGenitive } from '../../prompts/systemPrompt';
+import { PersonalAssistantWorker } from '../../jobs/PersonalAssistantWorker';
 
 const bookingService = new BookingService();
 
@@ -64,6 +65,8 @@ export class CallOrchestrator {
   private defaultFormalityLevel: string = 'formal_pan_pani';
   private callSummaryFromAi: string | null = null;
   private callerNameFromAi: string | null = null;
+  private bookedAppointments: string[] = [];
+  private callActionJournal: string[] = [];
   private isReturningCaller: boolean = false;
   private returningCallerName: string = '';
   private returningCallerGender: 'MALE' | 'FEMALE' | 'UNKNOWN' = 'UNKNOWN';
@@ -196,12 +199,48 @@ export class CallOrchestrator {
             orderBy: { createdAt: 'desc' }
           });
 
-          const resolvedSummary = this.callSummaryFromAi || undefined;
-          const resolvedCallerName = this.vipContact 
+          let resolvedSummary = this.callSummaryFromAi || undefined;
+          let resolvedCallerName = this.vipContact 
             ? this.vipContact.contactName 
             : (this.callerRole === 'OWNER' 
                 ? (this.ownerName || this.tenantName) 
                 : (this.callerNameFromAi || undefined));
+
+          // Jeśli AI nie przekazało podsumowania przez endCall, wygeneruj z faktów zarejestrowanych w rozmowie
+          if (!resolvedSummary) {
+            if (this.callActionJournal.length > 0) {
+              resolvedSummary = this.callActionJournal.join('\n');
+            } else {
+              // Sprawdzamy czy w trakcie tej rozmowy utworzono appointment dla tego dzwoniącego
+              const recentAppt = await prisma.appointment.findFirst({
+                where: {
+                  tenantId: this.tenantId,
+                  customerPhone: this.callerPhone,
+                  createdAt: { gte: fiveMinutesAgo }
+                },
+                orderBy: { createdAt: 'desc' },
+                include: { service: true }
+              });
+
+              if (recentAppt) {
+                const dateStr = new Date(recentAppt.startTime).toLocaleString('pl-PL', { 
+                  timeZone: 'Europe/Warsaw', 
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                });
+                resolvedSummary = `[📅 Rezerwacja] ${recentAppt.customerName} zarezerwował termin na: ${dateStr} (${recentAppt.service?.name || 'Wizyta / Konsultacja'}).`;
+                if (!resolvedCallerName && recentAppt.customerName && !recentAppt.customerName.includes('Połączenie')) {
+                  resolvedCallerName = recentAppt.customerName;
+                }
+              } else if (durationSeconds >= 15) {
+                const min = Math.ceil(durationSeconds / 60);
+                resolvedSummary = `[ℹ️ Rozmowa informacyjna] Połączenie z dzwoniącym (${min} min). Asystent udzielił informacji o ofercie i zasadach współpracy.`;
+              }
+            }
+          }
 
           if (callLog) {
             callLog = await prisma.callLog.update({
@@ -229,13 +268,29 @@ export class CallOrchestrator {
             console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s, summary="${resolvedSummary || ''}"`);
           }
 
-          // Asynchroniczny Post-call worker dla asystenta osobistego
+          // Powiąż od razu utworzone w trakcie rozmowy wydarzenia w kalendarzu z tym CallLog
+          if (callLog) {
+            await prisma.appointment.updateMany({
+              where: {
+                tenantId: this.tenantId,
+                customerPhone: this.callerPhone,
+                createdAt: { gte: fiveMinutesAgo },
+                callLogId: null
+              },
+              data: {
+                callLogId: callLog.id,
+                callSummary: resolvedSummary || undefined
+              }
+            }).catch(e => console.error('[CallOrchestrator] Błąd wiązania Appointment z CallLog:', e));
+          }
+
+          // Wywołanie Post-call workera dla asystenta osobistego (natychmiastowy Push FCM)
           if (this.businessProfile === 'personal' && callLog) {
-            import('../../jobs/PersonalAssistantWorker').then(({ PersonalAssistantWorker }) => {
-              PersonalAssistantWorker.processPostCall(callLog.id).catch(workerErr => {
-                console.error('[CallOrchestrator] Błąd post-call worker:', workerErr);
-              });
-            }).catch(e => console.error('[CallOrchestrator] Błąd importu PersonalAssistantWorker:', e));
+            try {
+              await PersonalAssistantWorker.processPostCall(callLog.id);
+            } catch (workerErr) {
+              console.error('[CallOrchestrator] Błąd post-call worker:', workerErr);
+            }
           }
         } catch(logErr) {
           console.error('[CallOrchestrator] Błąd zapisu CallLog:', logErr);
@@ -679,6 +734,8 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           if (result.success) {
             this.isConfidentialUnlocked = true;
             this.confidentialPinAttempts = 0;
+            const topicDesc = args.topic ? ` (temat: ${args.topic})` : '';
+            this.callActionJournal.push(`[🔒 Poufne] Rozmówca odblokował wiedzę poufną poprawnym kodem PIN${topicDesc}`);
             console.log(`🔓 [CallOrchestrator] Wiedza poufna odblokowana kodem PIN!`);
             return {
               success: true,
@@ -763,8 +820,11 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             message: `Brak wolnych terminów na dzień ${args.date} oraz w kolejnych kilku dniach roboczych.` 
           };
         }
-        case 'bookAppointment':
-          return await bookingService.bookAppointment(
+        case 'bookAppointment': {
+          if (args?.customerName) {
+            this.callerNameFromAi = args.customerName;
+          }
+          const bookRes: any = await bookingService.bookAppointment(
             tenantId, 
             args.customerName, 
             args.customerPhone, 
@@ -781,12 +841,34 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             this.vipContact?.category, 
             this.vipContact?.allowPrioritySlots
           );
+          if (bookRes && (bookRes.success || bookRes.appointment || !bookRes.error)) {
+            const formattedDate = new Date(args.startTime).toLocaleString('pl-PL', { 
+              timeZone: 'Europe/Warsaw', 
+              weekday: 'long', 
+              day: 'numeric', 
+              month: 'long', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            });
+            const summaryText = `[📅 Rezerwacja] ${args.customerName || 'Klient'} zarezerwował termin na: ${formattedDate} (usługa: ${args.serviceName || 'Wizyta / Konsultacja'}).`;
+            this.callActionJournal.push(summaryText);
+            this.callSummaryFromAi = summaryText;
+            if (bookRes.appointment?.id) {
+              this.bookedAppointments.push(bookRes.appointment.id);
+            }
+          }
+          return bookRes;
+        }
         case 'confirmAppointment':
           return await bookingService.confirmAppointment(tenantId, args.customerPhone);
         case 'cancelAppointment':
           return await bookingService.cancelAppointment(tenantId, args.customerPhone);
-        case 'requestHumanContact':
+        case 'requestHumanContact': {
+          const contactSummary = `[📞 Prośba o kontakt] ${args.reason || 'Prośba o oddzwonienie'}`;
+          this.callSummaryFromAi = contactSummary;
+          this.callActionJournal.push(contactSummary);
           return await bookingService.requestHumanContact(tenantId, args.customerPhone, args.reason);
+        }
         case 'send_booking_sms_link':
           return await bookingService.sendBookingSmsLink(tenantId, this.callerPhone);
         case 'get_owner_activity_summary':
@@ -799,8 +881,13 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
           }
           return await bookingService.sendSummaryEmail(tenantId, args.subject, args.contentMarkdown, args.timeRange);
-        case 'save_call_message':
+        case 'save_call_message': {
+          if (args?.callerName) this.callerNameFromAi = args.callerName;
+          const msgSummary = `[📝 Wiadomość] ${args.callerName || 'Rozmówca'}: ${args.rawMessage}`;
+          this.callSummaryFromAi = msgSummary;
+          this.callActionJournal.push(msgSummary);
           return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, args.rawMessage, args.urgency, args.callbackRequested);
+        }
         case 'block_calendar_time':
           if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
             return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
