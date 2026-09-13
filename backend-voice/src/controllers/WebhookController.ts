@@ -141,7 +141,7 @@ User: ${message}`;
       
       if (nonSystemMessages.length === 0) {
         // Vapi przysłało tylko system prompt - chce żeby asystent zaczął rozmowę
-        lastMessage = 'Przywitaj się z klientem krótko, zgodnie z instrukcjami z system prompt (Dzień dobry, dodzwoniłeś się...).' + systemContext;
+        lastMessage = 'Przywitaj się z klientem krótko, zgodnie z instrukcjami z system prompt (użyj powitania zgodnego z czasem lub uniwersalnego "Witam", dodzwoniłeś się...).' + systemContext;
       } else {
         lastMessage = (nonSystemMessages[nonSystemMessages.length - 1]?.content || '') + (nonSystemMessages.length === 1 ? systemContext : '');
         history = nonSystemMessages.slice(0, -1);

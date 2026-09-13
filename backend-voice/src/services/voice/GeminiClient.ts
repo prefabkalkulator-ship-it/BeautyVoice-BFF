@@ -185,8 +185,8 @@ export class GeminiClient {
   
   sendInitialGreeting(contextText?: string) {
     const text = contextText 
-      ? `Odebrałem telefon. ${contextText} Przywitaj się po polsku.` 
-      : 'Odebrałem telefon. Przywitaj się po polsku.';
+      ? `Odebrałem telefon. ${contextText} Przywitaj się po polsku zgodnie z aktualną porą dnia w Warszawie lub użyj uniwersalnego "Witam".` 
+      : 'Odebrałem telefon. Przywitaj się po polsku używając uniwersalnego "Witam".';
       
     this.send({
       clientContent: {

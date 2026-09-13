@@ -438,6 +438,9 @@ export class CallOrchestrator {
           
           setTimeout(async () => {
             let contextText = '';
+            const warsawHour = parseInt(new Date().toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
+            const timeGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : (warsawHour >= 18 && warsawHour < 22) ? 'Dobry wieczór' : 'Witam';
+
             if (isPostTransferFallback && this.geminiClient) {
               contextText = `UWAGA: Próba bezpośredniego połączenia z właścicielem nie powiodła się (właściciel nie odebrał w ciągu 30 sekund lub odrzucił połączenie). Rozmówca (${fallbackVipName || 'kontakt VIP'}) powrócił na linię. NATYCHMIAST przemów jako pierwsza i powiedz dosłownie: "Właściciel nie mógł teraz odebrać. Zostaw wiadomość, a przekażę ją natychmiast." Następnie wysłuchaj i zapisz jego wiadomość narzędziem save_call_message. Pod żadnym pozorem NIE próbuj łączyć ponownie!`;
             } else if (outboundTaskId && this.tenantId) {
@@ -451,7 +454,7 @@ export class CallOrchestrator {
                }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
-              contextText = `To jest połączenie na linię testową platformy EasyVoiceAssistant, EVA. Numer dzwoniącego: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być dokładnie: "Dzień dobry! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. Czy chcesz dowiedzieć się, jak działam, czy wolisz poznać, co obejmują nasze plany cenowe?". ZAKAZ mówienia, że ktoś nie może odebrać!`;
+              contextText = `To jest połączenie na linię testową platformy EasyVoiceAssistant, EVA. Numer dzwoniącego: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być dokładnie: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. Czy chcesz dowiedzieć się, jak działam, czy wolisz poznać, co obejmują nasze plany cenowe?". ZAKAZ mówienia, że ktoś nie może odebrać! KATEGORYCZNY ZAKAZ mówienia "Dobry wieczór" w ciągu dnia!`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
               const isMale = ['Puck', 'Charon'].includes(this.voiceName);
@@ -465,7 +468,7 @@ export class CallOrchestrator {
 
               if (this.callerRole === 'OWNER') {
                 if (this.ownerRequirePin && !this.isOwnerPinVerified) {
-                  contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Ze względów bezpieczeństwa włączona jest autoryzacja kodem PIN. Twoim PIERWSZYM ZDANIEM musi być: "Dzień dobry ${ownerFirst}! Ze względów bezpieczeństwa, proszę podaj swój kod PIN, aby odblokować funkcje asystenta." KATEGORYCZNY ZAKAZ podawania jakichkolwiek informacji o kalendarzu, wiadomościach czy połączeniach, dopóki rozmówca nie poda PIN-u i nie zweryfikujesz go pomyślnie narzędziem verify_owner_pin.`;
+                  contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Ze względów bezpieczeństwa włączona jest autoryzacja kodem PIN. Twoim PIERWSZYM ZDANIEM musi być: "${timeGreeting} ${ownerFirst}! Ze względów bezpieczeństwa, proszę podaj swój kod PIN, aby odblokować funkcje asystenta." KATEGORYCZNY ZAKAZ podawania jakichkolwiek informacji o kalendarzu, wiadomościach czy połączeniach, dopóki rozmówca nie poda PIN-u i nie zweryfikujesz go pomyślnie narzędziem verify_owner_pin.`;
                 } else {
                   contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Przywitaj się krótko po imieniu ("Cześć ${ownerDisplayName}!"). Zapytaj co słychać lub czy przedstawić raport.`;
                 }
@@ -477,7 +480,7 @@ export class CallOrchestrator {
                 if (vipFormality === 'direct_ty') {
                   contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się bezpośrednio na "Ty". Przywitaj się wyjątkowo ciepło i po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałbyś/chciałabyś zostawić wiadomość, czy umówić dogodny termin rozmowy?".`;
                 } else {
-                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się z pełnym szacunkiem per Pan/Pani. Przywitaj się serdecznie: "Dzień dobry, jestem ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy zarezerwować dogodny termin rozmowy?".
+                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się z pełnym szacunkiem per Pan/Pani. Przywitaj się serdecznie: "${timeGreeting}, jestem ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy zarezerwować dogodny termin rozmowy?".
 DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
                 }
               } else if (this.isReturningCaller && this.returningCallerName) {
@@ -497,7 +500,7 @@ DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle
                 contextText = `Rozmawiasz ze ZNANYM POWRACAJĄCYM ROZMÓWCĄ: ${this.returningCallerName} (${vocative}). Numer: ${callerPhone}. Dzwonił już wcześniej i zna Twoje możliwości.
 ABSOLUTNY ZAKAZ pytania "z kim mam przyjemność?" i ZAKAZ długiego dwuetapowego onboardingu!
 Twoim PIERWSZYM ZDANIEM musi być krótkie, profesjonalne powitanie z imieniem w wołaczu:
-"Dzień dobry ${vocative}, z tej strony ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".
+"${timeGreeting} ${vocative}, z tej strony ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".
 JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni"): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: ...") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
 DYSKRECJA NAZWISKA: Mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
               } else {
@@ -536,7 +539,7 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
                     contextText = `To jest połączenie od stałego klienta: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj ciepło i z szacunkiem po imieniu w pierwszym zdaniu. ZAKAZ pytania o imię i numer (masz już te dane).`;
                   }
                 } else {
-                  contextText = `Nowy klient dzwoni z numeru: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być: "Dzień dobry, dodzwoniłeś się do firmy ${compName}. Z tej strony ${botDisplayName}. W czym mogę dzisiaj pomóc?".`;
+                  contextText = `Nowy klient dzwoni z numeru: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być: "${timeGreeting}, dodzwoniłeś się do firmy ${compName}. Z tej strony ${botDisplayName}. W czym mogę dzisiaj pomóc?".`;
                 }
               } catch (err) {
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
