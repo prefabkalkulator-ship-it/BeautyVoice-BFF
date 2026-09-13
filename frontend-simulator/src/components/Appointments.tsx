@@ -1237,7 +1237,8 @@ export default function Appointments() {
                             const endSlotKey = getSlotKeyFromDate(end);
                             const endMin = end.getMinutes() % 30;
                             const baseEndTop = getTopPxForSlot(endSlotKey) + (endMin / 30) * 48;
-                            const heightPx = Math.max(28, baseEndTop - topPx);
+                            const heightPx = Math.max(48, baseEndTop - topPx);
+                            const isCompact = heightPx < 55;
 
                             let bgColor = getColorCode(app.service?.id || '');
                             if (businessProfile === 'personal') {
@@ -1261,19 +1262,22 @@ export default function Appointments() {
                                 key={app.id} 
                                 onClick={(e) => { e.stopPropagation(); openEditModal(app); }}
                                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
-                                className={`absolute left-1 right-2 z-10 pointer-events-auto ${bgColor} text-white p-2 rounded-xl shadow-md flex flex-col overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${isConfirmedByClient ? 'ring-2 ring-green-400 border-2 border-green-500' : 'border border-transparent'}`}
+                                title={`${app.customerName} - ${app.callSummary || app.service?.name || ''}`}
+                                className={`absolute left-1 right-2 z-10 pointer-events-auto ${bgColor} text-white ${isCompact ? 'py-1 px-2 rounded-lg' : 'p-2 rounded-xl'} shadow-md flex flex-col justify-center overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${isConfirmedByClient ? 'ring-2 ring-green-400 border-2 border-green-500' : 'border border-transparent'}`}
                               >
-                                <span className="font-semibold text-sm truncate drop-shadow-sm flex items-center gap-1">
+                                <span className={`font-semibold ${isCompact ? 'text-xs leading-tight' : 'text-sm'} truncate drop-shadow-sm flex items-center gap-1`}>
                                   {app.isProcessed ? (
-                                    <span className="text-emerald-300 font-bold text-sm" title="Załatwione">✓</span>
+                                    <span className="text-emerald-300 font-bold" title="Załatwione">✓</span>
                                   ) : (
-                                    <span className="text-amber-300 font-bold text-sm" title="Do załatwienia">•</span>
+                                    <span className="text-amber-300 font-bold" title="Do załatwienia">•</span>
                                   )}
-                                  {app.customerName}
-                                  {hasPromo && <Gift className="w-3.5 h-3.5 text-yellow-300 ml-1" title="Z kodem rabatowym" />}
-                                  {app.npsScore && <span className="ml-1 flex items-center text-xs text-yellow-300" title="Ocena NPS"><Star className="w-3 h-3 mr-0.5"/>{app.npsScore}</span>}
+                                  <span className="truncate">{app.customerName}</span>
+                                  {hasPromo && <Gift className="w-3.5 h-3.5 text-yellow-300 ml-1 shrink-0" title="Z kodem rabatowym" />}
+                                  {app.npsScore && <span className="ml-1 flex items-center text-xs text-yellow-300 shrink-0" title="Ocena NPS"><Star className="w-3 h-3 mr-0.5"/>{app.npsScore}</span>}
                                 </span>
-                                <span className="text-xs sm:text-[13px] opacity-90 truncate font-medium">{app.callSummary || app.service?.name}</span>
+                                <span className={`${isCompact ? 'text-[11px] leading-tight mt-0.5' : 'text-xs sm:text-[13px]'} opacity-90 truncate font-medium`}>
+                                  {app.callSummary || app.service?.name}
+                                </span>
                               </div>
                             );
                           }

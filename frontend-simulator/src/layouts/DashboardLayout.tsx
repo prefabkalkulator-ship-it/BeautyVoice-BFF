@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users, BookOpen, Star, Gift, PhoneCall } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { requestForToken, onMessageListener } from '../firebase';
+import { requestForToken, onMessageListener, subscribeToMessages } from '../firebase';
 import toast, { Toaster } from 'react-hot-toast';
 import OnboardingBanner from '../components/OnboardingBanner';
 
@@ -57,9 +57,27 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     requestForToken();
-    onMessageListener().then((payload: any) => {
-      toast.success(`${payload?.notification?.title}: ${payload?.notification?.body}`, { duration: 6000 });
-    }).catch(err => console.log('Błąd listenera', err));
+    const unsubscribe = subscribeToMessages((payload: any) => {
+      const title = payload?.notification?.title || payload?.data?.title || 'Powiadomienie EVA';
+      const body = payload?.notification?.body || payload?.data?.body || '';
+      toast.success(`${title}: ${body}`, { duration: 7000 });
+
+      // Natywne powiadomienie przeglądarki/systemowe
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(title, {
+            body,
+            icon: '/EVA_favicon_192.png'
+          });
+        } catch (e) {
+          console.error('Błąd wywołania Notification:', e);
+        }
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

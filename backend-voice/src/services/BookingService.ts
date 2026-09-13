@@ -500,7 +500,7 @@ export class BookingService {
     tenantId: string, 
     date: string, 
     serviceName: string, 
-    durationMinutes: number, 
+    durationMinutes: number = 30, 
     preferredStaffName?: string, 
     bookingMode: string = "hourly", 
     numberOfNights?: number,
@@ -537,6 +537,8 @@ export class BookingService {
           throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
         }
       }
+
+      const effectiveDuration = Number(durationMinutes) > 0 ? Number(durationMinutes) : (service?.durationMinutes || 30);
 
       let targetStaffIds: string[] = [];
       const staffList = service.staffMembers.map(sm => sm.staff).filter(s => s.isActive);
@@ -646,8 +648,8 @@ export class BookingService {
         const dayEnd = reqDate.getTime() + 22 * 60 * 60 * 1000;
         const now = new Date().getTime();
 
-        while (currentSlot + (durationMinutes * 60000) <= dayEnd) {
-          const slotEnd = currentSlot + (durationMinutes * 60000);
+        while (currentSlot + (effectiveDuration * 60000) <= dayEnd) {
+          const slotEnd = currentSlot + (effectiveDuration * 60000);
           
           if (currentSlot <= now) {
             currentSlot += slotStepMs;
@@ -982,7 +984,8 @@ export class BookingService {
           'Prośba o kontakt (AI)',
           `Klient prosi o kontakt. Numer: ${customerPhone}. Powód: ${reason}`,
           '',
-          customerPhone
+          customerPhone,
+          tenantId
         );
       }
       return { success: true, message: 'Powiadomienie zostało wysłane. Możesz się pożegnać.' };
@@ -1672,7 +1675,9 @@ export class BookingService {
             tenant.fcmTokens,
             `📊 ${subject}`,
             `Szczegółowy raport (${activity.totalCalls} połączeń, ${activity.urgentCount} pilnych) został wysłany na Twój e-mail (${email}).`,
-            'https://beautyvoice-bff.web.app/dashboard'
+            'https://beautyvoice-bff.web.app/dashboard',
+            undefined,
+            tenantId
           );
         } catch (pushErr) {
           console.error('[sendSummaryEmail] Błąd wysyłki Push:', pushErr);
@@ -1725,7 +1730,8 @@ export class BookingService {
             `${priorityIcon} Wiadomość od: ${callerName || callerPhone}`,
             rawMessage,
             'https://beautyvoice-bff.web.app/dashboard',
-            callerPhone
+            callerPhone,
+            tenantId
           );
           await prisma.callLog.update({ where: { id: callLog.id }, data: { pushSent: true } });
         }

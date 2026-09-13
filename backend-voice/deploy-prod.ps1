@@ -34,6 +34,7 @@ gcloud run deploy beautyvoice-bff `
     --region europe-central2 `
     --allow-unauthenticated `
     --project beautyvoice-bff `
+    --timeout=3600 `
     --set-env-vars="$envVars"
 
 if ($LASTEXITCODE -eq 0) {

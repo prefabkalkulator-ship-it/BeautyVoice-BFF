@@ -13,8 +13,10 @@ initializeApp({
 });
 }
 
+import { prisma } from '../prisma';
+
 export class PushService {
-  static async sendNotification(tokens: string[], title: string, body: string, url?: string, phone?: string) {
+  static async sendNotification(tokens: string[], title: string, body: string, url?: string, phone?: string, tenantId?: string) {
     if (!tokens || tokens.length === 0) return;
     
     const clickUrl = url || 'https://beautyvoice-bff.web.app/dashboard';
@@ -41,13 +43,32 @@ export class PushService {
     try {
       const response = await getMessaging().sendEachForMulticast(message);
       console.log(`[PushService] Pomyślnie wysłano: ${response.successCount}, Błędy: ${response.failureCount}`);
-      // Remove stale tokens
+      
+      // Usuń nieaktywne / martwe tokeny z bazy danych tenanta
       if (response.failureCount > 0) {
+        const deadTokens: string[] = [];
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
-            console.error(`Błąd wysyłki dla tokenu: ${tokens[idx]} - ${resp.error?.message}`);
+            console.warn(`[PushService] Błąd wysyłki dla tokenu: ${tokens[idx]} - ${resp.error?.code || resp.error?.message}`);
+            deadTokens.push(tokens[idx]);
           }
         });
+
+        if (deadTokens.length > 0 && tenantId) {
+          try {
+            const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { fcmTokens: true } });
+            if (tenant?.fcmTokens) {
+              const cleanedTokens = tenant.fcmTokens.filter(t => !deadTokens.includes(t));
+              await prisma.tenant.update({
+                where: { id: tenantId },
+                data: { fcmTokens: cleanedTokens }
+              });
+              console.log(`[PushService] Usunięto ${deadTokens.length} nieaktywnych tokenów z profilu tenanta ${tenantId}`);
+            }
+          } catch (cleanErr) {
+            console.error('[PushService] Błąd podczas czyszczenia tokenów w DB:', cleanErr);
+          }
+        }
       }
     } catch (err) {
       console.error('[PushService] Błąd ogólny FCM:', err);

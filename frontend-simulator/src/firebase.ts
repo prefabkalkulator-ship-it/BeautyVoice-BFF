@@ -1,4 +1,4 @@
-﻿import { initializeApp } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
@@ -39,6 +39,13 @@ export const requestForToken = async () => {
   } catch (err) {
     console.error('Błąd podczas pobierania tokena FCM:', err);
   }
+};
+
+export const subscribeToMessages = (callback: (payload: any) => void) => {
+  if (!messaging) return () => {};
+  return onMessage(messaging, (payload) => {
+    callback(payload);
+  });
 };
 
 export const onMessageListener = () =>

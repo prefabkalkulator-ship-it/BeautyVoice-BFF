@@ -700,19 +700,69 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             };
           }
         }
-        case 'checkAvailability':
-          return { availableSlots: await bookingService.checkAvailability(
+        case 'checkAvailability': {
+          const duration = args.durationMinutes ? Number(args.durationMinutes) : 30;
+          const slots = await bookingService.checkAvailability(
             tenantId, 
             args.date, 
             args.serviceName, 
-            args.durationMinutes, 
+            duration, 
             args.preferredStaffName, 
             this.bookingMode, 
             args.numberOfNights, 
             this.callerRole, 
             this.vipContact?.category, 
             this.vipContact?.allowPrioritySlots
-          ) };
+          );
+
+          if (slots.length > 0) {
+            return { availableSlots: slots };
+          }
+
+          // Jeśli na podany dzień brak slotów (np. weekend/dzień wolny), sprawdź kolejne dni robocze (do 5 dni w przód)
+          const plDays = ['niedzielę', 'poniedziałek', 'wtorek', 'środę', 'czwartek', 'piątek', 'sobotę'];
+          let nextAvailableDate: string | null = null;
+          let nextAvailableSlots: string[] = [];
+          let nextDayName = '';
+
+          const baseReqDate = new Date(`${args.date}T12:00:00Z`);
+          for (let offset = 1; offset <= 5; offset++) {
+            const nextD = new Date(baseReqDate.getTime() + offset * 24 * 60 * 60 * 1000);
+            const nextDateStr = nextD.toISOString().split('T')[0];
+            const candidateSlots = await bookingService.checkAvailability(
+              tenantId,
+              nextDateStr,
+              args.serviceName,
+              duration,
+              args.preferredStaffName,
+              this.bookingMode,
+              args.numberOfNights,
+              this.callerRole,
+              this.vipContact?.category,
+              this.vipContact?.allowPrioritySlots
+            );
+            if (candidateSlots.length > 0) {
+              nextAvailableDate = nextDateStr;
+              nextAvailableSlots = candidateSlots;
+              nextDayName = plDays[nextD.getUTCDay()];
+              break;
+            }
+          }
+
+          if (nextAvailableDate && nextAvailableSlots.length > 0) {
+            return {
+              availableSlots: [],
+              message: `Brak wolnych terminów w dniu ${args.date}. Najbliższy dzień z wolnymi terminami to ${nextAvailableDate} (${nextDayName}). Dostępne godziny w tym dniu: ${nextAvailableSlots.slice(0, 4).join(', ')}. Zaproponuj rozmówcy 2 konkretne godziny z tego dnia (${nextDayName}, ${nextAvailableDate})!`,
+              suggestedDate: nextAvailableDate,
+              suggestedSlots: nextAvailableSlots.slice(0, 4)
+            };
+          }
+
+          return { 
+            availableSlots: [], 
+            message: `Brak wolnych terminów na dzień ${args.date} oraz w kolejnych kilku dniach roboczych.` 
+          };
+        }
         case 'bookAppointment':
           return await bookingService.bookAppointment(
             tenantId, 
