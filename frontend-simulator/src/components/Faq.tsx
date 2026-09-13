@@ -27,6 +27,19 @@ export default function Faq() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'confidential'>('all');
 
+  const filteredFaqs = faqs.filter(faq => {
+    if (filterType === 'confidential' && !faq.isConfidential) {
+      return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchQuestion = (faq.question || '').toLowerCase().includes(q);
+      const matchAnswer = (faq.answer || '').toLowerCase().includes(q);
+      return matchQuestion || matchAnswer;
+    }
+    return true;
+  });
+
   // Stan asystenta (Ucz mnie)
   const [rawText, setRawText] = useState('');
   const [fileData, setFileData] = useState<{ base64: string, mime: string, name: string } | null>(null);
@@ -300,7 +313,6 @@ export default function Faq() {
                       actionLabel: "Przejdź do Usług"
                     }
               }
-              guideSectionId="faq-training"
             />
           </div>
           <p className="text-surface-500 mt-1">

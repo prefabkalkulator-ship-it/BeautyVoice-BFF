@@ -190,29 +190,6 @@ export default function Simulator() {
 
       return updatedMessages;
     });
-    // We already handled fetch inside prev to avoid closure issues
-    return;
-    setIsLoading(true);
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: updatedMessages
-              .filter(m => m.id !== '1')
-              .map(m => ({ role: m.role, content: m.content }))
-        })
-      });
-
-      const data = await response.json();
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: data.reply, actionCard: data.actionCard }]);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleSend = async (e: React.FormEvent) => {

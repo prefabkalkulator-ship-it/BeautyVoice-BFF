@@ -61,6 +61,7 @@ export default function Appointments() {
   const [formData, setFormData] = useState({
     customerName: '',
     customerPhone: '',
+    date: '',
     startTime: '',
     endTime: '',
     serviceId: '',
@@ -1405,7 +1406,7 @@ export default function Appointments() {
                                           <span className="font-semibold text-sm sm:text-base truncate drop-shadow-sm">
                                             {app.customerName}
                                           </span>
-                                          {hasPromo && <Gift className="w-3.5 h-3.5 text-yellow-300 shrink-0" title="Z kodem rabatowym" />}
+                                          {hasPromo && <span title="Z kodem rabatowym" className="inline-flex items-center"><Gift className="w-3.5 h-3.5 text-yellow-300 shrink-0" /></span>}
                                           {app.npsScore && <span className="flex items-center text-xs text-yellow-300 shrink-0"><Star className="w-3 h-3 mr-0.5"/>{app.npsScore}</span>}
                                         </div>
 
