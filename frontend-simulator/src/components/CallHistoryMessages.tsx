@@ -21,7 +21,8 @@ import {
   Ban,
   Send,
   X,
-  BookOpen
+  BookOpen,
+  Lock
 } from 'lucide-react';
 import PageHelpButton from './common/PageHelpButton';
 
@@ -54,7 +55,7 @@ export default function CallHistoryMessages() {
   const [trainModalLog, setTrainModalLog] = useState<CallLog | null>(null);
   const [trainQuestion, setTrainQuestion] = useState('');
   const [trainAnswer, setTrainAnswer] = useState('');
-  const [trainCategory, setTrainCategory] = useState('Oferta & Zasady');
+  const [trainIsConfidential, setTrainIsConfidential] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [trainSuccess, setTrainSuccess] = useState('');
   const [trainError, setTrainError] = useState('');
@@ -133,7 +134,7 @@ export default function CallHistoryMessages() {
     setTrainSuccess('');
     setTrainQuestion(log.actionItems ? `Pytanie dot.: ${log.actionItems}` : `Pytanie z rozmowy: ${log.summary?.slice(0, 60) || ''}`);
     setTrainAnswer('');
-    setTrainCategory('Oferta & Zasady');
+    setTrainIsConfidential(false);
   };
 
   const handleSaveFaq = async (e: React.FormEvent) => {
@@ -148,7 +149,7 @@ export default function CallHistoryMessages() {
         body: JSON.stringify({
           question: trainQuestion.trim(),
           answer: trainAnswer.trim(),
-          category: trainCategory
+          isConfidential: trainIsConfidential
         })
       });
       const data = await res.json();
@@ -597,20 +598,19 @@ export default function CallHistoryMessages() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
-                  Kategoria
+              <div className="pt-1">
+                <label className="inline-flex items-center gap-2.5 text-xs font-semibold text-surface-800 cursor-pointer select-none bg-amber-50/80 border border-amber-200 p-3 rounded-xl hover:bg-amber-100/60 transition w-full">
+                  <input 
+                    type="checkbox"
+                    checked={trainIsConfidential}
+                    onChange={e => setTrainIsConfidential(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-600 accent-amber-600 border-surface-300 shrink-0"
+                  />
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                    <span>Oznacz jako wiedzę poufną (wymaga podania PIN przez dzwoniącego)</span>
+                  </div>
                 </label>
-                <select
-                  value={trainCategory}
-                  onChange={e => setTrainCategory(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-surface-50 border border-surface-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                >
-                  <option value="Oferta & Zasady">Oferta & Zasady</option>
-                  <option value="Cennik & Płatności">Cennik & Płatności</option>
-                  <option value="Zasięg & Dojazd">Zasięg & Dojazd</option>
-                  <option value="Procedury & Terminy">Procedury & Terminy</option>
-                </select>
               </div>
 
               <div className="pt-3 border-t border-surface-100 flex items-center justify-end gap-2">

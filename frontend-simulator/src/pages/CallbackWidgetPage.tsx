@@ -118,7 +118,7 @@ export default function CallbackWidgetPage() {
             </div>
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
-                Live Callback 30s
+                Live Callback 30 sek.
               </span>
               <h2 className="text-lg font-serif font-bold leading-tight mt-0.5">
                 Szybki Kontakt Telefoniczny
@@ -194,7 +194,7 @@ export default function CallbackWidgetPage() {
               ) : (
                 <>
                   <PhoneCall className="w-4 h-4" />
-                  <span>Zadzwoń do mnie teraz (30s)</span>
+                  <span>Zadzwoń do mnie teraz (30 sek.)</span>
                 </>
               )}
             </button>

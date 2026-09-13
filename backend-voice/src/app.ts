@@ -2081,7 +2081,7 @@ app.post('/api/callback/request', async (req, res) => {
     const recentAttempts = await prisma.outboundQueue.count({
       where: {
         targetPhone: cleaned,
-        createdAt: { gte: tenMinutesAgo }
+        scheduledFor: { gte: tenMinutesAgo }
       }
     });
 

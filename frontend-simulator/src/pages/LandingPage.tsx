@@ -26,7 +26,8 @@ import {
   Server,
   Trash2,
   Scale,
-  Briefcase
+  Briefcase,
+  AlertCircle
 } from 'lucide-react';
 
 export default function LandingPage() {
@@ -223,8 +224,10 @@ export default function LandingPage() {
                     <PhoneCall className="w-5 h-5 animate-pulse" />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200">
-                      Sprawdź na żywo • Oddzwonimy w 30s
+                    <span className="inline-flex items-center flex-wrap gap-x-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200 leading-normal">
+                      <span>Sprawdź na żywo</span>
+                      <span className="text-amber-400 font-normal hidden sm:inline">•</span>
+                      <span className="whitespace-nowrap">Oddzwonimy w 30 sek.</span>
                     </span>
                     <h3 className="text-base sm:text-lg font-serif font-bold text-surface-900 leading-tight mt-0.5">
                       Przetestuj asystenta na swoim telefonie
@@ -273,7 +276,7 @@ export default function LandingPage() {
                       ) : (
                         <>
                           <PhoneCall className="w-4 h-4" />
-                          <span>Zadzwoń do mnie teraz (30s)</span>
+                          <span>Zadzwoń do mnie teraz (30 sek.)</span>
                         </>
                       )}
                     </button>
