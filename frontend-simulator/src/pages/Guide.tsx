@@ -3,7 +3,7 @@ import {
   BookOpen, Search, ChevronDown, ChevronUp, ArrowRight, Sparkles, 
   PhoneCall, Users, Calendar, HelpCircle, ClipboardList, CreditCard,
   CheckCircle2, AlertCircle, Copy, Check, Clock, Lock, 
-  Share2, Bell, UserCheck
+  Share2, Bell, UserCheck, Star, GraduationCap, MapPin, MessageSquare, Ban, ShieldCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -83,13 +83,14 @@ export default function Guide() {
   const personalCategories = [
     { id: 'all', label: 'Wszystkie tematy', icon: BookOpen },
     { id: 'start', label: '1. Pierwsze kroki & BIO', icon: Sparkles },
-    { id: 'forwarding', label: '2. Przekierowania GSM', icon: PhoneCall },
-    { id: 'schedule', label: '3. Strefy & Terminy', icon: Clock },
-    { id: 'contacts', label: '4. Kontakty & Noc', icon: UserCheck },
-    { id: 'owner', label: '5. Tryb Właściciela & PIN', icon: Lock },
-    { id: 'dates', label: '6. Ważne Daty & Baza', icon: Calendar },
-    { id: 'reports', label: '7. Briefing & Notatki', icon: Share2 },
-    { id: 'subscription', label: '8. Pakiet Osobisty (149 zł)', icon: CreditCard }
+    { id: 'expert', label: '2. Pakiet Ekspert & Nowe Funkcje', icon: Star },
+    { id: 'forwarding', label: '3. Przekierowania GSM', icon: PhoneCall },
+    { id: 'schedule', label: '4. Strefy & Terminy', icon: Clock },
+    { id: 'contacts', label: '5. Kontakty & Noc', icon: UserCheck },
+    { id: 'owner', label: '6. Tryb Właściciela & PIN', icon: Lock },
+    { id: 'dates', label: '7. Ważne Daty & Baza', icon: Calendar },
+    { id: 'reports', label: '8. Briefing, Audyt & Odwołaj', icon: Share2 },
+    { id: 'subscription', label: '9. Pakiety i Cennik', icon: CreditCard }
   ];
 
   // --- KATEGORIE DLA ASYSTENTA FIRMOWEGO ---
@@ -610,6 +611,173 @@ export default function Guide() {
             <li><strong>Minuty ponad pakiet:</strong> Tylko <strong>0,60 zł / min</strong> naliczane sekundowo.</li>
             <li><strong>Brak długich umów:</strong> Możesz w każdej chwili zawiesić konto na 30 dni (np. na czas wakacji) lub anulować subskrypcję z poziomu panelu.</li>
           </ul>
+        </div>
+      )
+    },
+    {
+      id: 'personal-expert-package',
+      category: 'subscription',
+      question: 'Czym różni się Pakiet Osobisty (149 zł) od Pakietu Osobisty Ekspert (349 zł)?',
+      summary: 'Pakiet Osobisty Ekspert oferuje 300 darmowych minut (0,50 zł/min), inteligentną kwalifikację sprawy i budżetu, kontrolę rejonu dojazdów z 1-klik SMS-em odwołania, audyt rozmów do FAQ oraz moduł potwierdzania spotkań.',
+      actionPath: '/dashboard/subscription',
+      actionLabel: 'Porównaj Pakiety',
+      answer: (
+        <div className="space-y-4 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Dla profesjonalistów solo oferujemy dwa dedykowane plany dostosowane do skali i intensywności kontaktów:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="p-4 bg-surface-50 rounded-2xl border border-surface-200">
+              <div className="font-bold text-surface-900 text-xs uppercase text-surface-600 mb-1">
+                Pakiet Osobisty – 149 zł / mc
+              </div>
+              <ul className="text-xs text-surface-600 space-y-1.5 mt-2">
+                <li>• <strong>100 darmowych minut</strong> na rozmowy (0,60 zł/min po wyczerpaniu).</li>
+                <li>• <strong>Dyskrecja i Privacy Shield:</strong> powitanie na Pan/Pani Jan, ochrona nazwiska i prywatności.</li>
+                <li>• <strong>Kontakty z Dostępem Priorytetowym:</strong> strefy prywatne, nocne i Złote Okienka.</li>
+                <li>• <strong>Czas Skupienia (Deep Work / Lekcje):</strong> ochrona godzin pracy w skupieniu.</li>
+                <li>• <strong>Panel Właściciela z kodem PIN:</strong> podsumowanie dnia i raporty mailowe.</li>
+                <li>• <strong>Tarcza Wiedzy Poufnej na PIN:</strong> ochrona stawek i procedur.</li>
+              </ul>
+            </div>
+
+            <div className="p-4 bg-gold-50/70 rounded-2xl border border-gold-300 relative overflow-hidden">
+              <span className="absolute top-2 right-2 px-2 py-0.5 bg-gold-500 text-white font-bold text-[10px] rounded-full uppercase tracking-wider">
+                Polecany Ekspertom
+              </span>
+              <div className="font-bold text-gold-950 text-xs uppercase mb-1">
+                Pakiet Osobisty Ekspert – 349 zł / mc
+              </div>
+              <p className="text-xs text-gold-800 font-medium mb-2">
+                Wszystko co w Pakiecie Osobistym, plus potężne moduły automatyzacji:
+              </p>
+              <ul className="text-xs text-gold-900 space-y-1.5">
+                <li>• <strong>Aż 300 darmowych minut</strong> (preferencyjna stawka <strong>0,50 zł/min</strong>).</li>
+                <li>• <strong>💼 Inteligentna Kwalifikacja Sprawy i Budżetu:</strong> asystent wypytuje o profil sprawy, zakres prac, budżet i informuje o opłatach (np. bezpłatna analiza dokumentów vs 200 zł za wizję w terenie).</li>
+                <li>• <strong>📍 Kontrola Rejonu Obsługi:</strong> żelazne pilnowanie zasięgu dojazdów (np. Częstochowa + 100 km) z przyciskiem <strong>„Odwołaj (SMS)”</strong> w historii rozmów.</li>
+                <li>• <strong>🎓 Audyt Rozmów i Doszkalanie (1-klik do FAQ):</strong> błyskawiczne przenoszenie nowych wniosków i ustaleń z rozmów do Bazy Wiedzy.</li>
+                <li>• <strong>✅ Moduł Potwierdzeń Spotkań:</strong> automatyczne SMS-y lub telefon bota 24h przed spotkaniem (zero no-show).</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'personal-qualification-budget',
+      category: 'expert',
+      question: 'Jak działa Inteligentna Kwalifikacja Sprawy i Budżetu w Ustawieniach Asystenta?',
+      summary: 'Asystent wstępnie selekcjonuje nowych klientów według Twoich wytycznych: dopytuje o profil zlecenia, budżet i informuje o kosztach przed umówieniem terminu.',
+      actionPath: '/dashboard/settings',
+      actionLabel: 'Konfiguruj Kwalifikację Sprawy',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            W zakładce <strong>Ustawienia Asystenta</strong> znajdziesz pole <strong>„Wytyczne kwalifikacji sprawy i budżetu”</strong>:
+          </p>
+          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs font-mono text-surface-800">
+            Przykład: „Wypytaj o rodzaj analizy wstępnej możliwości budowy domu (analiza dokumentów – za darmo, wizualna analiza działki i dojazdu – 200 zł). Minimalny metraż domu 60 m².”
+          </div>
+          <div className="space-y-2 pt-1 text-xs">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span><strong>Żelazna zasada transparentności kosztów:</strong> Jeśli zdefiniujesz w wytycznych opłaty (np. bezpłatna analiza dokumentów vs płatna 200 zł wizja w terenie), asystent ma bezwzględny obowiązek poinformować o nich rozmówcę i zapytać o zgodę <em>zanim</em> przejdzie do ustalania terminu.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span><strong>Badanie budżetu i preferencji:</strong> Asystent pyta o planowany budżet i oczekiwany termin realizacji, dzięki czemu do Twojego kalendarza trafiają wyłącznie wykwalifikowani, zdecydowani klienci.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span><strong>Raport w podsumowaniu sprawy:</strong> Wszystkie zebrane informacje o budżecie i zakresie zlecenia zostają przejrzyście spisane w podsumowaniu rozmowy.</span>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'personal-service-area',
+      category: 'expert',
+      question: 'Jak działa Obszar Terytorialny / Rejon Obsługi i przycisk „Odwołaj (SMS)”?',
+      summary: 'Asystent pilnuje, by zlecenia i wizyty terenowe mieściły się w Twoim zasięgu działania (np. Częstochowa + 100 km). W rejestrze połączeń masz przycisk do szybkiego wysłania SMS-a z odwołaniem.',
+      actionPath: '/dashboard/settings',
+      actionLabel: 'Ustaw Rejon Obsługi',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            W polu <strong>„Obszar terytorialny / Rejon obsługi dzwoniących”</strong> wpisz swój zasięg (np. <em>„Częstochowa i okolice w promieniu 100 km”</em>):
+          </p>
+          <div className="space-y-2 text-xs">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span><strong>Nadrzędny priorytet nad Bazą Wiedzy:</strong> Ta zasada ma status reguły żelaznej i unieważnia szersze wpisy w FAQ. Gdy dzwoniący pyta o budowę, analizę działki lub wizję w terenie, asystent ZAWSZE pyta o miejscowość i upewnia się, że mieści się w Twoim promieniu działania.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span><strong>Odmowa poza rejonem:</strong> Jeśli lokalizacja klienta wykracza poza obszar, asystent uprzejmie tłumaczy ograniczenie logistyczne i odmawia realizacji w terenie.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <span><strong>Przycisk „Odwołaj (SMS)” w historii połączeń:</strong> Jeśli po odsłuchaniu lub przeczytaniu notatki zdecydujesz, że sprawa nie kwalifikuje się do realizacji, kliknij przycisk <em>„Odwołaj (SMS)”</em>. Otworzy się okno z gotowym, profesjonalnym szablonem uprzejmej odmowy wysyłanej od ręki na numer dzwoniącego.</span>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'personal-audit-train-faq',
+      category: 'expert',
+      question: 'Jak działa Audyt Rozmów i Doszkalanie (1-klik transfer do Bazy Wiedzy)?',
+      summary: 'Gdy podczas rozmowy pojawi się nowe pytanie lub nietypowe ustalenie, jednym kliknięciem przeniesiesz je z rejestru połączeń do stałej Bazy Wiedzy asystenta.',
+      actionPath: '/dashboard/messages',
+      actionLabel: 'Otwórz Rejestr Połączeń',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Nie musisz ręcznie pisać pytań i odpowiedzi w Bazie Wiedzy. W zakładce <strong>Wiadomości i Połączenia</strong> przy każdej zarejestrowanej rozmowie znajduje się fioletowy przycisk:
+          </p>
+          <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-950 flex items-center gap-2">
+            <GraduationCap className="w-4 h-4 text-purple-700 shrink-0" />
+            <span><strong>Przycisk „Doszkól asystenta”:</strong> Otwiera okno z automatycznie wygenerowanym pytaniem i trafną odpowiedzią na podstawie treści odbytej rozmowy.</span>
+          </div>
+          <div className="space-y-2 pt-1 text-xs">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+              <span><strong>Ptaszek „Zaznacz jako wiedzę poufną (wymaga PIN)”:</strong> Jeśli odpowiedź zawiera wewnętrzne stawki, hasła dostępu lub poufne procedury, zaznacz to pole. Asystent odpowie na to pytanie przyszłym rozmówcom wyłącznie po podaniu kodu PIN.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+              <span><strong>Natychmiastowe wdrożenie:</strong> Po kliknięciu „Zapisz w Bazie Wiedzy” asystent od razu posługuje się tą wiedzą w kolejnych połączeniach telefonicznych.</span>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'personal-meeting-confirmations',
+      category: 'schedule',
+      question: 'Jak działa moduł Potwierdzeń Spotkań dla Profesjonalistów (SMS i Telefon AI)?',
+      summary: 'Automatyczne lub manualne potwierdzanie zaplanowanych spotkań: asystent wysyła SMS z prośbą o potwierdzenie lub sam dzwoni do klienta dzień wcześniej, eliminując zjawisko no-show.',
+      actionPath: '/dashboard/simulator',
+      actionLabel: 'Przejdź do Potwierdzeń Spotkań',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Puste przebiegi i klienci, którzy zapominają o spotkaniu, to częsty problem w pracy solo. Moduł <strong>Potwierdzenia Spotkań</strong> rozwiązuje to dwukanałowo:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs">
+              <strong className="text-surface-900 block mb-1">📱 Potwierdzenie SMS:</strong>
+              Dzień wcześniej klient otrzymuje SMS z prośbą o potwierdzenie obecności. Wystarczy, że kliknie link w wiadomości lub odpisze, a w Twoim kalendarzu kafelek zyskuje zieloną obwódkę ze statusem <em>„Potwierdzone przez klienta”</em>.
+            </div>
+            <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs">
+              <strong className="text-surface-900 block mb-1">📞 Telefon AI dzień wcześniej:</strong>
+              Asystent głosowy potrafi sam zadzwonić do klienta, kulturalnie przypomnieć o terminie jutrzejszego spotkania i zapytać czy termin pozostaje aktualny.
+            </div>
+          </div>
+          <p className="text-xs text-surface-500">
+            W razie rezygnacji klienta termin w kalendarzu zostaje natychmiast zwolniony, a Ty otrzymujesz powiadomienie Push z informacją o wolnym oknie.
+          </p>
         </div>
       )
     }

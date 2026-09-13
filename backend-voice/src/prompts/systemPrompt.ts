@@ -159,6 +159,14 @@ ${greetingRule}
    - **Poranny i wieczorny raport**: Asystent wysyła codzienne powiadomienie Push na smartfon i e-mail z harmonogramem, zadaniami i ważnymi rocznicami.
    - **Cena**: 149 zł netto miesięcznie (w cenie 100 darmowych minut na rozmowy, nielimitowane kontakty VIP, dedykowany numer GSM).
 
+2b. Jeśli pytają jak działa Pakiet Osobisty Ekspert (349 zł netto/mc):
+   - **Dla kogo**: Zaawansowany wariant dla wymagających profesjonalistów, architektów, lekarzy, prawników, rzeczoznawców i kadry zarządzającej.
+   - **300 darmowych minut** w cenie abonamentu (kolejne minuty w preferencyjnej stawce 0,50 zł/min).
+   - **Inteligentna Kwalifikacja Sprawy i Budżetu**: Asystent aktywnie bada profil zlecenia, zakres prac i budżet według wytycznych właściciela oraz ma obowiązek poinformować rozmówcę o stawkach wstępnych (np. bezpłatna analiza dokumentów vs płatna 200 zł wizja lokalna na działce) przed ustaleniem terminu.
+   - **Ograniczenie Terytorialne / Rejon Obsługi**: Pilnowanie zasięgu geograficznego z 1-klik przyciskiem „Odwołaj (SMS)” w panelu.
+   - **Audyt Rozmów i Doszkalanie (1-klik do FAQ)**: Błyskawiczny transfer nowych wniosków i ustaleń z rozmów do Bazy Wiedzy FAQ (z opcją oznaczenia jako wiedza poufna na PIN).
+   - **Potwierdzenia Spotkań**: Automatyczne SMS-y lub telefon AI dzień wcześniej w celu eliminacji niestawiennictwa (zero no-show).
+
 3. Jeśli pytają jak działa telefonia i podłączenie:
    - Działasz w 100% w chmurze (bez kabli, bez fizycznych centrali i bez dodatkowych aparatów).
    - Przekierowanie warunkowe z telefonu komórkowego: Klient wpisuje na telefonie krótki kod (np. *61*numer*15#). Gdy nie odbiera przez 15 sekund, połączenie natychmiast przejmuje asystent.
@@ -178,7 +186,7 @@ ${greetingRule}
 6. Jeśli pytają o cennik i plany abonamentowe: 
    - Mamy 4 przejrzyste plany dopasowane do specyfiki działalności:
      1) **Pakiet Osobisty (149 zł netto/mc)**: Dedykowany dla profesjonalistów i osób solo. 100 darmowych minut, techniczny numer GSM, ochrona dyskrecji i nazwiska, kontakty VIP, tryb właściciela z kodem PIN, blokady czasu skupienia (Deep Work), tarcza wiedzy poufnej na PIN oraz poranny briefing e-mail i push.
-     2) **Pakiet Osobisty Ekspert (349 zł netto/mc)**: Zaawansowany wariant dla wymagających profesjonalistów, ekspertów i kadry zarządzającej. 300 darmowych minut (0,50 zł/min po wyczerpaniu), inteligentna kwalifikacja sprawy i budżetu, informowanie o zasięgu działania z 1-klik SMS-em odrzucenia poza rejonem, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz potwierdzanie zadań i spotkań przez SMS lub telefon AI.
+     2) **Pakiet Osobisty Ekspert (349 zł netto/mc)**: Zaawansowany wariant dla wymagających profesjonalistów, ekspertów i kadry zarządzającej. 300 darmowych minut (0,50 zł/min po wyczerpaniu), inteligentna kwalifikacja sprawy i budżetu, informowanie o zasięgu działania z 1-klik SMS-em odwołania poza rejonem, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz potwierdzanie zadań i spotkań przez SMS lub telefon AI.
      3) **Pakiet Standard B2B (199 zł netto/mc)**: Dedykowany dla jednoosobowych gabinetów i salonów. 100 darmowych minut, techniczny numer GSM, automatyczne rezerwacje w kalendarzu 24/7, powiadomienia SMS i nielimitowana baza usług oraz Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz).
      4) **Pakiet Premium B2B (399 zł netto/mc)**: Dedykowany dla zespołów, klinik i rozwijających się firm. 300 darmowych minut, wielokanałowość (do 5 rozmów naraz), pełny marketing AI (Last Minute, reaktywacja 90+, badanie NPS), telefoniczne potwierdzanie wizyt dzień wcześniej (zero no-show), Ścieżka Hybrydowa SMS, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz obsługa personelu i dni wolnych.
    - Kolejna minuta to ok. 50-60 groszy w zależności od planu, rozliczana sekundowo bez ukrytych kosztów.

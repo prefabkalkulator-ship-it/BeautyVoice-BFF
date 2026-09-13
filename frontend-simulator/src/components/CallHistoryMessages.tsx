@@ -456,10 +456,10 @@ export default function CallHistoryMessages() {
                             type="button"
                             onClick={() => handleOpenReject(log)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border border-red-200/60 font-medium rounded-xl text-xs transition cursor-pointer"
-                            title="Wyślij SMS odrzucenia z szablonu (sprawa poza rejonem / budżetem)"
+                            title="Wyślij SMS z informacją o odwołaniu / odmowie realizacji"
                           >
                             <Ban className="w-3.5 h-3.5 text-red-600" />
-                            Odrzuć (SMS)
+                            Odwołaj (SMS)
                           </button>
                         )}
                       </div>
@@ -645,8 +645,8 @@ export default function CallHistoryMessages() {
                   <Ban className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-surface-900">Odrzuć sprawę (SMS)</h3>
-                  <p className="text-xs text-surface-500">Wyślij uprzejmą odmowę na numer {rejectModalLog.callerPhone}</p>
+                  <h3 className="text-base font-bold text-surface-900">Odwołaj sprawę (SMS)</h3>
+                  <p className="text-xs text-surface-500">Wyślij wiadomość o odwołaniu na numer {rejectModalLog.callerPhone}</p>
                 </div>
               </div>
               <button 
@@ -701,7 +701,7 @@ export default function CallHistoryMessages() {
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md shadow-red-600/20 flex items-center gap-1.5 disabled:opacity-50 transition"
                 >
                   {isRejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  Wyślij SMS odmowny
+                  Wyślij SMS o odwołaniu
                 </button>
               </div>
             </form>
