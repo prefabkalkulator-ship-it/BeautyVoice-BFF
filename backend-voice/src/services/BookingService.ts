@@ -245,6 +245,28 @@ export class BookingService {
           }
         }] : []),
         {
+          name: 'confirmAppointment',
+          description: 'Potwierdza rezerwację w systemie. Użyj tego narzędzia, gdy dzwonisz do klienta by potwierdzić spotkanie/wizytę i klient potwierdzi obecność (np. "Tak, będę", "Potwierdzam", "Pasuje mi termin").',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (opcjonalnie)' },
+              appointmentId: { type: 'STRING', description: 'ID rezerwacji (opcjonalnie)' }
+            }
+          }
+        },
+        {
+          name: 'cancelAppointment',
+          description: 'Odwołuje rezerwację w systemie i zwalnia termin w kalendarzu. Użyj tego narzędzia, gdy klient poinformuje, że nie może się stawić, rezygnuje lub odwołuje spotkanie/wizytę.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (opcjonalnie)' },
+              appointmentId: { type: 'STRING', description: 'ID rezerwacji (opcjonalnie)' }
+            }
+          }
+        },
+        {
           name: 'endCall',
           description: 'Kończy połączenie i odkłada słuchawkę po pożegnaniu. ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy.',
           parameters: {
@@ -985,7 +1007,7 @@ export class BookingService {
         // Rejestracja zdarzenia w CallLog
         const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL');
         const timeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-        await prisma.callLog.create({
+        const createdLog = await prisma.callLog.create({
           data: {
             tenantId,
             callerPhone: appt.customerPhone,
@@ -998,7 +1020,7 @@ export class BookingService {
           }
         });
 
-        return { success: true, message: "Rezerwacja została pomyślnie potwierdzona." };
+        return { success: true, message: "Rezerwacja została pomyślnie potwierdzona.", callLogId: createdLog.id };
       }
       
       const lastMinuteList = await prisma.appointment.findMany({
@@ -1052,7 +1074,7 @@ export class BookingService {
         // Rejestracja zdarzenia w CallLog
         const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL');
         const timeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-        await prisma.callLog.create({
+        const createdLog = await prisma.callLog.create({
           data: {
             tenantId,
             callerPhone: appt.customerPhone,
@@ -1065,7 +1087,7 @@ export class BookingService {
           }
         });
 
-        return { success: true, message: "Rezerwacja została odwołana, a termin zwolniony." };
+        return { success: true, message: "Rezerwacja została odwołana, a termin zwolniony.", callLogId: createdLog.id };
       }
       return { success: false, message: "Nie znaleziono rezerwacji do odwołania." };
     } catch(e: any) { return { error: e.message }; }

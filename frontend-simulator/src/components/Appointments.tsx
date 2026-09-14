@@ -1611,18 +1611,6 @@ export default function Appointments() {
 
             {!isEditing && selectedAppt.id !== 'new' ? (
               <div className="space-y-4">
-                {selectedAppt.status === 'confirmed_by_client' && (
-                  <div className="bg-emerald-50 rounded-xl p-3.5 border border-emerald-200 flex items-center gap-2.5 text-emerald-800 font-semibold text-xs sm:text-sm mb-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>🟢 Potwierdzono spotkanie / wizytę</span>
-                  </div>
-                )}
-                {selectedAppt.status === 'pending_confirmation' && (
-                  <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-300 flex items-center gap-2.5 text-amber-900 font-semibold text-xs sm:text-sm mb-3 animate-pulse">
-                    <Clock className="w-5 h-5 text-amber-600 shrink-0" />
-                    <span>🟠 Poproszono o potwierdzenie</span>
-                  </div>
-                )}
                 {(selectedAppt.promoCode || selectedAppt.npsScore) && (
                   <div className="bg-surface-50 rounded-xl p-4 border border-surface-200 space-y-2 mb-4">
                     {selectedAppt.npsScore && (
@@ -1754,8 +1742,8 @@ export default function Appointments() {
                       <span>🟠</span> Poproszono o potwierdzenie (w toku)
                     </div>
                   ) : selectedAppt.status === 'confirmed_by_client' ? (
-                    <div className="flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-800 border border-emerald-300 py-2.5 rounded-xl font-medium text-sm text-center shadow-xs">
-                      <span>🟢</span> Spotkanie potwierdzone przez klienta
+                    <div className="flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-800 border border-emerald-300 py-2.5 rounded-xl font-bold text-sm text-center shadow-xs">
+                      <span>🟢</span> Potwierdzono
                     </div>
                   ) : (
                     <button 

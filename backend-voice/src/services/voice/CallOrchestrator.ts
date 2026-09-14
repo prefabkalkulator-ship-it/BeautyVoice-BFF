@@ -83,6 +83,9 @@ export class CallOrchestrator {
   private twilioMessageBuffer: string[] = [];
   private outboundTaskId: string | null = null;
   private outboundAppointmentId: string | null = null;
+  private confirmedCallLogId: string | null = null;
+  private isConfirmedOutbound: boolean = false;
+  private isCancelledOutbound: boolean = false;
 
   constructor(twilioConnection: WebSocket) {
     this.twilioWs = twilioConnection;
@@ -129,7 +132,7 @@ export class CallOrchestrator {
             
             if (!tenant) {
               tenant = await prisma.tenant.findFirst({
-                where: { name: { not: 'DEMO' } },
+                where: { name: 'DEMO' },
                 include: { subscription: true }
               });
             }
@@ -245,7 +248,18 @@ export class CallOrchestrator {
             }
           }
 
-          if (callLog) {
+          if (this.confirmedCallLogId) {
+            callLog = await prisma.callLog.update({
+              where: { id: this.confirmedCallLogId },
+              data: { 
+                durationSeconds,
+                summary: resolvedSummary || undefined,
+                callerName: resolvedCallerName || undefined,
+                isProcessed: true
+              }
+            });
+            console.log(`📝 [CallOrchestrator] Zaktualizowano confirmed CallLog (${callLog.id}) czasem: ${durationSeconds}s`);
+          } else if (callLog) {
             callLog = await prisma.callLog.update({
               where: { id: callLog.id },
               data: { 
@@ -256,6 +270,11 @@ export class CallOrchestrator {
             });
             console.log(`📝 [CallOrchestrator] Zaktualizowano istniejący CallLog (${callLog.id}) czasem: ${durationSeconds}s`);
           } else {
+            const logStatus = this.isConfirmedOutbound 
+              ? 'CONFIRMED_PHONE' 
+              : (this.isCancelledOutbound ? 'CANCELLED_PHONE' : 'completed');
+            const isProcessed = Boolean(this.isConfirmedOutbound || this.isCancelledOutbound);
+
             callLog = await prisma.callLog.create({
               data: {
                 tenantId: this.tenantId,
@@ -263,12 +282,12 @@ export class CallOrchestrator {
                 callerName: resolvedCallerName || null,
                 callerRole: this.callerRole,
                 durationSeconds,
-                status: 'completed',
+                status: logStatus,
                 summary: resolvedSummary || null,
-                isProcessed: false
+                isProcessed: isProcessed
               }
             });
-            console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s, summary="${resolvedSummary || ''}"`);
+            console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s, status=${logStatus}, isProcessed=${isProcessed}, summary="${resolvedSummary || ''}"`);
           }
 
           // Powiąż od razu utworzone w trakcie rozmowy wydarzenia w kalendarzu z tym CallLog
@@ -517,7 +536,42 @@ export class CallOrchestrator {
                      contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony cyfrowa asystentka ${this.companyName || this.tenantName || 'naszej firmy'}. W czym mogę Ci dzisiaj pomóc?". Prowadź płynną rozmowę.`;
                      await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                    } else {
-                     contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. Numer telefonu klienta to: ${task.targetPhone}. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie! Jeśli klient potwierdzi termin lub swoją obecność, NATYCHMIAST wywołaj narzędzie confirmAppointment. Jeśli klient informuje, że nie może się stawić, rezygnuje lub odwołuje spotkanie/wizytę, NATYCHMIAST wywołaj narzędzie cancelAppointment. Po zakończeniu podziękuj, pożegnaj się uprzejmie i użyj narzędzia endCall.`;
+                     const isMaleVoice = ['Puck', 'Charon'].includes(this.voiceName);
+                     const assistantTitle = isMaleVoice ? 'wirtualnym asystentem' : 'wirtualną asystentką';
+                     const ownerDisplayName = this.ownerName || this.tenantName || 'właściciela';
+                     const ownerPrefix = this.ownerGender === 'FEMALE' ? 'Pani' : 'Pana';
+
+                     const rawCustomerName = (payload.customerName || '').trim();
+                     let clientGreeting = `${timeGreeting}`;
+                     let clientAddress = 'Pan/Pani';
+                     if (rawCustomerName) {
+                       const firstName = rawCustomerName.split(' ')[0];
+                       const isFemaleClient = firstName.endsWith('a') && !['Kuba', 'Barnaba', 'Kosma'].includes(firstName);
+                       if (isFemaleClient) {
+                         clientGreeting = `Witam Panią ${firstName}`;
+                         clientAddress = 'Pani';
+                       } else {
+                         clientGreeting = `Witam Pana ${firstName}`;
+                         clientAddress = 'Pan';
+                       }
+                     }
+
+                     const isVisit = payload.eventType === 'visit';
+                     const eventWordAccusative = isVisit ? 'zaplanowaną wizytę' : 'zaplanowane spotkanie';
+                     const dateText = payload.dateStr || 'jutro';
+                     const timeText = payload.timeStr ? `o godzinie ${payload.timeStr}` : '';
+                     const additionalNoteText = payload.additionalNote ? ` Dodatkowo przekazuję ważną prośbę od ${ownerPrefix} ${ownerDisplayName}: ${payload.additionalNote}.` : '';
+
+                     const openingSentence = `${clientGreeting}. Jestem ${assistantTitle} ${ownerPrefix} ${ownerDisplayName}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
+
+                     contextText = `UWAGA: To jest połączenie wychodzące (Outbound), które TY wykonujesz do klienta! Klient (${rawCustomerName || task.targetPhone}) właśnie odebrał telefon. Numer telefonu klienta to: ${task.targetPhone}.
+BEZWZGLĘDNY NAKAZ: Twoim PIERWSZYM ZDANIEM musi być DOKŁADNIE i DOSŁOWNIE:
+"${openingSentence}"
+KATEGORYCZNY ZAKAZ przedstawiania się jako ${ownerDisplayName}! Jesteś JEGO ASYSTENTEM (${assistantTitle}), a nie samym właścicielem!
+Po usłyszeniu odpowiedzi klienta:
+- Jeśli klient potwierdza (np. "Tak", "Będę", "Potwierdzam", "Pasuje mi"): NATYCHMIAST wywołaj narzędzie confirmAppointment, podziękuj uprzejmie za potwierdzenie, pożegnaj się i wywołaj narzędzie endCall.
+- Jeśli klient informuje, że nie może, rezygnuje lub odwołuje (np. "Nie mogę", "Muszę odwołać", "Rezygnuję"): NATYCHMIAST wywołaj narzędzie cancelAppointment, wyraź zrozumienie, pożegnaj się i wywołaj narzędzie endCall.
+- Jeśli klient zadaje pytanie: odpowiedz krótko i życzliwie, a następnie potwierdź status wizyty.`;
                    }
                 }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
@@ -883,6 +937,8 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           const targetId = args.appointmentId || this.outboundAppointmentId || undefined;
           const res = await bookingService.confirmAppointment(tenantId, targetPhone, targetId);
           if (res && (res.success || !res.error)) {
+            this.isConfirmedOutbound = true;
+            if (res.callLogId) this.confirmedCallLogId = res.callLogId;
             const summary = `[Potwierdzenie Telefon] Klient potwierdził spotkanie/wizytę w rozmowie telefonicznej.`;
             this.callSummaryFromAi = summary;
             this.callActionJournal.push(summary);
@@ -900,6 +956,8 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           const targetId = args.appointmentId || this.outboundAppointmentId || undefined;
           const res = await bookingService.cancelAppointment(tenantId, targetPhone, targetId);
           if (res && (res.success || !res.error)) {
+            this.isCancelledOutbound = true;
+            if (res.callLogId) this.confirmedCallLogId = res.callLogId;
             const summary = `[Odwołanie Telefon] Klient odwołał spotkanie/wizytę w rozmowie telefonicznej. Termin został zwolniony.`;
             this.callSummaryFromAi = summary;
             this.callActionJournal.push(summary);

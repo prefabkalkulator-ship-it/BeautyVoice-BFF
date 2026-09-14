@@ -23,6 +23,7 @@ export default function ConfirmationModal({
   initialTime
 }: ConfirmationModalProps) {
   const [targetScope, setTargetScope] = useState<string>('specific_customer');
+  const [eventType, setEventType] = useState<'meeting' | 'visit'>('meeting');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [additionalNote, setAdditionalNote] = useState<string>('');
   const [confirmationMethod, setConfirmationMethod] = useState<'sms_two_way' | 'voice_call'>('sms_two_way');
@@ -40,6 +41,7 @@ export default function ConfirmationModal({
         setTargetScope('tomorrow_appointments');
         setCustomerPhone('');
       }
+      setEventType('meeting');
       setAdditionalNote('');
       setConfirmationMethod('sms_two_way');
       setShowInfoDetails(false);
@@ -63,6 +65,8 @@ export default function ConfirmationModal({
         args: {
           confirmation_method: confirmationMethod,
           target_scope: targetScope,
+          event_type: eventType,
+          eventType: eventType,
           additional_note: additionalNote.trim() || undefined
         }
       };
@@ -99,7 +103,7 @@ export default function ConfirmationModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div 
         className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-surface-200/90 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
@@ -144,6 +148,37 @@ export default function ConfirmationModal({
               <span>{successMsg}</span>
             </div>
           )}
+
+          {/* 0. Wybór: Spotkanie vs Wizyta */}
+          <div>
+            <label className="block text-xs font-bold text-surface-700 uppercase tracking-wider mb-1.5">
+              Rodzaj wydarzenia
+            </label>
+            <div className="grid grid-cols-2 gap-2 bg-surface-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setEventType('meeting')}
+                className={`py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  eventType === 'meeting'
+                    ? 'bg-white text-surface-900 shadow-xs border border-surface-200'
+                    : 'text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                <span>🏢</span> Spotkanie (w biurze)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventType('visit')}
+                className={`py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  eventType === 'visit'
+                    ? 'bg-white text-surface-900 shadow-xs border border-surface-200'
+                    : 'text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                <span>🚗</span> Wizyta (u klienta)
+              </button>
+            </div>
+          </div>
 
           {/* 1. Zakres rezerwacji */}
           <div>

@@ -266,8 +266,9 @@ app.post('/api/campaigns/execute', async (req, res) => {
     }
 
     if (toolName === 'schedule_confirmation_flow') {
-      const { confirmation_method, target_scope, customerPhone, appointmentId, additional_note, additionalNote } = args;
+      const { confirmation_method, target_scope, customerPhone, appointmentId, additional_note, additionalNote, event_type, eventType } = args;
       const userNote = (additional_note || additionalNote || '').trim();
+      const finalEventType = (event_type || eventType || 'meeting') === 'visit' ? 'visit' : 'meeting';
       const isPersonal = tenant.businessProfile === 'personal';
 
       let appointments: any[] = [];
@@ -363,11 +364,14 @@ app.post('/api/campaigns/execute', async (req, res) => {
         const timeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
         const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', timeZone: 'Europe/Warsaw' });
 
+        const eventWordLocative = finalEventType === 'visit' ? 'zaplanowanej wizycie' : 'zaplanowanym spotkaniu';
+        const eventWordAccusative = finalEventType === 'visit' ? 'zaplanowaną wizytę' : 'zaplanowane spotkanie';
+
         let text = '';
         if (isVoice) {
-          text = `Dzwonisz do klienta ${appt.customerName || ''} w imieniu firmy, aby potwierdzić zaplanowane spotkanie/wizytę w dniu ${dateStr} o godz. ${timeStr}.${userNote ? ' Przekaż ważną informację: ' + userNote + '.' : ''} Zapytaj uprzejmie, czy termin jest aktualny i czy klient potwierdza spotkanie.`;
+          text = `Dzwonisz do klienta ${appt.customerName || ''} w imieniu firmy, aby potwierdzić ${eventWordAccusative} w dniu ${dateStr} o godz. ${timeStr}.${userNote ? ' Przekaż ważną informację: ' + userNote + '.' : ''} Zapytaj uprzejmie, czy termin jest aktualny i czy klient potwierdza obecność.`;
         } else {
-          text = `Dzień dobry, przypominam o zaplanowanym spotkaniu/wizycie w dniu ${dateStr} o godz. ${timeStr}.${userNote ? ' Ważne: ' + userNote + '.' : ''} Odpisz TAK, aby potwierdzić obecność, lub ANULUJ, aby zwolnić termin.`;
+          text = `Dzień dobry, przypominam o ${eventWordLocative} w dniu ${dateStr} o godz. ${timeStr}.${userNote ? ' Ważne: ' + userNote + '.' : ''} Odpisz TAK, aby potwierdzić obecność, lub ANULUJ, aby zwolnić termin.`;
         }
 
         // Natychmiastowa zmiana statusu w kalendarzu na 'pending_confirmation' (pomarańczowa obwódka)
@@ -385,6 +389,7 @@ app.post('/api/campaigns/execute', async (req, res) => {
             channel: channel,
             payload: {
               appointmentId: appt.id,
+              eventType: finalEventType,
               text: text,
               additionalNote: userNote,
               customerName: appt.customerName,
@@ -1559,7 +1564,7 @@ app.post("/api/twilio-incoming", async (req, res) => {
   const pendingVerification = await prisma.outboundQueue.findFirst({
     where: {
       channel: 'verification',
-      status: 'pending',
+      status: { in: ['pending', 'processing'] },
       scheduledFor: { gte: fiveMinutesAgo }
     },
     orderBy: { scheduledFor: 'desc' }
@@ -1620,15 +1625,7 @@ app.post("/api/twilio-incoming", async (req, res) => {
     return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Przepraszamy, asystent głosowy jest obecnie niedostępny z przyczyn technicznych. Prosimy spróbować później.</Say><Hangup/></Response>`);
   }
   
-  // Wykrywanie czy to jest Zadarma Callback (Outbound) - szukamy obu numerów w cache (Twilio może podać numer klienta w From lub To zależnie od konfiguracji pbx)
-  let outboundTaskId = VoiceOutboundService.getTaskIdByPhone(callerPhone);
-  if (!outboundTaskId) {
-    outboundTaskId = VoiceOutboundService.getTaskIdByPhone(calledNumber);
-  }
-
-  const outboundParam = outboundTaskId ? `<Parameter name="outboundTaskId" value="${outboundTaskId}" />` : '';
-
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" /><Parameter name="callSid" value="${req.body.CallSid || ''}" />${outboundParam}</Stream></Connect><Hangup/></Response>`);
+  res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Connect><Stream url="wss://${host}/api/twilio-voice"><Parameter name="callerPhone" value="${callerPhone}" /><Parameter name="dialedNumber" value="${calledNumber}" /><Parameter name="callSid" value="${req.body.CallSid || ''}" /><Parameter name="tenantId" value="${tenant.id}" /></Stream></Connect><Hangup/></Response>`);
 });
 
 app.post("/api/voice/transfer-fallback", async (req, res) => {

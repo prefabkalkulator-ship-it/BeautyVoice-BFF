@@ -80,7 +80,11 @@ export async function processOutboundQueue() {
 
     // 2. Pobierz max 5 zadań z kolejki, by realizować rate limit (pacing)
     const tasks = await prisma.outboundQueue.findMany({
-      where: { status: 'pending', scheduledFor: { lte: now } },
+      where: { 
+        status: 'pending', 
+        channel: { in: ['voice', 'sms'] },
+        scheduledFor: { lte: now } 
+      },
       take: 5,
       orderBy: { scheduledFor: 'asc' }
     });
@@ -108,7 +112,7 @@ export async function processOutboundQueue() {
           const payload = (typeof task.payload === 'object' && task.payload !== null) ? task.payload as any : {};
           const currentAttempts = payload.attempts || 1;
           console.log(`[OutboundProcessor] Inicjowanie Voice Outbound Call do: ${task.targetPhone} (próba ${currentAttempts})`);
-          const success = await VoiceOutboundService.initiateCall(task.id, task.targetPhone);
+          const success = await VoiceOutboundService.initiateCall(task.id, task.targetPhone, task.tenantId);
           
           if (success) {
             await prisma.outboundQueue.update({

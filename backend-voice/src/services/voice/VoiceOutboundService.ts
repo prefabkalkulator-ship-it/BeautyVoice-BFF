@@ -1,21 +1,27 @@
 import { Client as ZadarmaClient } from 'zadarma-api';
 import twilio from 'twilio';
+import { prisma } from '../../prisma';
 
 export class VoiceOutboundService {
   private static zadarmaKey = process.env.ZADARMA_KEY;
   private static zadarmaSecret = process.env.ZADARMA_SECRET;
   private static twilioSid = process.env.TWILIO_ACCOUNT_SID;
   private static twilioToken = process.env.TWILIO_AUTH_TOKEN;
-  private static callerId = process.env.ZADARMA_PHONE_NUMBER || '+48533989987';
+  private static callerId = process.env.ZADARMA_PHONE_NUMBER || '+48459568507';
 
   public static activeOutboundCalls = new Map<string, string>();
 
-  static async initiateCall(taskId: string, targetPhone: string): Promise<boolean> {
+  static async initiateCall(taskId: string, targetPhone: string, tenantId?: string): Promise<boolean> {
     const normalizedPhone = targetPhone.replace('+', '');
     this.activeOutboundCalls.set(normalizedPhone, taskId);
     this.activeOutboundCalls.set(`+${normalizedPhone}`, taskId);
 
-    // Jeli mamy skonfigurowane Twilio, uywamy bezporednio Twilio REST API (BYOC/Verified Caller)
+    // Automatyczne czyszczenie po 10 minutach, aby zapobiec wyciekom
+    setTimeout(() => {
+      this.clearCall(targetPhone);
+    }, 10 * 60 * 1000);
+
+    // Jeśli mamy skonfigurowane Twilio, używamy bezpośrednio Twilio REST API
     if (this.twilioSid && this.twilioToken) {
       console.log(`[VoiceOutbound] Inicjowanie połączenia przez Twilio REST API do: ${targetPhone}`);
       const client = twilio(this.twilioSid, this.twilioToken);
@@ -24,15 +30,26 @@ export class VoiceOutboundService {
           <Connect>
             <Stream url="wss://${process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app'}/api/twilio-voice">
               <Parameter name="outboundTaskId" value="${taskId}" />
+              <Parameter name="callerPhone" value="${targetPhone}" />
+              ${tenantId ? `<Parameter name="tenantId" value="${tenantId}" />` : ''}
             </Stream>
           </Connect>
         </Response>
       `;
       
-      // Zapewniamy plus dla twilio do formatu E.164
       const to = targetPhone.startsWith('+') ? targetPhone : '+' + targetPhone;
-      const defaultCallerId = '+48343433088';
-      const from = process.env.TWILIO_CALLER_ID || defaultCallerId;
+      let from = process.env.TWILIO_CALLER_ID || '+48459568507';
+
+      if (tenantId) {
+        try {
+          const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+          if (tenant?.assignedPhoneNumber) {
+            from = tenant.assignedPhoneNumber;
+          } else if (tenant?.phoneNumber) {
+            from = tenant.phoneNumber;
+          }
+        } catch (e) {}
+      }
 
       let call;
       try {
@@ -44,24 +61,22 @@ export class VoiceOutboundService {
         console.log(`[VoiceOutbound] Twilio call created with Caller ID: ${from}. SID: ${call.sid}`);
         return true;
       } catch (err: any) {
-        // Jeśli Twilio odrzuci numer główny (np. oczekuje na weryfikację), natychmiast próbujemy ze zweryfikowanym polskim numerem komórkowym
-        if (from !== '+48533989987') {
-          console.warn(`[VoiceOutbound] Próba połączenia z ${from} zwróciła błąd: ${err.message}. Używam zweryfikowanego polskiego numeru zapasowego +48533989987...`);
+        console.warn(`[VoiceOutbound] Próba połączenia z ${from} zwróciła błąd: ${err.message}. Próbuję alternatywnych zweryfikowanych numerów...`);
+        const fallbacks = ['+48459568507', '+48533989987', '+48343433088'].filter(f => f !== from);
+        for (const fallbackFrom of fallbacks) {
           try {
             call = await client.calls.create({
               twiml: twiml,
               to: to,
-              from: '+48533989987'
+              from: fallbackFrom
             });
-            console.log(`[VoiceOutbound] Twilio call created z numeru zapasowego +48533989987. SID: ${call.sid}`);
+            console.log(`[VoiceOutbound] Twilio call created z numeru fallback ${fallbackFrom}. SID: ${call.sid}`);
             return true;
-          } catch (fallbackErr: any) {
-            console.error('[VoiceOutbound] Błąd fallback Twilio:', fallbackErr.message);
-            this.clearCall(targetPhone);
-            return false;
+          } catch (fbErr: any) {
+            console.warn(`[VoiceOutbound] Fallback ${fallbackFrom} nieudany: ${fbErr.message}`);
           }
         }
-        console.error('[VoiceOutbound] Błąd inicjacji przez Twilio:', err.message);
+        console.error('[VoiceOutbound] Wszystkie próby Twilio nie powiodły się.');
         this.clearCall(targetPhone);
         return false;
       }
