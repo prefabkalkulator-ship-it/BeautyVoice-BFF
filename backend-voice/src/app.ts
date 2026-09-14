@@ -485,12 +485,10 @@ app.put('/api/tenant', async (req, res) => {
       }
     });
 
-    if (req.body.businessProfile) {
-      import('./services/ModerationService').then(async mod => {
-        const faqs = await prisma.faqEntry.findMany({ where: { tenantId: tenant.id } });
-        mod.moderationService.moderateKnowledgeBase(tenant.id, req.body.businessProfile, faqs);
-      });
-    }
+    // Zawsze uruchamiaj audyt moderacji przy aktualizacji profilu lub wytycznych firmy
+    import('./services/ModerationService').then(async mod => {
+      mod.moderationService.moderateTenant(tenant.id).catch(console.error);
+    }).catch(console.error);
 
     res.json(updated);
   } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -985,6 +983,12 @@ app.post('/api/faq', async (req, res) => {
         isConfidential: Boolean(req.body.isConfidential)
       }
     });
+
+    // Automatyczny audyt moderacji AI po dodaniu pytania
+    import('./services/ModerationService').then(mod => {
+      mod.moderationService.moderateTenant(tenant.id).catch(console.error);
+    }).catch(console.error);
+
     res.json(created);
   } catch (err) { res.status(500).json({ error: 'Błąd zapisu' }); }
 });
@@ -1004,6 +1008,12 @@ app.put('/api/faq/:id', async (req, res) => {
         isConfidential: req.body.isConfidential !== undefined ? Boolean(req.body.isConfidential) : undefined
       }
     });
+
+    // Automatyczny audyt moderacji AI po edycji pytania
+    import('./services/ModerationService').then(mod => {
+      mod.moderationService.moderateTenant(tenant.id).catch(console.error);
+    }).catch(console.error);
+
     res.json(updated);
   } catch (err) { res.status(500).json({ error: 'Błąd edycji' }); }
 });
@@ -1016,6 +1026,12 @@ app.delete('/api/faq/:id', async (req, res) => {
     if (!item || item.tenantId !== tenant.id) return res.status(403).json({ error: 'Odmowa dostępu' });
 
     await prisma.faqEntry.delete({ where: { id: req.params.id } });
+
+    // Ponowny audyt moderacji po usunięciu pytania
+    import('./services/ModerationService').then(mod => {
+      mod.moderationService.moderateTenant(tenant.id).catch(console.error);
+    }).catch(console.error);
+
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Błąd usuwania' }); }
 });
@@ -1178,6 +1194,11 @@ app.post('/api/knowledge/save', async (req, res) => {
 
     if (transactions.length > 0) {
       await prisma.$transaction(transactions);
+
+      // Automatyczny audyt moderacji AI po masowym imporcie bazy wiedzy
+      import('./services/ModerationService').then(mod => {
+        mod.moderationService.moderateTenant(tenantId).catch(console.error);
+      }).catch(console.error);
     }
     
     res.json({ success: true, message: 'Dane zapisane pomyślnie' });
@@ -2133,6 +2154,11 @@ app.post('/api/call-logs/:id/train-faq', async (req, res) => {
       }
     });
 
+    // Automatyczny audyt moderacji AI po dodaniu pytania z doszkalania
+    import('./services/ModerationService').then(mod => {
+      mod.moderationService.moderateTenant(tenant.id).catch(console.error);
+    }).catch(console.error);
+
     res.json({
       success: true,
       faq: newFaq
@@ -2279,6 +2305,10 @@ app.post('/api/admin/fcm-token', adminAuthMiddleware, (req, res) => adminControl
 app.get('/api/admin/beta-applications', adminAuthMiddleware, (req, res) => adminController.getBetaApplications(req, res));
 app.post('/api/admin/beta-applications/:id/approve', adminAuthMiddleware, (req, res) => adminController.approveBetaApplication(req, res));
 app.delete('/api/admin/beta-applications/:id', adminAuthMiddleware, (req, res) => adminController.deleteBetaApplication(req, res));
+app.delete('/api/admin/tenants/:id', adminAuthMiddleware, (req, res) => adminController.deleteTenant(req, res));
+app.delete('/api/admin/tenants/:tenantId/faq/:faqId', adminAuthMiddleware, (req, res) => adminController.deleteTenantFaqEntry(req, res));
+app.post('/api/admin/tenants/:id/audit', adminAuthMiddleware, (req, res) => adminController.auditTenantKnowledge(req, res));
+app.get('/api/admin/stats', adminAuthMiddleware, (req, res) => adminController.getPlatformStats(req, res));
 
 // Trasa automatycznej weryfikacji numeru wychodzącego w Twilio (np. +48343433088)
 app.post('/api/admin/verify-caller-id', async (req, res) => {

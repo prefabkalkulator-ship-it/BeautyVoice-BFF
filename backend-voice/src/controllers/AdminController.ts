@@ -301,6 +301,116 @@ export class AdminController {
       return res.status(500).json({ error: e.message });
     }
   }
+
+  public async deleteTenant(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const tenant = await prisma.tenant.findUnique({ where: { id } });
+      if (!tenant) return res.status(404).json({ error: 'Nie znaleziono firmy' });
+
+      // Kaskadowe usunięcie powiązanych danych
+      await prisma.appointment.deleteMany({ where: { tenantId: id } });
+      await prisma.callLog.deleteMany({ where: { tenantId: id } });
+      await prisma.faqEntry.deleteMany({ where: { tenantId: id } });
+      await prisma.service.deleteMany({ where: { tenantId: id } });
+      await prisma.staffMember.deleteMany({ where: { tenantId: id } });
+      await prisma.resource.deleteMany({ where: { tenantId: id } });
+      await prisma.timeOff.deleteMany({ where: { tenantId: id } });
+      await prisma.customer.deleteMany({ where: { tenantId: id } });
+      await prisma.campaign.deleteMany({ where: { tenantId: id } });
+      await prisma.outboundQueue.deleteMany({ where: { tenantId: id } });
+      await prisma.vipContact.deleteMany({ where: { tenantId: id } });
+      await prisma.annualEvent.deleteMany({ where: { tenantId: id } });
+      await prisma.subscription.deleteMany({ where: { tenantId: id } });
+
+      await prisma.tenant.delete({ where: { id } });
+      console.log(`🗑️ [SuperAdmin] Całkowicie usunięto konto firmy ${tenant.name} (${id})`);
+      return res.json({ success: true, message: `Konto ${tenant.name} zostało trwale usunięte.` });
+    } catch (e: any) {
+      console.error('[AdminController] deleteTenant error:', e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async deleteTenantFaqEntry(req: Request, res: Response) {
+    try {
+      const tenantId = req.params.tenantId as string;
+      const faqId = req.params.faqId as string;
+      const faq = await prisma.faqEntry.findUnique({ where: { id: faqId } });
+      if (!faq || faq.tenantId !== tenantId) {
+        return res.status(404).json({ error: 'Nie znaleziono wpisu FAQ dla tego tenanta' });
+      }
+
+      await prisma.faqEntry.delete({ where: { id: faqId } });
+      console.log(`🗑️ [SuperAdmin] Usunięto wpis FAQ (${faqId}) dla tenanta ${tenantId}`);
+
+      // Po usunięciu wpisu automatycznie przelicz audyt moderacji
+      const { moderationService } = await import('../services/ModerationService');
+      const auditResult = await moderationService.moderateTenant(tenantId);
+
+      return res.json({ success: true, message: 'Wpis FAQ został usunięty.', auditResult });
+    } catch (e: any) {
+      console.error('[AdminController] deleteTenantFaqEntry error:', e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async auditTenantKnowledge(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const tenant = await prisma.tenant.findUnique({ where: { id } });
+      if (!tenant) return res.status(404).json({ error: 'Nie znaleziono firmy' });
+
+      const { moderationService } = await import('../services/ModerationService');
+      const result = await moderationService.moderateTenant(id);
+
+      const updated = await prisma.tenant.findUnique({ 
+        where: { id }, 
+        select: { riskLevel: true, moderationNotes: true } 
+      });
+
+      return res.json({
+        success: true,
+        riskLevel: updated?.riskLevel,
+        moderationNotes: updated?.moderationNotes,
+        reason: result.reason
+      });
+    } catch (e: any) {
+      console.error('[AdminController] auditTenantKnowledge error:', e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async getPlatformStats(req: Request, res: Response) {
+    try {
+      const [totalTenants, highRiskTenants, suspendedTenants, pendingBeta, subscriptions, totalAppts, totalCalls] = await Promise.all([
+        prisma.tenant.count({ where: { name: { not: 'DEMO' } } }),
+        prisma.tenant.count({ where: { riskLevel: 'HIGH', name: { not: 'DEMO' } } }),
+        prisma.tenant.count({ where: { isSuspended: true, name: { not: 'DEMO' } } }),
+        prisma.tenant.count({ where: { betaStatus: 'pending' } }),
+        prisma.subscription.findMany({ select: { minutesUsed: true, minutesIncluded: true } }),
+        prisma.appointment.count(),
+        prisma.callLog.count()
+      ]);
+
+      const totalMinutesUsed = subscriptions.reduce((sum, s) => sum + (s.minutesUsed || 0), 0);
+      const totalMinutesIncluded = subscriptions.reduce((sum, s) => sum + (s.minutesIncluded || 0), 0);
+
+      return res.json({
+        totalTenants,
+        highRiskTenants,
+        suspendedTenants,
+        pendingBeta,
+        totalMinutesUsed,
+        totalMinutesIncluded,
+        totalAppts,
+        totalCalls
+      });
+    } catch (e: any) {
+      console.error('[AdminController] getPlatformStats error:', e);
+      return res.status(500).json({ error: e.message });
+    }
+  }
 }
 
 export const adminController = new AdminController();
