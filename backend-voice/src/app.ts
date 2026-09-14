@@ -410,16 +410,24 @@ app.post('/api/tenant/fcm-token', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak salonu' });
     const token = req.body?.token;
+    const isStandalone = req.body?.isStandalone === true;
     if (token && typeof token === 'string') {
-      const existing = tenant.fcmTokens || [];
-      if (!existing.includes(token)) {
-        await prisma.tenant.update({
-          where: { id: tenant.id },
-          data: {
-            fcmTokens: { push: token }
-          }
-        });
+      let existing = tenant.fcmTokens || [];
+      if (isStandalone) {
+        // Jeśli użytkownik korzysta z zainstalowanej aplikacji PWA / WebAPK,
+        // jej token ma priorytet. Czyścimy starsze tokeny przeglądarkowe, aby powiadomienia
+        // nie dublowały się na telefonie (z ikonką PWA i osobno z Chrome z literą B).
+        existing = [token];
+      } else if (!existing.includes(token)) {
+        existing.push(token);
+        if (existing.length > 3) existing = existing.slice(-3);
       }
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          fcmTokens: existing
+        }
+      });
     }
     res.json({ success: true });
   } catch (err) {

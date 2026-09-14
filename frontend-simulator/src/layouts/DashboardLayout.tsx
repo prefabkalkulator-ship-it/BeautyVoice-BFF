@@ -61,18 +61,6 @@ export default function DashboardLayout() {
       const title = payload?.notification?.title || payload?.data?.title || 'Powiadomienie EVA';
       const body = payload?.notification?.body || payload?.data?.body || '';
       toast.success(`${title}: ${body}`, { duration: 7000 });
-
-      // Natywne powiadomienie przeglądarki/systemowe
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-        try {
-          new Notification(title, {
-            body,
-            icon: '/EVA_favicon_192.png'
-          });
-        } catch (e) {
-          console.error('Błąd wywołania Notification:', e);
-        }
-      }
     });
 
     return () => {

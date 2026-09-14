@@ -13,7 +13,18 @@ export interface ServiceItem {
  * i czy ciąg znaków zawierał literę Z (UTC) czy nie.
  */
 export function parseWarsawDateTime(isoOrDateStr: string): Date {
-  const match = String(isoOrDateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!isoOrDateStr) return new Date();
+  const str = String(isoOrDateStr).trim();
+
+  // Jeśli string ma już jawną strefę czasową (np. kończy się na 'Z' lub '+02:00' / '-04:00'),
+  // JavaScript potrafi poprawnie sparsować go jako jednoznaczny punkt w czasie UTC
+  if (str.endsWith('Z') || /[+-]\d{2}(?::?\d{2})?$/.test(str)) {
+    return new Date(str);
+  }
+
+  // Jeśli string nie ma podanej strefy czasowej (np. '2026-09-15T08:00:00' lub '2026-09-15 08:00'),
+  // traktujemy go jako czas lokalny w Warszawie (Europe/Warsaw) i wyliczamy offset
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (match) {
     const [_, y, m, d, hh, mm, ss] = match;
     const targetUtc = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss || 0)));
@@ -34,7 +45,7 @@ export function parseWarsawDateTime(isoOrDateStr: string): Date {
     }
     return new Date(targetUtc.getTime() - diffHours * 3600000);
   }
-  return new Date(isoOrDateStr);
+  return new Date(str);
 }
 
 export class BookingService {
@@ -175,13 +186,13 @@ export class BookingService {
         },
         {
           name: 'bookAppointment',
-          description: 'Rezerwuje termin spotkania w kalendarzu po uzgodnieniu z dzwoniącym.',
+          description: 'Rezerwuje termin spotkania w kalendarzu. Wywołaj WYŁĄCZNIE po uzyskaniu jednoznacznej zgody rozmówcy na konkretny termin! KATEGORYCZNY ZAKAZ wywoływania przy samym pytaniu o dostępność.',
           parameters: {
             type: 'OBJECT',
             properties: {
               customerName: { type: 'STRING', description: 'Imię i nazwisko dzwoniącego' },
               customerPhone: { type: 'STRING', description: 'Numer telefonu dzwoniącego' },
-              startTime: { type: 'STRING', description: 'Data i godzina rozpoczęcia w ISO' },
+              startTime: { type: 'STRING', description: 'Data i godzina rozpoczęcia w ISO z polską strefą czasową np. 2026-09-15T08:00:00+02:00' },
               durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach' },
               serviceName: { type: 'STRING', description: 'Temat spotkania lub konsultacji' }
             },
@@ -412,7 +423,7 @@ export class BookingService {
       },
       {
         name: 'bookAppointment',
-        description: 'Rezerwuje wizytę lub wynajem obiektu.',
+        description: 'Rezerwuje wizytę lub wynajem obiektu. Wywołaj WYŁĄCZNIE po wyraźnej zgodzie klienta na dany termin!',
         parameters: {
           type: 'OBJECT',
           properties: {

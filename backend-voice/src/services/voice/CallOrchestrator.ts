@@ -824,6 +824,19 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           if (args?.customerName) {
             this.callerNameFromAi = args.customerName;
           }
+          // Zabezpieczenie przed podwójną rezerwacją: jeśli klient w trakcie rozmowy zmienił termin,
+          // usuwamy wcześniejszą rezerwację z tej samej rozmowy, zachowując ostatecznie wybrany termin
+          if (this.bookedAppointments.length > 0) {
+            for (const prevId of this.bookedAppointments) {
+              try {
+                await prisma.appointment.delete({ where: { id: prevId } });
+                console.log(`[CallOrchestrator] Usunięto wcześniejszą rezerwację (${prevId}) po wyborze nowego terminu.`);
+              } catch (delErr) {
+                console.warn('[CallOrchestrator] Nie udało się usunąć wcześniejszej rezerwacji:', delErr);
+              }
+            }
+            this.bookedAppointments = [];
+          }
           const bookRes: any = await bookingService.bookAppointment(
             tenantId, 
             args.customerName, 

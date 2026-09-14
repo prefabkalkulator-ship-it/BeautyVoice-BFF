@@ -26,11 +26,16 @@ export const requestForToken = async () => {
     const currentToken = await getToken(messaging, { vapidKey: 'BHGAMyLplV3orS4FcZVaNyj7xcMjl6fFcc5SAMRNeihzEgIC43HLsVJ4llUDnYG0bPq3rOFDWpEPRQLt4XPdkRU' });
     if (currentToken) {
       console.log('FCM Token generated');
-      // Wysyłamy token do backendu
+      const isStandalone = typeof window !== 'undefined' && (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes('android-app://')
+      );
+      // Wysyłamy token do backendu wraz z flagą PWA
       fetch('/api/tenant/fcm-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: currentToken })
+        body: JSON.stringify({ token: currentToken, isStandalone })
       }).catch(console.error);
       return currentToken;
     } else {

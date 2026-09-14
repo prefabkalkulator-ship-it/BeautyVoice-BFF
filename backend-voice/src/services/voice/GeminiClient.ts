@@ -190,9 +190,19 @@ export class GeminiClient {
   }
   
   sendInitialGreeting(contextText?: string) {
+    const now = new Date();
+    const warsawHour = parseInt(now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
+    const warsawTime = now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' });
+    const exactGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : (warsawHour >= 18 && warsawHour < 22) ? 'Dobry wieczór' : 'Witam';
+    const forbiddenGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dobry wieczór' : (warsawHour >= 18 && warsawHour < 22) ? 'Dzień dobry' : '';
+
+    const instruction = forbiddenGreeting
+      ? `Aktualna godzina w Warszawie to ${warsawTime}. Obowiązkowe powitanie to WYŁĄCZNIE "${exactGreeting}". KATEGORYCZNY ZAKAZ używania słów "${forbiddenGreeting}"!`
+      : `Aktualna godzina w Warszawie to ${warsawTime}. Użyj powitania "${exactGreeting}".`;
+
     const text = contextText 
-      ? `Odebrałem telefon. ${contextText} Przywitaj się po polsku zgodnie z aktualną porą dnia w Warszawie lub użyj uniwersalnego "Witam".` 
-      : 'Odebrałem telefon. Przywitaj się po polsku używając uniwersalnego "Witam".';
+      ? `Odebrałem telefon. ${contextText} ${instruction} Wypowiedz pierwsze powitanie natychmiast, dokładnie według powyższych wytycznych.` 
+      : `Odebrałem telefon. ${instruction} Przywitaj się zwięźle i profesjonalnie.`;
       
     this.send({
       clientContent: {
