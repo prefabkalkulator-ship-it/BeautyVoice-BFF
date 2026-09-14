@@ -1,10 +1,18 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../prisma';
 import { createAdminToken } from '../middleware/adminAuth';
+import { SMSService } from '../services/sms/SMSService';
+
+const SUPERADMIN_SECRET = process.env.SUPERADMIN_SECRET || 'bv_sec_98f4a7c1b2e3d4f5a6b7c8d9e0f1a2b3';
+const SUPERADMIN_PHONE = process.env.SUPERADMIN_PHONE || '+48531491626';
 
 export class AdminController {
-  
-  public async login(req: Request, res: Response) {
+
+  /**
+   * Krok 1 logowania: Weryfikacja PIN-u i wysyłka jednorazowego kodu SMS (2FA).
+   */
+  public async initiateLogin(req: Request, res: Response) {
     try {
       const { pin } = req.body;
       const expectedPin = process.env.SUPERADMIN_PIN || '5742';
@@ -13,12 +21,211 @@ export class AdminController {
         return res.status(401).json({ error: 'Nieprawidłowy kod PIN administratora.' });
       }
 
+      // Czyszczenie przeterminowanych wyzwań 2FA
+      try {
+        await prisma.adminChallenge.deleteMany({
+          where: { expiresAt: { lt: new Date() } }
+        });
+      } catch (cleanErr) {
+        console.warn('⚠️ [Admin 2FA] Błąd czyszczenia starych kodów:', cleanErr);
+      }
+
+      // Sprawdzenie cooldownu (min. 15 sekund od ostatniego żądania na ten numer)
+      const recentChallenge = await prisma.adminChallenge.findFirst({
+        where: {
+          phone: SUPERADMIN_PHONE,
+          createdAt: { gt: new Date(Date.now() - 15 * 1000) }
+        }
+      });
+      if (recentChallenge) {
+        return res.status(429).json({ 
+          error: 'Kod SMS został wysłany przed chwilą. Odczekaj kilkanaście sekund przed ponowną próbą.' 
+        });
+      }
+
+      // Generowanie 6-cyfrowego losowego kodu OTP
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const codeHash = crypto
+        .createHash('sha256')
+        .update(`${code}:${SUPERADMIN_SECRET}`)
+        .digest('hex');
+
+      const challengeId = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minut
+
+      await prisma.adminChallenge.create({
+        data: {
+          id: challengeId,
+          codeHash,
+          phone: SUPERADMIN_PHONE,
+          expiresAt,
+          attempts: 0
+        }
+      });
+
+      // Wysłanie wiadomości SMS
+      const smsMessage = `EVA SuperAdmin: Twój jednorazowy kod logowania to: ${code}. Kod jest ważny przez 5 minut.`;
+      const smsSent = await SMSService.sendSMS(SUPERADMIN_PHONE, smsMessage);
+
+      if (!smsSent) {
+        console.error(`❌ [Admin 2FA] Nie udało się dostarczyć SMS z kodem do ${SUPERADMIN_PHONE}`);
+        return res.status(500).json({ error: 'Błąd bramki SMS. Nie udało się wysłać kodu weryfikacyjnego na telefon.' });
+      }
+
+      const maskedPhone = '+48 531 *** 626';
+      console.log(`📲 [Admin 2FA] Wysłano kod SMS 2FA na numer ${maskedPhone}, challengeId: ${challengeId}`);
+
+      return res.status(200).json({
+        success: true,
+        step: '2FA_REQUIRED',
+        challengeId,
+        maskedPhone,
+        expiresInSeconds: 300
+      });
+    } catch (e: any) {
+      console.error('❌ [Admin 2FA] Błąd inicjacji logowania:', e);
+      return res.status(500).json({ error: e.message || 'Wystąpił nieoczekiwany błąd logowania.' });
+    }
+  }
+
+  /**
+   * Krok 2 logowania: Weryfikacja kodu SMS i wydanie bezpiecznego tokenu sesji.
+   */
+  public async verify2FA(req: Request, res: Response) {
+    try {
+      const { challengeId, code } = req.body;
+
+      if (!challengeId || !code) {
+        return res.status(400).json({ error: 'Brak wymaganych parametrów (challengeId lub kod SMS).' });
+      }
+
+      const challenge = await prisma.adminChallenge.findUnique({
+        where: { id: String(challengeId) }
+      });
+
+      if (!challenge) {
+        return res.status(401).json({ error: 'Sesja autoryzacyjna wygasła lub jest nieprawidłowa. Rozpocznij logowanie ponownie.' });
+      }
+
+      if (new Date() > challenge.expiresAt) {
+        await prisma.adminChallenge.delete({ where: { id: challengeId } }).catch(() => {});
+        return res.status(401).json({ error: 'Kod weryfikacyjny wygasł (ważność 5 minut). Wygeneruj nowy kod.' });
+      }
+
+      if (challenge.attempts >= 3) {
+        await prisma.adminChallenge.delete({ where: { id: challengeId } }).catch(() => {});
+        return res.status(403).json({ error: 'Przekroczono maksymalną liczbę prób weryfikacji. Rozpocznij logowanie od nowa wprowadzając PIN.' });
+      }
+
+      const expectedHash = crypto
+        .createHash('sha256')
+        .update(`${String(code).trim()}:${SUPERADMIN_SECRET}`)
+        .digest('hex');
+
+      const isMatch = crypto.timingSafeEqual(
+        Buffer.from(expectedHash, 'utf8'),
+        Buffer.from(challenge.codeHash, 'utf8')
+      );
+
+      if (!isMatch) {
+        const updated = await prisma.adminChallenge.update({
+          where: { id: challengeId },
+          data: { attempts: { increment: 1 } }
+        });
+        const remaining = 3 - updated.attempts;
+        return res.status(401).json({ 
+          error: `Nieprawidłowy kod weryfikacyjny SMS. Pozostało prób: ${remaining > 0 ? remaining : 0}.` 
+        });
+      }
+
+      // Pomyślna weryfikacja 2FA - usunięcie wykorzystanego wyzwania
+      await prisma.adminChallenge.delete({ where: { id: challengeId } }).catch(() => {});
+
       const token = createAdminToken();
-      console.log('🔑 [SuperAdmin] Pomyślne logowanie administratora!');
-      return res.json({ success: true, token, expiresInDays: 7 });
+      console.log('🛡️ [SuperAdmin 2FA] Pomyślne logowanie dwuetapowe administratora z numeru ' + challenge.phone);
+
+      return res.status(200).json({
+        success: true,
+        token,
+        expiresInDays: 7
+      });
+    } catch (e: any) {
+      console.error('❌ [Admin 2FA] Błąd weryfikacji 2FA:', e);
+      return res.status(500).json({ error: e.message || 'Błąd weryfikacji kodu 2FA.' });
+    }
+  }
+
+  /**
+   * Ponowna wysyłka kodu SMS (resend) z ochroną cooldownu.
+   */
+  public async resend2FA(req: Request, res: Response) {
+    try {
+      const { challengeId, pin } = req.body;
+      const expectedPin = process.env.SUPERADMIN_PIN || '5742';
+
+      if (!pin || String(pin).trim() !== expectedPin) {
+        return res.status(401).json({ error: 'Nieprawidłowy kod PIN administratora.' });
+      }
+
+      if (!challengeId) {
+        return res.status(400).json({ error: 'Brak identyfikatora sesji.' });
+      }
+
+      const challenge = await prisma.adminChallenge.findUnique({
+        where: { id: String(challengeId) }
+      });
+
+      if (!challenge) {
+        return res.status(404).json({ error: 'Sesja wygasła. Wróć do ekranu PIN.' });
+      }
+
+      // Minimalny odstęp między SMS: 30 sekund
+      const elapsedMs = Date.now() - challenge.createdAt.getTime();
+      if (elapsedMs < 30 * 1000) {
+        const waitSec = Math.ceil((30 * 1000 - elapsedMs) / 1000);
+        return res.status(429).json({ error: `Odczekaj jeszcze ${waitSec} s przed ponownym wysłaniem kodu.` });
+      }
+
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const newHash = crypto
+        .createHash('sha256')
+        .update(`${newCode}:${SUPERADMIN_SECRET}`)
+        .digest('hex');
+
+      await prisma.adminChallenge.update({
+        where: { id: challengeId },
+        data: {
+          codeHash: newHash,
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          attempts: 0,
+          createdAt: new Date()
+        }
+      });
+
+      const smsMessage = `EVA SuperAdmin: Twój nowy kod logowania to: ${newCode}. Kod jest ważny przez 5 minut.`;
+      const sent = await SMSService.sendSMS(SUPERADMIN_PHONE, smsMessage);
+
+      if (!sent) {
+        return res.status(500).json({ error: 'Błąd bramki SMS przy ponownej wysyłce.' });
+      }
+
+      console.log(`📲 [Admin 2FA] Ponownie wysłano kod SMS na numer ${SUPERADMIN_PHONE}`);
+      return res.status(200).json({ success: true, maskedPhone: '+48 531 *** 626', expiresInSeconds: 300 });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
     }
+  }
+
+  /**
+   * Punkt wejścia /api/admin/login:
+   * Gdy podano tylko PIN -> uruchamia procedurę dwuetapową (zwraca krok 2FA).
+   * Gdy podano kod 2FA -> weryfikuje kod i wydaje token.
+   */
+  public async login(req: Request, res: Response) {
+    if (req.body.code && req.body.challengeId) {
+      return this.verify2FA(req, res);
+    }
+    return this.initiateLogin(req, res);
   }
   
   public async getTenants(req: Request, res: Response) {

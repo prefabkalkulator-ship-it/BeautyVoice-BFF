@@ -144,25 +144,49 @@ export class SMSService {
 
     try {
       const api = new Client(this.zadarmaKey, this.zadarmaSecret);
+      const cleanTarget = targetNumber.replace(/^\+/, '');
+      const cleanSender = (this.zadarmaPhone || '').replace(/^\+/, '');
 
-      // API Zadarmy wymaga parametrów w postaci obiektu
-      const response = await api.call('/v1/sms/send/', {
-        number: targetNumber,
-        message: body,
-        caller_id: this.zadarmaPhone
-      }, 'POST');
+      // API Zadarmy wymaga 'number' (format międzynarodowy bez +) oraz 'sender'
+      const payload: any = {
+        number: cleanTarget,
+        message: body
+      };
+      if (cleanSender) {
+        payload.sender = cleanSender;
+      }
+
+      const response = await api.call('/v1/sms/send/', payload, 'POST');
 
       // Odpowiedź zawiera status
       if (response && response.status === 'success') {
-        console.log(`📨 [Zadarma SMS] Wysłano SMS do ${targetNumber}`);
+        console.log(`📨 [Zadarma SMS] Wysłano SMS do ${targetNumber} (${cleanTarget})`);
         return true;
       } else {
         console.error('❌ [Zadarma SMS] Błąd wysyłki SMS:', response);
-        return false;
       }
     } catch (err) {
       console.error('❌ [Zadarma SMS] Wyjątek podczas wysyłki:', err);
-      return false;
     }
+
+    // Opcjonalny fallback do Twilio SMS w przypadku niedostępności Zadarmy
+    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+      try {
+        const twilio = (await import('twilio')).default;
+        const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        const from = process.env.TWILIO_SMS_FROM || '+15418070583';
+        await client.messages.create({
+          body,
+          from,
+          to: targetNumber
+        });
+        console.log(`📨 [Twilio SMS Fallback] Pomyślnie wysłano SMS do ${targetNumber}`);
+        return true;
+      } catch (twilioErr: any) {
+        console.error('❌ [Twilio SMS Fallback] Błąd wysyłki SMS:', twilioErr.message || twilioErr);
+      }
+    }
+
+    return false;
   }
 }

@@ -6,7 +6,14 @@ export function SuperAdminDashboard() {
   const [betaApplications, setBetaApplications] = useState<any[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Stan logowania 2FA
+  const [authStep, setAuthStep] = useState<'PIN' | '2FA'>('PIN');
   const [authPin, setAuthPin] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [smsCode, setSmsCode] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState('+48 531 *** 626');
+  const [countdown, setCountdown] = useState(300);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -87,13 +94,35 @@ export function SuperAdminDashboard() {
     return res;
   };
 
-  const handleLogin = async (e?: React.FormEvent) => {
+  // Zegary dla procedury 2FA
+  useEffect(() => {
+    let timer: any;
+    if (authStep === '2FA' && countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [authStep, countdown]);
+
+  useEffect(() => {
+    let cooldownTimer: any;
+    if (authStep === '2FA' && resendCooldown > 0) {
+      cooldownTimer = setInterval(() => {
+        setResendCooldown(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(cooldownTimer);
+  }, [authStep, resendCooldown]);
+
+  // Krok 1: Weryfikacja PIN i zlecenie wysyłki SMS
+  const handleInitiateLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!authPin.trim()) return;
     setLoginError('');
     setIsLoggingIn(true);
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await fetch('/api/admin/login/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: authPin.trim() })
@@ -102,9 +131,12 @@ export function SuperAdminDashboard() {
       if (!res.ok) {
         throw new Error(data.error || 'Nieprawidłowy kod PIN');
       }
-      localStorage.setItem('adminToken', data.token);
-      setIsAuthenticated(true);
-      setAuthPin('');
+      setChallengeId(data.challengeId);
+      setMaskedPhone(data.maskedPhone || '+48 531 *** 626');
+      setCountdown(data.expiresInSeconds || 300);
+      setResendCooldown(30);
+      setSmsCode('');
+      setAuthStep('2FA');
     } catch (err: any) {
       setLoginError(err.message || 'Błąd logowania');
     } finally {
@@ -112,9 +144,76 @@ export function SuperAdminDashboard() {
     }
   };
 
+  // Krok 2: Weryfikacja 6-cyfrowego kodu SMS
+  const handleVerify2FA = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!smsCode.trim() || !challengeId) return;
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch('/api/admin/login/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          challengeId,
+          code: smsCode.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nieprawidłowy kod weryfikacyjny');
+      }
+      localStorage.setItem('adminToken', data.token);
+      setIsAuthenticated(true);
+      setAuthPin('');
+      setSmsCode('');
+      setChallengeId('');
+      setAuthStep('PIN');
+    } catch (err: any) {
+      setLoginError(err.message || 'Błąd autoryzacji');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // Ponowna wysyłka kodu SMS
+  const handleResendCode = async () => {
+    if (resendCooldown > 0 || !challengeId || !authPin) return;
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch('/api/admin/login/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId, pin: authPin.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się wysłać kodu ponownie');
+      }
+      setCountdown(data.expiresInSeconds || 300);
+      setResendCooldown(30);
+      setSmsCode('');
+      alert('Nowy kod weryfikacyjny SMS został wysłany!');
+    } catch (err: any) {
+      setLoginError(err.message || 'Błąd ponownej wysyłki');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleBackToPin = () => {
+    setAuthStep('PIN');
+    setSmsCode('');
+    setLoginError('');
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
     setIsAuthenticated(false);
+    setAuthStep('PIN');
+    setAuthPin('');
+    setSmsCode('');
   };
 
   const fetchStats = async () => {
@@ -378,40 +477,163 @@ export function SuperAdminDashboard() {
     }
   };
 
-  // Ekran logowania
+  // Ekran logowania dwuetapowego (2FA)
   if (!isAuthenticated) {
+    const formatTime = (secs: number) => {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950 p-4 font-sans">
-        <div className="bg-gray-900 border border-gray-800 p-8 rounded-3xl shadow-2xl w-full max-w-sm text-center">
-          <div className="w-14 h-14 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5 text-2xl shadow-inner">
-            🛡️
-          </div>
-          <h2 className="text-2xl font-black text-white tracking-tight mb-1">Super Admin EVA</h2>
-          <p className="text-xs text-gray-400 mb-6">Wprowadź kod PIN administratora platformy</p>
+        <div className="bg-gray-900 border border-gray-800 p-8 rounded-3xl shadow-2xl w-full max-w-md text-center relative overflow-hidden">
+          {/* Ozdobny pasek statusu na górze */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-500 to-amber-500" />
 
-          {loginError && (
-            <div className="mb-4 p-3 bg-red-950/60 text-red-400 rounded-xl text-xs border border-red-800/50">
-              {loginError}
+          {authStep === 'PIN' ? (
+            /* KROK 1: WPROWADZENIE KODU PIN */
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 text-red-400 text-xs font-semibold mb-4 border border-red-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                Krok 1 z 2: Tożsamość
+              </div>
+
+              <div className="w-16 h-16 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+                🛡️
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-tight mb-1">Super Admin EVA</h2>
+              <p className="text-xs text-gray-400 mb-6">Wprowadź kod PIN administratora platformy</p>
+
+              {loginError && (
+                <div className="mb-4 p-3 bg-red-950/60 text-red-400 rounded-xl text-xs border border-red-800/50 flex items-center justify-center gap-2">
+                  <span>⚠️</span> {loginError}
+                </div>
+              )}
+
+              <form onSubmit={handleInitiateLogin} className="space-y-4">
+                <div>
+                  <input 
+                    type="password" 
+                    autoFocus
+                    placeholder="••••" 
+                    maxLength={10}
+                    className="w-full bg-gray-950 border border-gray-700 text-white p-4 rounded-xl text-center text-3xl tracking-[0.4em] font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500 transition shadow-inner"
+                    value={authPin}
+                    onChange={e => setAuthPin(e.target.value)}
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  disabled={isLoggingIn || !authPin.trim()}
+                  className="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white py-3.5 rounded-xl font-bold hover:from-red-500 hover:to-rose-500 transition shadow-lg shadow-red-600/30 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <span className="animate-spin inline-block">⏳</span>
+                      <span>Weryfikacja i wysyłka SMS...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Dalej (Wyślij kod SMS)</span>
+                      <span>→</span>
+                    </>
+                  )}
+                </button>
+              </form>
+              <p className="text-[11px] text-gray-500 mt-5">
+                🔒 Logowanie chronione uwierzytelnianiem dwuskładnikowym (2FA SMS)
+              </p>
+            </div>
+          ) : (
+            /* KROK 2: WPROWADZENIE JEDNORAZOWEGO KODU SMS */
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 text-xs font-semibold mb-4 border border-amber-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                Krok 2 z 2: Weryfikacja SMS
+              </div>
+
+              <div className="w-16 h-16 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner">
+                📲
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-tight mb-1">Kod Weryfikacyjny</h2>
+              <p className="text-xs text-gray-400 mb-2">Wysłano 6-cyfrowy kod jednorazowy na numer:</p>
+              
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-800/80 border border-gray-700 rounded-lg text-sm text-gray-200 font-mono font-medium mb-5">
+                <span>📱</span>
+                <span>{maskedPhone}</span>
+              </div>
+
+              {loginError && (
+                <div className="mb-4 p-3 bg-red-950/60 text-red-400 rounded-xl text-xs border border-red-800/50 flex items-center justify-center gap-2">
+                  <span>⚠️</span> {loginError}
+                </div>
+              )}
+
+              <form onSubmit={handleVerify2FA} className="space-y-4">
+                <div>
+                  <input 
+                    type="text" 
+                    inputMode="numeric"
+                    autoFocus
+                    placeholder="000000" 
+                    maxLength={6}
+                    className="w-full bg-gray-950 border border-gray-700 text-white p-4 rounded-xl text-center text-3xl tracking-[0.4em] font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition shadow-inner"
+                    value={smsCode}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setSmsCode(val);
+                      if (val.length === 6) {
+                        // Opcjonalne natychmiastowe zatwierdzenie
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className={countdown > 30 ? "text-gray-400" : "text-red-400 font-semibold animate-pulse"}>
+                    ⏱️ Kod wygasa za: {formatTime(countdown)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={resendCooldown > 0 || isLoggingIn}
+                    className="text-amber-400 hover:text-amber-300 disabled:text-gray-600 transition font-medium underline-offset-2 hover:underline"
+                  >
+                    {resendCooldown > 0 ? `Wyślij ponownie (${resendCooldown}s)` : 'Wyślij kod ponownie'}
+                  </button>
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={isLoggingIn || smsCode.length < 6 || countdown === 0}
+                  className="w-full bg-gradient-to-r from-amber-500 via-rose-600 to-red-600 text-white py-3.5 rounded-xl font-bold hover:brightness-110 transition shadow-lg shadow-red-600/30 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <span className="animate-spin inline-block">⏳</span>
+                      <span>Autoryzacja 2FA...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔐 Zaloguj do Panelu SuperAdmin</span>
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-5 pt-4 border-t border-gray-800/80">
+                <button
+                  type="button"
+                  onClick={handleBackToPin}
+                  className="text-xs text-gray-400 hover:text-gray-200 transition flex items-center justify-center gap-1.5 mx-auto"
+                >
+                  <span>←</span>
+                  <span>Wróć do wprowadzenia PIN</span>
+                </button>
+              </div>
             </div>
           )}
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input 
-              type="password" 
-              autoFocus
-              placeholder="••••" 
-              className="w-full bg-gray-950 border border-gray-700 text-white p-3.5 rounded-xl text-center text-2xl tracking-[0.3em] font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500 transition"
-              value={authPin}
-              onChange={e => setAuthPin(e.target.value)}
-            />
-            <button 
-              type="submit"
-              disabled={isLoggingIn || !authPin.trim()}
-              className="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white py-3 rounded-xl font-bold hover:from-red-500 hover:to-rose-500 transition shadow-lg shadow-red-600/30 disabled:opacity-50"
-            >
-              {isLoggingIn ? 'Weryfikacja...' : 'Zaloguj się'}
-            </button>
-          </form>
         </div>
       </div>
     );

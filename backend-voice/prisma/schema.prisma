@@ -292,6 +292,15 @@ model AdminDevice {
   updatedAt DateTime @updatedAt
 }
 
+model AdminChallenge {
+  id        String   @id @default(uuid())
+  codeHash  String
+  phone     String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 // Baza kontaktów VIP dla Asystenta Osobistego
 model VipContact {
   id                 String   @id @default(uuid())

@@ -2290,8 +2290,11 @@ import { betaController } from './controllers/BetaController';
 app.post('/api/beta/apply', (req, res) => betaController.apply(req, res));
 app.get('/api/beta/status', (req, res) => betaController.getStatus(req, res));
 
-// Trasa logowania SuperAdmina (weryfikacja PINu 5742 z .env)
+// Trasa logowania SuperAdmina (weryfikacja PINu i dwuetapowa autoryzacja 2FA SMS)
 app.post('/api/admin/login', (req, res) => adminController.login(req, res));
+app.post('/api/admin/login/initiate', (req, res) => adminController.initiateLogin(req, res));
+app.post('/api/admin/login/verify-2fa', (req, res) => adminController.verify2FA(req, res));
+app.post('/api/admin/login/resend', (req, res) => adminController.resend2FA(req, res));
 
 // Trasy SuperAdmina (chronione przez adminAuthMiddleware)
 app.get('/api/admin/tenants', adminAuthMiddleware, (req, res) => adminController.getTenants(req, res));
