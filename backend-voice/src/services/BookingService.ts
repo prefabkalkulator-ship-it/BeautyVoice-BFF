@@ -443,6 +443,28 @@ export class BookingService {
         },
       },
       {
+        name: 'confirmAppointment',
+        description: 'Potwierdza obecność klienta na zaplanowanym spotkaniu lub wizycie. Wywołaj to narzędzie, gdy dzwonisz do klienta (lub klient dzwoni) i klient deklaruje, że pojawi się na spotkaniu / potwierdza termin.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (jeśli znany)' },
+            appointmentId: { type: 'STRING', description: 'Opcjonalne ID spotkania/rezerwacji' }
+          }
+        }
+      },
+      {
+        name: 'cancelAppointment',
+        description: 'Odwołuje zaplanowane spotkanie lub wizytę i zwalnia termin w kalendarzu. Wywołaj to narzędzie, gdy klient informuje, że rezygnuje ze spotkania / odwołuje wizytę.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (jeśli znany)' },
+            appointmentId: { type: 'STRING', description: 'Opcjonalne ID spotkania/rezerwacji' }
+          }
+        }
+      },
+      {
         name: 'endCall',
         description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. Użyj tego narzędzia, gdy klient pożegna się, sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta.',
         parameters: {
@@ -932,18 +954,50 @@ export class BookingService {
   /**
    * 3. Rezerwuje wizytę: dodaje do tabeli Appointment w bazie danych
    */
-  public async confirmAppointment(tenantId: string, customerPhone: string) {
+  public async confirmAppointment(tenantId: string, customerPhone?: string, appointmentId?: string) {
     try {
+      let whereClause: any = { 
+        tenantId, 
+        status: { in: ['pending_confirmation', 'confirmed', 'confirmed_by_client'] } 
+      };
+
+      if (appointmentId) {
+        whereClause.id = appointmentId;
+      } else if (customerPhone) {
+        const clean = customerPhone.replace(/[\s\-()]/g, '');
+        whereClause.customerPhone = { contains: clean.slice(-9) };
+        whereClause.startTime = { gt: new Date() };
+      }
+
       const appointments = await prisma.appointment.findMany({
-        where: { tenantId, customerPhone, status: { in: ['confirmed', 'confirmed_by_client'] } },
+        where: whereClause,
         orderBy: { startTime: 'asc' },
         take: 1
       });
+
       if (appointments.length > 0) {
+        const appt = appointments[0];
         await prisma.appointment.update({
-          where: { id: appointments[0].id },
+          where: { id: appt.id },
           data: { status: 'confirmed_by_client' }
         });
+
+        // Rejestracja zdarzenia w CallLog
+        const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL');
+        const timeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+        await prisma.callLog.create({
+          data: {
+            tenantId,
+            callerPhone: appt.customerPhone,
+            callerName: appt.customerName || 'Klient',
+            callerRole: 'CLIENT',
+            durationSeconds: 0,
+            status: 'CONFIRMED_PHONE',
+            summary: `[Potwierdzenie Telefon] Klient w rozmowie z EVA potwierdził obecność na spotkaniu w dniu ${dateStr} o godz. ${timeStr}.`,
+            isProcessed: true
+          }
+        });
+
         return { success: true, message: "Rezerwacja została pomyślnie potwierdzona." };
       }
       
@@ -952,7 +1006,7 @@ export class BookingService {
         orderBy: { startTime: 'asc' },
         take: 1
       });
-      if (lastMinuteList.length > 0) {
+      if (lastMinuteList.length > 0 && customerPhone) {
           const offer = lastMinuteList[0];
           const cust = await prisma.customer.findFirst({ where: { phone: customerPhone, tenantId } });
           const nameToSave = cust ? cust.name : `Nieznany (tel: ${customerPhone})`;
@@ -964,25 +1018,57 @@ export class BookingService {
       }
       
       return { success: false, message: "Nie znaleziono rezerwacji do potwierdzenia dla tego numeru." };
-    } catch(e) { return { error: e.message }; }
+    } catch(e: any) { return { error: e.message }; }
   }
 
-  public async cancelAppointment(tenantId: string, customerPhone: string) {
+  public async cancelAppointment(tenantId: string, customerPhone?: string, appointmentId?: string) {
     try {
+      let whereClause: any = { 
+        tenantId, 
+        status: { in: ['pending_confirmation', 'confirmed', 'confirmed_by_client'] } 
+      };
+
+      if (appointmentId) {
+        whereClause.id = appointmentId;
+      } else if (customerPhone) {
+        const clean = customerPhone.replace(/[\s\-()]/g, '');
+        whereClause.customerPhone = { contains: clean.slice(-9) };
+        whereClause.startTime = { gt: new Date() };
+      }
+
       const appointments = await prisma.appointment.findMany({
-        where: { tenantId, customerPhone, status: { in: ['confirmed', 'confirmed_by_client'] } },
+        where: whereClause,
         orderBy: { startTime: 'asc' },
         take: 1
       });
+
       if (appointments.length > 0) {
+        const appt = appointments[0];
         await prisma.appointment.update({
-          where: { id: appointments[0].id },
+          where: { id: appt.id },
           data: { status: 'cancelled' }
         });
-        return { success: true, message: "Rezerwacja została odwołana." };
+
+        // Rejestracja zdarzenia w CallLog
+        const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL');
+        const timeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+        await prisma.callLog.create({
+          data: {
+            tenantId,
+            callerPhone: appt.customerPhone,
+            callerName: appt.customerName || 'Klient',
+            callerRole: 'CLIENT',
+            durationSeconds: 0,
+            status: 'CANCELLED_PHONE',
+            summary: `[Odwołanie Telefon] Klient w rozmowie z EVA odwołał spotkanie w dniu ${dateStr} o godz. ${timeStr}. Slot w kalendarzu został zwolniony.`,
+            isProcessed: true
+          }
+        });
+
+        return { success: true, message: "Rezerwacja została odwołana, a termin zwolniony." };
       }
       return { success: false, message: "Nie znaleziono rezerwacji do odwołania." };
-    } catch(e) { return { error: e.message }; }
+    } catch(e: any) { return { error: e.message }; }
   }
 
   public async requestHumanContact(tenantId: string, customerPhone: string, reason: string) {

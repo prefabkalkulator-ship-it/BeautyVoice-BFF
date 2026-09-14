@@ -21,7 +21,12 @@ export default function Simulator() {
     fetch('/api/tenant')
       .then(res => res.json())
       .then(t => {
-        if (t?.businessProfile) setBusinessProfile(t.businessProfile);
+        if (t?.businessProfile) {
+          setBusinessProfile(t.businessProfile);
+          if (t.businessProfile === 'personal') {
+            navigate('/dashboard/appointments', { replace: true });
+          }
+        }
       })
       .catch(() => {});
 

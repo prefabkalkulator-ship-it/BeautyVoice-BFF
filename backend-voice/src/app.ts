@@ -266,7 +266,8 @@ app.post('/api/campaigns/execute', async (req, res) => {
     }
 
     if (toolName === 'schedule_confirmation_flow') {
-      const { confirmation_method, target_scope, customerPhone, appointmentId } = args;
+      const { confirmation_method, target_scope, customerPhone, appointmentId, additional_note, additionalNote } = args;
+      const userNote = (additional_note || additionalNote || '').trim();
       const isPersonal = tenant.businessProfile === 'personal';
 
       let appointments: any[] = [];
@@ -276,6 +277,30 @@ app.post('/api/campaigns/execute', async (req, res) => {
           where: { id: appointmentId, tenantId: tenant.id }
         });
         if (singleAppt) appointments = [singleAppt];
+      } else if (target_scope === 'all_unconfirmed') {
+        appointments = await prisma.appointment.findMany({
+          where: {
+            tenantId: tenant.id,
+            startTime: { gte: new Date() },
+            status: { in: ['pending', 'unconfirmed', 'confirmed', 'pending_confirmation'] }
+          },
+          orderBy: { startTime: 'asc' }
+        });
+      } else if (target_scope === 'tomorrow_appointments' || target_scope === 'tomorrow') {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowEnd = new Date(tomorrow);
+        tomorrow.setHours(0,0,0,0);
+        tomorrowEnd.setHours(23,59,59,999);
+
+        appointments = await prisma.appointment.findMany({
+          where: { 
+            tenantId: tenant.id, 
+            startTime: { gte: tomorrow, lte: tomorrowEnd },
+            status: { notIn: ['cancelled', 'confirmed_by_client'] }
+          },
+          orderBy: { startTime: 'asc' }
+        });
       } else if (customerPhone) {
         const cleanPhone = customerPhone.replace(/[\s\-()]/g, '');
         const phoneAppts = await prisma.appointment.findMany({
@@ -298,15 +323,6 @@ app.post('/api/campaigns/execute', async (req, res) => {
             startTime: new Date(Date.now() + 24 * 3600 * 1000)
           }];
         }
-      } else if (target_scope === 'all_unconfirmed') {
-        appointments = await prisma.appointment.findMany({
-          where: {
-            tenantId: tenant.id,
-            startTime: { gte: new Date() },
-            status: { in: ['pending', 'unconfirmed', 'confirmed'] }
-          },
-          orderBy: { startTime: 'asc' }
-        });
       } else {
         // Domyślnie: jutrzejsze spotkania
         const tomorrow = new Date();
@@ -316,13 +332,21 @@ app.post('/api/campaigns/execute', async (req, res) => {
         tomorrowEnd.setHours(23,59,59,999);
 
         appointments = await prisma.appointment.findMany({
-          where: { tenantId: tenant.id, startTime: { gte: tomorrow, lte: tomorrowEnd } }
+          where: { 
+            tenantId: tenant.id, 
+            startTime: { gte: tomorrow, lte: tomorrowEnd },
+            status: { notIn: ['cancelled', 'confirmed_by_client'] }
+          }
         });
 
         // Jeśli na jutro brak spotkań, pobierz najbliższe nadchodzące spotkania
         if (appointments.length === 0) {
           appointments = await prisma.appointment.findMany({
-            where: { tenantId: tenant.id, startTime: { gte: new Date() } },
+            where: { 
+              tenantId: tenant.id, 
+              startTime: { gte: new Date() },
+              status: { notIn: ['cancelled', 'confirmed_by_client'] }
+            },
             orderBy: { startTime: 'asc' },
             take: 3
           });
@@ -340,18 +364,18 @@ app.post('/api/campaigns/execute', async (req, res) => {
         const dateStr = new Date(appt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', timeZone: 'Europe/Warsaw' });
 
         let text = '';
-        if (isPersonal) {
-          if (isVoice) {
-            text = `Dzwonisz do klienta by potwierdzić zaplanowane spotkanie konsultacyjne, które odbędzie się w dniu ${dateStr} o godz. ${timeStr}. Zapytaj uprzejmie, czy termin jest aktualny i czy klient potwierdza obecność.`;
-          } else {
-            text = `Dzień dobry, przypominam o zaplanowanym spotkaniu konsultacyjnym w dniu ${dateStr} o godz. ${timeStr}. Odpisz TAK, aby potwierdzić obecność, lub ANULUJ, aby zmienić termin.`;
-          }
+        if (isVoice) {
+          text = `Dzwonisz do klienta ${appt.customerName || ''} w imieniu firmy, aby potwierdzić zaplanowane spotkanie/wizytę w dniu ${dateStr} o godz. ${timeStr}.${userNote ? ' Przekaż ważną informację: ' + userNote + '.' : ''} Zapytaj uprzejmie, czy termin jest aktualny i czy klient potwierdza spotkanie.`;
         } else {
-          if (isVoice) {
-            text = `Dzwonisz do klienta by przypomnieć i poprosić o potwierdzenie rezerwacji na dzień ${dateStr} o godz. ${timeStr}.`;
-          } else {
-            text = `Przypomnienie: masz zaplanowaną rezerwację na dzień ${dateStr} (godz. ${timeStr}). Odpisz TAK by potwierdzić, lub ANULUJ by zrezygnować.`;
-          }
+          text = `Dzień dobry, przypominam o zaplanowanym spotkaniu/wizycie w dniu ${dateStr} o godz. ${timeStr}.${userNote ? ' Ważne: ' + userNote + '.' : ''} Odpisz TAK, aby potwierdzić obecność, lub ANULUJ, aby zwolnić termin.`;
+        }
+
+        // Natychmiastowa zmiana statusu w kalendarzu na 'pending_confirmation' (pomarańczowa obwódka)
+        if (appt.id && !String(appt.id).startsWith('adhoc_')) {
+          await prisma.appointment.update({
+            where: { id: appt.id },
+            data: { status: 'pending_confirmation' }
+          }).catch(console.error);
         }
 
         await prisma.outboundQueue.create({
@@ -362,7 +386,12 @@ app.post('/api/campaigns/execute', async (req, res) => {
             payload: {
               appointmentId: appt.id,
               text: text,
-              customerName: appt.customerName
+              additionalNote: userNote,
+              customerName: appt.customerName,
+              dateStr,
+              timeStr,
+              attempts: 0,
+              maxAttempts: 3
             },
             status: 'pending',
             scheduledFor: new Date()
@@ -1656,10 +1685,10 @@ app.post("/api/zadarma-sms", async (req, res) => {
       try {
         const ten = await prisma.tenant.findFirst({ where: { OR: [ { appointments: { some: { customerPhone: callerPhone } } } ] }, include: { subscription: true } }); if (ten && (ten.isSuspended || (ten.subscription && (ten.subscription.status === 'paused' || ten.subscription.status === 'canceled')))) { console.log('[Zadarma] SMS zignorowany, konto zawieszone'); return res.send('OK'); }
 
-const upcomingList = await prisma.appointment.findMany({
+        const upcomingList = await prisma.appointment.findMany({
           where: { 
             customerPhone: callerPhone, 
-            status: 'confirmed', 
+            status: { in: ['pending_confirmation', 'confirmed'] }, 
             startTime: { gt: new Date() } 
           },
           orderBy: { startTime: 'asc' },
@@ -1670,6 +1699,21 @@ const upcomingList = await prisma.appointment.findMany({
           const upcoming = upcomingList[0];
           await prisma.appointment.update({ where: { id: upcoming.id }, data: { status: 'confirmed_by_client' } });
           
+          const dateStr = upcoming.startTime.toLocaleDateString('pl-PL');
+          const timeStr = upcoming.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+          await prisma.callLog.create({
+            data: {
+              tenantId: upcoming.tenantId,
+              callerPhone: callerPhone,
+              callerName: upcoming.customerName || 'Klient',
+              callerRole: 'CLIENT',
+              durationSeconds: 0,
+              status: 'CONFIRMED_SMS',
+              summary: `[Potwierdzenie SMS] Klient potwierdził SMS-em spotkanie/wizytę w dniu ${dateStr} o godz. ${timeStr}.`,
+              isProcessed: true
+            }
+          }).catch(err => console.error('[Zadarma SMS] Błąd tworzenia CallLog CONFIRMED_SMS:', err));
+
           import('./services/sms/SMSService').then(sms => {
             sms.SMSService.sendSMS(callerPhone, `Dziękujemy, Twoja wizyta została pomyślnie potwierdzona!`).catch(console.error);
           });
@@ -1714,14 +1758,15 @@ const upcomingList = await prisma.appointment.findMany({
       } catch (err) {}
     }
 
-    if (bodyText.startsWith("ANULUJ") && callerPhone) {
+    const isCancel = bodyText === "NIE" || bodyText.startsWith("ANULUJ") || bodyText.startsWith("ODWOŁAJ") || bodyText.startsWith("ODWOLAJ");
+    if (isCancel && callerPhone) {
       try {
         const ten = await prisma.tenant.findFirst({ where: { OR: [ { appointments: { some: { customerPhone: callerPhone } } } ] }, include: { subscription: true } }); if (ten && (ten.isSuspended || (ten.subscription && (ten.subscription.status === 'paused' || ten.subscription.status === 'canceled')))) { console.log('[Zadarma] SMS zignorowany, konto zawieszone'); return res.send('OK'); }
 
-const upcomingList = await prisma.appointment.findMany({
+        const upcomingList = await prisma.appointment.findMany({
           where: { 
             customerPhone: callerPhone, 
-            status: 'confirmed', 
+            status: { in: ['pending_confirmation', 'confirmed', 'confirmed_by_client'] }, 
             startTime: { gt: new Date() } 
           },
           orderBy: { startTime: 'asc' }
@@ -1733,15 +1778,30 @@ const upcomingList = await prisma.appointment.findMany({
 
         if (upcomingList.length === 1) {
           const upcoming = upcomingList[0];
-          await prisma.appointment.delete({ where: { id: upcoming.id } });
+          await prisma.appointment.update({ where: { id: upcoming.id }, data: { status: 'cancelled' } });
+          const dateStr = upcoming.startTime.toLocaleDateString('pl-PL');
+          const timeStr = upcoming.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+          
+          await prisma.callLog.create({
+            data: {
+              tenantId: upcoming.tenantId,
+              callerPhone: callerPhone,
+              callerName: upcoming.customerName || 'Klient',
+              callerRole: 'CLIENT',
+              durationSeconds: 0,
+              status: 'CANCELLED_SMS',
+              summary: `[Odwołanie SMS] Klient odwołał SMS-em spotkanie/wizytę w dniu ${dateStr} o godz. ${timeStr}. Slot został zwolniony.`,
+              isProcessed: true
+            }
+          }).catch(err => console.error('[Zadarma SMS] Błąd tworzenia CallLog CANCELLED_SMS:', err));
+
           import('./services/sms/SMSService').then(sms => {
-            const timeStr = upcoming.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
-            sms.SMSService.sendSMS(callerPhone, `Twoja rezerwacja na godz. ${timeStr} zostala pomyslnie anulowana. Dziekujemy!`).catch(console.error);
+            sms.SMSService.sendSMS(callerPhone, `Twoja rezerwacja na dzien ${dateStr} na godz. ${timeStr} zostala pomyslnie anulowana. Dziekujemy!`).catch(console.error);
           });
           return res.send("OK");
         }
 
-        const msgTokens = bodyText.replace('ANULUJ', '').trim().split(/\s+/);
+        const msgTokens = bodyText.replace(/^(ANULUJ|ODWOŁAJ|ODWOLAJ|NIE)/, '').trim().split(/\s+/);
         let match = null;
 
         // 1. Spróbuj dopasować po indeksie (np. "ANULUJ 1")
@@ -1781,9 +1841,23 @@ const upcomingList = await prisma.appointment.findMany({
         }
 
         if (match) {
-          await prisma.appointment.delete({ where: { id: match.id } });
+          await prisma.appointment.update({ where: { id: match.id }, data: { status: 'cancelled' } });
           const dateStr = match.startTime.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' });
           const timeStr = match.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+          
+          await prisma.callLog.create({
+            data: {
+              tenantId: match.tenantId,
+              callerPhone: callerPhone,
+              callerName: match.customerName || 'Klient',
+              callerRole: 'CLIENT',
+              durationSeconds: 0,
+              status: 'CANCELLED_SMS',
+              summary: `[Odwołanie SMS] Klient odwołał SMS-em spotkanie/wizytę w dniu ${dateStr} o godz. ${timeStr}. Slot został zwolniony.`,
+              isProcessed: true
+            }
+          }).catch(err => console.error('[Zadarma SMS] Błąd tworzenia CallLog CANCELLED_SMS:', err));
+
           import('./services/sms/SMSService').then(sms => {
             sms.SMSService.sendSMS(callerPhone, `Rezerwacja z dnia ${dateStr} na godz. ${timeStr} zostala anulowana.`).catch(console.error);
           });

@@ -1,11 +1,19 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useState } from 'react';
 import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus, Gift, CheckCircle, Tag, User, Phone, Clock, Star } from 'lucide-react';
+import ConfirmationModal from './common/ConfirmationModal';
 
 export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading }: any) {
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [confirmationModalData, setConfirmationModalData] = useState<{
+    isOpen: boolean;
+    phone?: string;
+    customerName?: string;
+    appointmentId?: string;
+    date?: string;
+  }>({ isOpen: false });
 
   React.useEffect(() => {
     // Automatyczne przewijanie do 'wczoraj' po załadowaniu lub zmianie miesiąca
@@ -228,15 +236,19 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
                     const leftPx = leftOffsetDays * 48 + 24; 
                     const widthPx = durationDays * 48;
 
+                    const isConfirmedByClient = app.status === 'confirmed_by_client';
+                    const isPendingConfirmation = app.status === 'pending_confirmation';
+                    const tileBorder = isConfirmedByClient 
+                      ? 'bg-gold-500 text-white ring-2 ring-emerald-400 border-2 border-emerald-500 shadow-[0_0_12px_rgba(34,197,94,0.45)] hover:bg-gold-600' 
+                      : isPendingConfirmation 
+                      ? 'bg-gold-500 text-white ring-2 ring-amber-400 border-2 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.45)] animate-pulse hover:bg-gold-600' 
+                      : 'bg-gold-500 text-white border border-gold-600 hover:bg-gold-600';
+
                     return (
                       <div 
                         key={app.id}
                         onClick={(e) => { e.stopPropagation(); openEditModal(app); }}
-                        className={`absolute top-2 bottom-2 rounded-lg shadow-md border flex flex-col p-1.5 overflow-hidden cursor-pointer hover:scale-[1.02] transition-all z-20 ${
-                          app.status === 'confirmed_by_client' 
-                            ? 'bg-gold-500 text-white border-4 border-green-500 hover:bg-gold-600' 
-                            : 'bg-gold-500 text-white border border-gold-600 hover:bg-gold-600'
-                        }`}
+                        className={`absolute top-2 bottom-2 rounded-lg shadow-md border flex flex-col p-1.5 overflow-hidden cursor-pointer hover:scale-[1.02] transition-all z-20 ${tileBorder}`}
                         style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
                       >
                         <div className="font-semibold text-[11px] truncate leading-tight drop-shadow-sm">{app.customerName}</div>
@@ -273,21 +285,35 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij prośbę o potwierdzenie rezerwacji do klienta " + formData.customerPhone + " na datę " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź spotkanie (SMS/Tel)</button>
+                      <button type="button" onClick={() => {
+                        setConfirmationModalData({
+                          isOpen: true,
+                          phone: formData.customerPhone,
+                          customerName: formData.customerName,
+                          appointmentId: selectedAppt?.id,
+                          date: formData.startDate
+                        });
+                      }} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź spotkanie (SMS/Tel)</button>
                       <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
                     </>
                   )}
                 </div>
               </div>
               <form onSubmit={saveAppointment} className="p-6 space-y-5">
-              {(selectedAppt?.status === 'confirmed_by_client' || selectedAppt?.promoCode) && (
-                <div className="bg-green-50 rounded-xl p-4 border border-green-200 space-y-2 mb-4">
-                  {selectedAppt?.status === 'confirmed_by_client' && (
-                    <div className="flex items-center gap-2 text-green-700 font-medium">
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                      Potwierdzone przez klienta (SMS/Głos)
-                    </div>
-                  )}
+              {selectedAppt?.status === 'confirmed_by_client' && (
+                <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 flex items-center gap-2 text-emerald-800 font-semibold text-xs mb-3">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>🟢 Potwierdzono spotkanie / wizytę</span>
+                </div>
+              )}
+              {selectedAppt?.status === 'pending_confirmation' && (
+                <div className="bg-amber-50 rounded-xl p-3 border border-amber-300 flex items-center gap-2 text-amber-900 font-semibold text-xs mb-3 animate-pulse">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>🟠 Poproszono o potwierdzenie</span>
+                </div>
+              )}
+              {(selectedAppt?.npsScore || selectedAppt?.promoCode) && (
+                <div className="bg-surface-50 rounded-xl p-4 border border-surface-200 space-y-2 mb-4">
                   {selectedAppt?.npsScore && (
                     <div className="flex items-center gap-2 text-yellow-700 font-medium">
                       <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
@@ -369,6 +395,22 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
           </div>
         </div>
       )}
+
+      {/* Universal Confirmation Action Modal */}
+      <ConfirmationModal
+        isOpen={confirmationModalData.isOpen}
+        onClose={() => setConfirmationModalData({ isOpen: false })}
+        onSuccess={() => {
+          loadData();
+          if (selectedAppt) {
+            setSelectedAppt((prev: any) => prev ? { ...prev, status: 'pending_confirmation' } : null);
+          }
+        }}
+        initialPhone={confirmationModalData.phone}
+        initialCustomerName={confirmationModalData.customerName}
+        initialAppointmentId={confirmationModalData.appointmentId}
+        initialDate={confirmationModalData.date}
+      />
     </div>
   );
 }

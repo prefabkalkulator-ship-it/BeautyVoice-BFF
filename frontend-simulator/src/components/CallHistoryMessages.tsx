@@ -22,9 +22,11 @@ import {
   Send,
   X,
   BookOpen,
-  Lock
+  Lock,
+  Calendar
 } from 'lucide-react';
 import PageHelpButton from './common/PageHelpButton';
+import ConfirmationModal from './common/ConfirmationModal';
 
 interface CallLog {
   id: string;
@@ -50,6 +52,13 @@ export default function CallHistoryMessages() {
   const [filter, setFilter] = useState<'all' | 'messages' | 'urgent'>('messages');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Stan uniwersalnego modala potwierdzeń spotkań / wizyt
+  const [confirmationModalData, setConfirmationModalData] = useState<{
+    isOpen: boolean;
+    phone?: string;
+    customerName?: string;
+  }>({ isOpen: false });
 
   // Stan modala "Doszkól asystenta" (1-Click FAQ)
   const [trainModalLog, setTrainModalLog] = useState<CallLog | null>(null);
@@ -395,6 +404,36 @@ export default function CallHistoryMessages() {
                       </span>
                     )}
 
+                    {log.status === 'CONFIRMED_SMS' && (
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Potwierdzono SMS
+                      </span>
+                    )}
+
+                    {log.status === 'CONFIRMED_PHONE' && (
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Potwierdzono Telefon
+                      </span>
+                    )}
+
+                    {log.status === 'CANCELLED_SMS' && (
+                      <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Ban className="w-3 h-3 text-rose-600" /> Odwołano (SMS)
+                      </span>
+                    )}
+
+                    {log.status === 'CANCELLED_PHONE' && (
+                      <span className="bg-rose-100 text-rose-800 border border-rose-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <Ban className="w-3 h-3 text-rose-600" /> Odwołano (Telefon)
+                      </span>
+                    )}
+
+                    {log.status === 'UNCONFIRMED' && (
+                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                        <Clock className="w-3 h-3 text-amber-600" /> Niepotwierdzono (3 próby)
+                      </span>
+                    )}
+
                     {log.isProcessed ? (
                       <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Załatwione
@@ -478,13 +517,28 @@ export default function CallHistoryMessages() {
                 {/* Akcje - pionowo z przyciskiem Oddzwoń na górze i resztą pod nim */}
                 <div className="flex flex-col items-stretch md:items-end gap-2 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-surface-100 w-full md:w-auto">
                   {log.callerPhone && log.callerPhone !== 'nieznany' && (
-                    <a
-                      href={`tel:${log.callerPhone}`}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-surface-800 hover:text-white transition shadow-sm w-full md:w-auto text-center"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      Oddzwoń ({log.callerPhone})
-                    </a>
+                    <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full md:w-auto">
+                      <a
+                        href={`tel:${log.callerPhone}`}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-surface-800 hover:text-white transition shadow-sm w-full md:w-auto text-center"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        Oddzwoń ({log.callerPhone})
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmationModalData({
+                          isOpen: true,
+                          phone: log.callerPhone,
+                          customerName: log.callerName || undefined
+                        })}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80 font-bold rounded-xl text-xs transition shadow-2xs w-full md:w-auto text-center cursor-pointer"
+                        title="Wyślij SMS lub uruchom telefon z EVA w celu potwierdzenia spotkania / wizyty"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-gold-700" />
+                        Potwierdź spotkanie / wizytę
+                      </button>
+                    </div>
                   )}
 
                   {/* Pod przyciskiem Oddzwoń: Zapisz do VIP, Załatwione i Kosz */}
@@ -708,6 +762,17 @@ export default function CallHistoryMessages() {
           </div>
         </div>
       )}
+
+      {/* Universal Confirmation Action Modal */}
+      <ConfirmationModal
+        isOpen={confirmationModalData.isOpen}
+        onClose={() => setConfirmationModalData({ isOpen: false })}
+        onSuccess={() => {
+          fetchLogs();
+        }}
+        initialPhone={confirmationModalData.phone}
+        initialCustomerName={confirmationModalData.customerName}
+      />
     </div>
   );
 }

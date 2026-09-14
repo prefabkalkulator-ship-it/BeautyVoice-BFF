@@ -81,6 +81,8 @@ export class CallOrchestrator {
 
   private isReady: boolean = false;
   private twilioMessageBuffer: string[] = [];
+  private outboundTaskId: string | null = null;
+  private outboundAppointmentId: string | null = null;
 
   constructor(twilioConnection: WebSocket) {
     this.twilioWs = twilioConnection;
@@ -98,6 +100,7 @@ export class CallOrchestrator {
             const dialedNumber = data.start.customParameters?.dialedNumber || 'unknown';
             this.dialedNumber = dialedNumber;
             const outboundTaskId = data.start.customParameters?.outboundTaskId;
+            this.outboundTaskId = outboundTaskId || null;
             this.callerPhone = data.start.customParameters?.callerPhone || "";
             const tenantIdParam = data.start.customParameters?.tenantId;
 
@@ -486,7 +489,8 @@ export class CallOrchestrator {
           this.dialedNumber = data.start.customParameters?.dialedNumber || this.dialedNumber || '';
           this.callStartTime = Date.now();
           const callerPhone = data.start.customParameters?.callerPhone || 'unknown';
-          const outboundTaskId = data.start.customParameters?.outboundTaskId;
+          const outboundTaskId = data.start.customParameters?.outboundTaskId || this.outboundTaskId;
+          if (outboundTaskId) this.outboundTaskId = outboundTaskId;
           const isPostTransferFallback = data.start.customParameters?.isPostTransferFallback === 'true';
           const fallbackVipName = data.start.customParameters?.vipName || '';
           if (isPostTransferFallback) {
@@ -502,17 +506,19 @@ export class CallOrchestrator {
             if (isPostTransferFallback && this.geminiClient) {
               contextText = `UWAGA: Próba bezpośredniego połączenia z właścicielem nie powiodła się (właściciel nie odebrał w ciągu 30 sekund lub odrzucił połączenie). Rozmówca (${fallbackVipName || 'kontakt VIP'}) powrócił na linię. NATYCHMIAST przemów jako pierwsza i powiedz dosłownie: "Właściciel nie mógł teraz odebrać. Zostaw wiadomość, a przekażę ją natychmiast." Następnie wysłuchaj i zapisz jego wiadomość narzędziem save_call_message. Pod żadnym pozorem NIE próbuj łączyć ponownie!`;
             } else if (outboundTaskId && this.tenantId) {
-               // OUTBOUND CALL LOGIC
+                // OUTBOUND CALL LOGIC
                 const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId } });
                 if (task) {
                    const payload = typeof task.payload === 'object' && task.payload !== null ? task.payload as any : {};
+                   if (payload.appointmentId) {
+                     this.outboundAppointmentId = payload.appointmentId;
+                   }
                    if (payload.type === 'live_callback_30s') {
                      contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony cyfrowa asystentka ${this.companyName || this.tenantName || 'naszej firmy'}. W czym mogę Ci dzisiaj pomóc?". Prowadź płynną rozmowę.`;
+                     await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                    } else {
-                     contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. Numer telefonu klienta to: ${task.targetPhone}. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie!`;
+                     contextText = `UWAGA: To jest połączenie wychodzące, które TY (asystentka) wykonujesz! Klient (${payload.customerName || task.targetPhone}) właśnie odebrał. Numer telefonu klienta to: ${task.targetPhone}. CEL ROZMOWY: ${payload.text}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim klient coś powie! Jeśli klient potwierdzi termin lub swoją obecność, NATYCHMIAST wywołaj narzędzie confirmAppointment. Jeśli klient informuje, że nie może się stawić, rezygnuje lub odwołuje spotkanie/wizytę, NATYCHMIAST wywołaj narzędzie cancelAppointment. Po zakończeniu podziękuj, pożegnaj się uprzejmie i użyj narzędzia endCall.`;
                    }
-                   // Oznacz task jako zakończony
-                   await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                 }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
@@ -872,10 +878,40 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           }
           return bookRes;
         }
-        case 'confirmAppointment':
-          return await bookingService.confirmAppointment(tenantId, args.customerPhone);
-        case 'cancelAppointment':
-          return await bookingService.cancelAppointment(tenantId, args.customerPhone);
+        case 'confirmAppointment': {
+          const targetPhone = args.customerPhone || this.callerPhone;
+          const targetId = args.appointmentId || this.outboundAppointmentId || undefined;
+          const res = await bookingService.confirmAppointment(tenantId, targetPhone, targetId);
+          if (res && (res.success || !res.error)) {
+            const summary = `[Potwierdzenie Telefon] Klient potwierdził spotkanie/wizytę w rozmowie telefonicznej.`;
+            this.callSummaryFromAi = summary;
+            this.callActionJournal.push(summary);
+            if (this.outboundTaskId) {
+              await prisma.outboundQueue.update({
+                where: { id: this.outboundTaskId },
+                data: { status: 'done', processedAt: new Date() }
+              }).catch(console.error);
+            }
+          }
+          return res;
+        }
+        case 'cancelAppointment': {
+          const targetPhone = args.customerPhone || this.callerPhone;
+          const targetId = args.appointmentId || this.outboundAppointmentId || undefined;
+          const res = await bookingService.cancelAppointment(tenantId, targetPhone, targetId);
+          if (res && (res.success || !res.error)) {
+            const summary = `[Odwołanie Telefon] Klient odwołał spotkanie/wizytę w rozmowie telefonicznej. Termin został zwolniony.`;
+            this.callSummaryFromAi = summary;
+            this.callActionJournal.push(summary);
+            if (this.outboundTaskId) {
+              await prisma.outboundQueue.update({
+                where: { id: this.outboundTaskId },
+                data: { status: 'done', processedAt: new Date() }
+              }).catch(console.error);
+            }
+          }
+          return res;
+        }
         case 'requestHumanContact': {
           const contactSummary = `[📞 Prośba o kontakt] ${args.reason || 'Prośba o oddzwonienie'}`;
           this.callSummaryFromAi = contactSummary;

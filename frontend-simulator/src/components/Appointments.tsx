@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import AppointmentsDaily from './AppointmentsDaily';
 import PageHelpButton from './common/PageHelpButton';
+import ConfirmationModal from './common/ConfirmationModal';
 import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag, Gift, CheckCircle, CheckCircle2, Star, PhoneCall, Copy, Check, Share2, Layers, ChevronUp, Sparkles } from 'lucide-react';
 
 interface Appointment {
@@ -57,6 +58,14 @@ export default function Appointments() {
   
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmationModalData, setConfirmationModalData] = useState<{
+    isOpen: boolean;
+    phone?: string;
+    customerName?: string;
+    appointmentId?: string;
+    date?: string;
+    time?: string;
+  }>({ isOpen: false });
   
   const [formData, setFormData] = useState({
     customerName: '',
@@ -85,7 +94,7 @@ export default function Appointments() {
       let eventsData = [];
       try { eventsData = await eventsRes.json(); } catch(e) {}
       
-      setAppointments(Array.isArray(appData) ? appData : []);
+      setAppointments(Array.isArray(appData) ? appData.filter((a: any) => a.status !== 'cancelled') : []);
       setServices(Array.isArray(svcData) ? svcData : []);
       setStaffList(Array.isArray(staffData) ? staffData : []);
       setBusinessProfile(tenantData?.businessProfile || 'solo');
@@ -752,31 +761,47 @@ export default function Appointments() {
       {view === 'list' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {appointments.map(app => (
-            <div 
-              key={app.id} 
-              onClick={() => openEditModal(app)}
-              className={`glass-card glass-card-hover rounded-xl p-4 relative overflow-hidden group cursor-pointer ${app.status === 'confirmed_by_client' ? 'border-2 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.3)]' : ''}`}
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="text-xl font-serif text-surface-900 flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-gold-500" />
-                  {formatTime(app.startTime)}
+              <div 
+                key={app.id} 
+                onClick={() => openEditModal(app)}
+                className={`glass-card glass-card-hover rounded-xl p-4 relative overflow-hidden group cursor-pointer ${
+                  app.status === 'confirmed_by_client' 
+                    ? 'ring-2 ring-emerald-400 border-2 border-emerald-500 shadow-[0_0_12px_rgba(34,197,94,0.45)]' 
+                    : app.status === 'pending_confirmation' 
+                    ? 'ring-2 ring-amber-400 border-2 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.45)] animate-pulse' 
+                    : ''
+                }`}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="text-xl font-serif text-surface-900 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-gold-500" />
+                    {formatTime(app.startTime)}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {app.contactLevel === 'CALL' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">📞 Telefon</span>
+                    )}
+                    {app.contactLevel === 'TASK' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">📌 Zadanie</span>
+                    )}
+                    {(!app.contactLevel || app.contactLevel === 'MEETING') && businessProfile === 'personal' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">🤝 Spotkanie</span>
+                    )}
+                    {app.status === 'confirmed_by_client' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        🟢 Potwierdzone
+                      </span>
+                    ) : app.status === 'pending_confirmation' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        🟠 Poproszono o potwierdzenie
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 uppercase tracking-wide">
+                        {app.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  {app.contactLevel === 'CALL' && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">📞 Telefon</span>
-                  )}
-                  {app.contactLevel === 'TASK' && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">📌 Zadanie</span>
-                  )}
-                  {(!app.contactLevel || app.contactLevel === 'MEETING') && businessProfile === 'personal' && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">🤝 Spotkanie</span>
-                  )}
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 uppercase tracking-wide">
-                    {app.status}
-                  </span>
-                </div>
-              </div>
               <div className="text-xs font-medium text-surface-500 capitalize mb-3">{formatDate(app.startTime)}</div>
               
               <div className="space-y-1.5 bg-surface-50 p-2.5 rounded-lg border border-surface-100">
@@ -1256,7 +1281,14 @@ export default function Appointments() {
                             }
 
                             const isConfirmedByClient = app.status === 'confirmed_by_client';
+                            const isPendingConfirmation = app.status === 'pending_confirmation';
                             const hasPromo = !!app.promoCode;
+
+                            const statusBorderClass = isConfirmedByClient 
+                              ? 'ring-2 ring-emerald-400 border-2 border-emerald-500 shadow-[0_0_12px_rgba(34,197,94,0.45)]' 
+                              : isPendingConfirmation 
+                              ? 'ring-2 ring-amber-400 border-2 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.45)] animate-pulse' 
+                              : 'border border-transparent';
 
                             return (
                               <div 
@@ -1264,7 +1296,7 @@ export default function Appointments() {
                                 onClick={(e) => { e.stopPropagation(); openEditModal(app); }}
                                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
                                 title={`${app.customerName} - ${app.callSummary || app.service?.name || ''}`}
-                                className={`absolute left-1 right-2 z-10 pointer-events-auto ${bgColor} text-white ${isCompact ? 'py-1 px-2 rounded-lg' : 'p-2 rounded-xl'} shadow-md flex flex-col justify-center overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${isConfirmedByClient ? 'ring-2 ring-green-400 border-2 border-green-500' : 'border border-transparent'}`}
+                                className={`absolute left-1 right-2 z-10 pointer-events-auto ${bgColor} text-white ${isCompact ? 'py-1 px-2 rounded-lg' : 'p-2 rounded-xl'} shadow-md flex flex-col justify-center overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${statusBorderClass}`}
                               >
                                 <span className={`font-semibold ${isCompact ? 'text-xs leading-tight' : 'text-sm'} truncate drop-shadow-sm flex items-center gap-1`}>
                                   {app.isProcessed ? (
@@ -1385,7 +1417,14 @@ export default function Appointments() {
                                   }
 
                                   const isConfirmedByClient = app.status === 'confirmed_by_client';
+                                  const isPendingConfirmation = app.status === 'pending_confirmation';
                                   const hasPromo = !!app.promoCode;
+
+                                  const clusterItemBorder = isConfirmedByClient 
+                                    ? 'ring-2 ring-emerald-400 border-2 border-emerald-500 shadow-[0_0_12px_rgba(34,197,94,0.45)]' 
+                                    : isPendingConfirmation 
+                                    ? 'ring-2 ring-amber-400 border-2 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.45)] animate-pulse' 
+                                    : 'border shadow-sm';
 
                                   return (
                                     <div
@@ -1394,7 +1433,7 @@ export default function Appointments() {
                                         e.stopPropagation();
                                         openEditModal(app);
                                       }}
-                                      className={`${bgColor} text-white p-2.5 rounded-xl border shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between hover:scale-[1.005]`}
+                                      className={`${bgColor} text-white p-2.5 rounded-xl ${clusterItemBorder} hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between hover:scale-[1.005]`}
                                     >
                                       <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2 truncate">
@@ -1545,7 +1584,24 @@ export default function Appointments() {
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij prośbę o potwierdzenie rezerwacji do klienta " + formData.customerPhone + " na datę " + ((formData.date ? formData.date + ' ' + formData.startTime : selectedAppt.startTime)) } })} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź rezerwacje</button>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const apptDate = new Date(selectedAppt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+                          const apptTime = new Date(selectedAppt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+                          setConfirmationModalData({
+                            isOpen: true,
+                            phone: formData.customerPhone || selectedAppt.customerPhone,
+                            customerName: formData.customerName || selectedAppt.customerName,
+                            appointmentId: selectedAppt.id,
+                            date: apptDate,
+                            time: apptTime
+                          });
+                        }} 
+                        className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left"
+                      >
+                        🗓 Potwierdź rezerwacje
+                      </button>
                       <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } })} className="text-xs font-medium px-3 py-2 bg-surface-50 border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
                     </>
                   )}
@@ -1555,14 +1611,20 @@ export default function Appointments() {
 
             {!isEditing && selectedAppt.id !== 'new' ? (
               <div className="space-y-4">
-                {(selectedAppt.status === 'confirmed_by_client' || selectedAppt.promoCode) && (
-                  <div className="bg-green-50 rounded-xl p-4 border border-green-200 space-y-2 mb-4">
-                    {selectedAppt.status === 'confirmed_by_client' && (
-                      <div className="flex items-center gap-2 text-green-700 font-medium">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        Potwierdzone przez klienta (SMS/Głos)
-                      </div>
-                    )}
+                {selectedAppt.status === 'confirmed_by_client' && (
+                  <div className="bg-emerald-50 rounded-xl p-3.5 border border-emerald-200 flex items-center gap-2.5 text-emerald-800 font-semibold text-xs sm:text-sm mb-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>🟢 Potwierdzono spotkanie / wizytę</span>
+                  </div>
+                )}
+                {selectedAppt.status === 'pending_confirmation' && (
+                  <div className="bg-amber-50 rounded-xl p-3.5 border border-amber-300 flex items-center gap-2.5 text-amber-900 font-semibold text-xs sm:text-sm mb-3 animate-pulse">
+                    <Clock className="w-5 h-5 text-amber-600 shrink-0" />
+                    <span>🟠 Poproszono o potwierdzenie</span>
+                  </div>
+                )}
+                {(selectedAppt.promoCode || selectedAppt.npsScore) && (
+                  <div className="bg-surface-50 rounded-xl p-4 border border-surface-200 space-y-2 mb-4">
                     {selectedAppt.npsScore && (
                       <div className="flex items-center gap-2 text-yellow-700 font-medium">
                         <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
@@ -1687,21 +1749,34 @@ export default function Appointments() {
                 )}
 
                 {selectedAppt.customerPhone && selectedAppt.customerPhone !== 'nieznany' && (
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      const apptDate = new Date(selectedAppt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
-                      const apptTime = new Date(selectedAppt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-                      navigate('/dashboard/simulator', { 
-                        state: { 
-                          initialPrompt: `Wyślij prośbę o potwierdzenie spotkania do klienta ${selectedAppt.customerName ? selectedAppt.customerName + ' ' : ''}(${selectedAppt.customerPhone}) na termin ${apptDate} o godz. ${apptTime}`
-                        } 
-                      });
-                    }}
-                    className="flex items-center justify-center gap-2 w-full bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80 py-2.5 rounded-xl font-medium text-sm transition-colors text-center shadow-xs cursor-pointer"
-                  >
-                    <span>🗓</span> Potwierdź spotkanie (SMS / Telefon)
-                  </button>
+                  selectedAppt.status === 'pending_confirmation' ? (
+                    <div className="flex items-center justify-center gap-2 w-full bg-amber-50 text-amber-900 border border-amber-300 py-2.5 rounded-xl font-medium text-sm text-center shadow-xs">
+                      <span>🟠</span> Poproszono o potwierdzenie (w toku)
+                    </div>
+                  ) : selectedAppt.status === 'confirmed_by_client' ? (
+                    <div className="flex items-center justify-center gap-2 w-full bg-emerald-50 text-emerald-800 border border-emerald-300 py-2.5 rounded-xl font-medium text-sm text-center shadow-xs">
+                      <span>🟢</span> Spotkanie potwierdzone przez klienta
+                    </div>
+                  ) : (
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        const apptDate = new Date(selectedAppt.startTime).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+                        const apptTime = new Date(selectedAppt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+                        setConfirmationModalData({
+                          isOpen: true,
+                          phone: selectedAppt.customerPhone,
+                          customerName: selectedAppt.customerName,
+                          appointmentId: selectedAppt.id,
+                          date: apptDate,
+                          time: apptTime
+                        });
+                      }}
+                      className="flex items-center justify-center gap-2 w-full bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80 py-2.5 rounded-xl font-medium text-sm transition-colors text-center shadow-xs cursor-pointer"
+                    >
+                      <span>🗓</span> Potwierdź spotkanie (SMS / Telefon)
+                    </button>
+                  )
                 )}
                 
                 <div className="flex gap-2 pt-2">
@@ -1850,6 +1925,23 @@ export default function Appointments() {
         </div>,
         document.body
       )}
+
+      {/* Universal Confirmation Action Modal */}
+      <ConfirmationModal
+        isOpen={confirmationModalData.isOpen}
+        onClose={() => setConfirmationModalData({ isOpen: false })}
+        onSuccess={() => {
+          loadData();
+          if (selectedAppt) {
+            setSelectedAppt(prev => prev ? { ...prev, status: 'pending_confirmation' } : null);
+          }
+        }}
+        initialPhone={confirmationModalData.phone}
+        initialCustomerName={confirmationModalData.customerName}
+        initialAppointmentId={confirmationModalData.appointmentId}
+        initialDate={confirmationModalData.date}
+        initialTime={confirmationModalData.time}
+      />
     </div>
   );
 }
