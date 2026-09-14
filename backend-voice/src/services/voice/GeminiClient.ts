@@ -47,6 +47,7 @@ export interface GeminiClientCallbacks {
 export class GeminiClient {
   private ws: WebSocket | null = null;
   private callbacks: GeminiClientCallbacks;
+  private pendingGreetingObj: any = null;
 
   constructor(callbacks: GeminiClientCallbacks) {
     this.callbacks = callbacks;
@@ -138,6 +139,12 @@ export class GeminiClient {
 
     console.log("[Gemini] Wysyłanie setupMessage dla:", aiVoice);
     this.ws?.send(JSON.stringify(setupMessage));
+
+    if (this.pendingGreetingObj) {
+      console.log("[Gemini] Wysyłanie zbuforowanego powitania początkowego po nawiązaniu sesji.");
+      this.send(this.pendingGreetingObj);
+      this.pendingGreetingObj = null;
+    }
   }
 
   private handleMessage(rawData: Buffer | string) {
@@ -197,19 +204,26 @@ export class GeminiClient {
     const forbiddenGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dobry wieczór' : (warsawHour >= 18 && warsawHour < 22) ? 'Dzień dobry' : '';
 
     const instruction = forbiddenGreeting
-      ? `Aktualna godzina w Warszawie to ${warsawTime}. Obowiązkowe powitanie to WYŁĄCZNIE "${exactGreeting}". KATEGORYCZNY ZAKAZ używania słów "${forbiddenGreeting}"!`
+      ? `Aktualna godzina w Warszawie to ${warsawTime}. Dozwolone powitanie to WYŁĄCZNIE "${exactGreeting}". KATEGORYCZNY ZAKAZ używania słów "${forbiddenGreeting}"!`
       : `Aktualna godzina w Warszawie to ${warsawTime}. Użyj powitania "${exactGreeting}".`;
 
     const text = contextText 
-      ? `Odebrałem telefon. ${contextText} ${instruction} Wypowiedz pierwsze powitanie natychmiast, dokładnie według powyższych wytycznych.` 
-      : `Odebrałem telefon. ${instruction} Przywitaj się zwięźle i profesjonalnie.`;
+      ? `Rozmówca połączył się. ${contextText} ${instruction} WAŻNE: Wypowiedz powyższe pierwsze zdanie dokładnie i naturalnie. Kategoryczny zakaz dublowania powitania (np. mówienia "Dzień dobry" dwa razy)!` 
+      : `Rozmówca połączył się. ${instruction} Przywitaj się zwięźle i profesjonalnie jednym zwrotem powitalnym.`;
       
-    this.send({
+    const greetingObj = {
       clientContent: {
         turns: [{ role: 'user', parts: [{ text }] }],
         turnComplete: true
       }
-    });
+    };
+
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.send(greetingObj);
+    } else {
+      console.log("[Gemini] WebSocket jeszcze nie jest gotowy, buforuję powitanie początkowe.");
+      this.pendingGreetingObj = greetingObj;
+    }
   }
 
   sendToolResponse(functionResponses: any[]) {

@@ -537,9 +537,12 @@ export class CallOrchestrator {
                      await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                    } else {
                      const isMaleVoice = ['Puck', 'Charon'].includes(this.voiceName);
-                     const assistantTitle = isMaleVoice ? 'wirtualnym asystentem' : 'wirtualną asystentką';
+                     const assistantTitleInstrumental = isMaleVoice ? 'wirtualnym asystentem' : 'wirtualną asystentką';
+                     const assistantTitleNominative = isMaleVoice ? 'wirtualny asystent' : 'wirtualna asystentka';
                      const ownerDisplayName = this.ownerName || this.tenantName || 'właściciela';
                      const ownerPrefix = this.ownerGender === 'FEMALE' ? 'Pani' : 'Pana';
+                     const ownerFirst = ownerDisplayName.split(' ')[0];
+                     const ownerFirstGenitive = getPolishGenitive(ownerFirst, this.ownerGender);
 
                      const rawCustomerName = (payload.customerName || '').trim();
                      let clientGreeting = `${timeGreeting}`;
@@ -560,14 +563,14 @@ export class CallOrchestrator {
                      const eventWordAccusative = isVisit ? 'zaplanowaną wizytę' : 'zaplanowane spotkanie';
                      const dateText = payload.dateStr || 'jutro';
                      const timeText = payload.timeStr ? `o godzinie ${payload.timeStr}` : '';
-                     const additionalNoteText = payload.additionalNote ? ` Dodatkowo przekazuję ważną prośbę od ${ownerPrefix} ${ownerDisplayName}: ${payload.additionalNote}.` : '';
+                     const additionalNoteText = payload.additionalNote ? ` Dodatkowo przekazuję ważną prośbę od ${ownerPrefix} ${ownerFirstGenitive}: ${payload.additionalNote}.` : '';
 
-                     const openingSentence = `${clientGreeting}. Jestem ${assistantTitle} ${ownerPrefix} ${ownerDisplayName}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
+                     const openingSentence = `${clientGreeting}. Jestem ${assistantTitleInstrumental} ${ownerPrefix} ${ownerFirstGenitive}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
 
                      contextText = `UWAGA: To jest połączenie wychodzące (Outbound), które TY wykonujesz do klienta! Klient (${rawCustomerName || task.targetPhone}) właśnie odebrał telefon. Numer telefonu klienta to: ${task.targetPhone}.
 BEZWZGLĘDNY NAKAZ: Twoim PIERWSZYM ZDANIEM musi być DOKŁADNIE i DOSŁOWNIE:
 "${openingSentence}"
-KATEGORYCZNY ZAKAZ przedstawiania się jako ${ownerDisplayName}! Jesteś JEGO ASYSTENTEM (${assistantTitle}), a nie samym właścicielem!
+KATEGORYCZNY ZAKAZ przedstawiania się jako ${ownerDisplayName}! Jesteś JEGO ASYSTENTEM (${assistantTitleInstrumental}), a nie samym właścicielem!
 Po usłyszeniu odpowiedzi klienta:
 - Jeśli klient potwierdza (np. "Tak", "Będę", "Potwierdzam", "Pasuje mi"): NATYCHMIAST wywołaj narzędzie confirmAppointment, podziękuj uprzejmie za potwierdzenie, pożegnaj się i wywołaj narzędzie endCall.
 - Jeśli klient informuje, że nie może, rezygnuje lub odwołuje (np. "Nie mogę", "Muszę odwołać", "Rezygnuję"): NATYCHMIAST wywołaj narzędzie cancelAppointment, wyraź zrozumienie, pożegnaj się i wywołaj narzędzie endCall.
@@ -580,7 +583,8 @@ Po usłyszeniu odpowiedzi klienta:
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
               const isMale = ['Puck', 'Charon'].includes(this.voiceName);
-              const assistantTitle = isMale ? 'asystentem wirtualnym' : 'wirtualną asystentką';
+              const assistantTitleInstrumental = isMale ? 'wirtualnym asystentem' : 'wirtualną asystentką';
+              const assistantTitleNominative = isMale ? 'wirtualny asystent' : 'wirtualna asystentka';
               const ownerDisplayName = this.ownerName || this.tenantName;
               const ownerGenitivePrefix = this.ownerGender === 'FEMALE' ? 'pani' : 'pana';
               const ownerGenitiveName = getPolishGenitive(ownerDisplayName, this.ownerGender);
@@ -602,7 +606,7 @@ Po usłyszeniu odpowiedzi klienta:
                 if (vipFormality === 'direct_ty') {
                   contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się bezpośrednio na "Ty". Przywitaj się wyjątkowo ciepło i po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałbyś/chciałabyś zostawić wiadomość, czy umówić dogodny termin rozmowy?".`;
                 } else {
-                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się z pełnym szacunkiem per Pan/Pani. Przywitaj się serdecznie: "${timeGreeting}, jestem ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy zarezerwować dogodny termin rozmowy?".
+                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się z pełnym szacunkiem per Pan/Pani. Przywitaj się serdecznie: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy zarezerwować dogodny termin rozmowy?".
 DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
                 }
               } else if (this.isReturningCaller && this.returningCallerName) {
@@ -622,12 +626,12 @@ DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle
                 contextText = `Rozmawiasz ze ZNANYM POWRACAJĄCYM ROZMÓWCĄ: ${this.returningCallerName} (${vocative}). Numer: ${callerPhone}. Dzwonił już wcześniej i zna Twoje możliwości.
 ABSOLUTNY ZAKAZ pytania "z kim mam przyjemność?" i ZAKAZ długiego dwuetapowego onboardingu!
 Twoim PIERWSZYM ZDANIEM musi być krótkie, profesjonalne powitanie z imieniem w wołaczu:
-"${timeGreeting} ${vocative}, z tej strony ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".
+"${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".
 JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni"): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: ...") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
 DYSKRECJA NAZWISKA: Mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
               } else {
                 // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST): 100% neutralność i prośba o przedstawienie się
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Reprezentujesz: ${ownerDisplayName}. Twoim PIERWSZYM ZDANIEM (Tura 1) musi być DOKŁADNIE: "Witam, jestem ${assistantTitle} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Reprezentujesz: ${ownerDisplayName}. Twoim PIERWSZYM ZDANIEM (Tura 1) musi być DOKŁADNIE: "Witam, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".
 JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni", "Niech zadzwoni do..."): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: żeby podszedł do biura") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
 DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}' (np. 'pan ${ownerFirst}'). KATEGORYCZNY ZAKAZ podawania nazwiska właściciela, chyba że rozmówca wprost o to zapyta ("A o jakiego pana ${ownerFirst} chodzi?"). Wtedy i tylko wtedy potwierdź pełne nazwisko.
 W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 według instrukcji systemowych.`;

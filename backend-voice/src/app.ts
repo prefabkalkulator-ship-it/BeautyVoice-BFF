@@ -405,11 +405,8 @@ app.post('/api/campaigns/execute', async (req, res) => {
         added++;
       }
 
-      // Jeśli nie ma ciszy nocnej, zainicjuj natychmiastowe przetwarzanie kolejki
-      const hourWarsaw = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Warsaw' })).getHours();
-      if (hourWarsaw >= 9 && hourWarsaw < 20) {
-        import('./jobs/OutboundProcessor').then(m => m.processOutboundQueue()).catch(console.error);
-      }
+      // Natychmiastowe przetworzenie zlecenia uruchomionego manualnie przez użytkownika
+      import('./jobs/OutboundProcessor').then(m => m.processOutboundQueue(true)).catch(console.error);
 
       return res.json({
         success: true,

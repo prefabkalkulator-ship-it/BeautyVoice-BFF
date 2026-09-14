@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Calendar, Phone, MessageSquare, Info, Sparkles, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface ConfirmationModalProps {
@@ -102,10 +103,10 @@ export default function ConfirmationModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div 
-        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-surface-200/90 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-surface-200/90 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Nagłówek */}
@@ -347,6 +348,7 @@ export default function ConfirmationModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

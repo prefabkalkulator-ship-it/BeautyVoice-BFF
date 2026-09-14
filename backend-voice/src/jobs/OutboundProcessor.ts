@@ -2,15 +2,15 @@ import { prisma } from '../prisma';
 import { SMSService } from '../services/sms/SMSService';
 import { VoiceOutboundService } from '../services/voice/VoiceOutboundService';
 
-export async function processOutboundQueue() {
+export async function processOutboundQueue(forceImmediate: boolean = false) {
   try {
     const now = new Date();
-    const hour = now.getUTCHours() + 2; // Zgrubna konwersja na PL time (TODO: użyć moment-timezone lub biblioteki)
+    const warsawHour = parseInt(now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
     
-    // QUIET HOURS: 20:00 - 09:00
-    // hour = 22 -> quiet. hour = 8 -> quiet.
-    if (hour >= 20 || hour < 9) {
-      console.log('[OutboundProcessor] Cisza nocna (Quiet Hours). Wstrzymuję wysyłkę.');
+    // QUIET HOURS (Cisza nocna): 21:00 - 08:00 (dla automatycznych ponowień w tle)
+    // Jeśli zadanie zostało wywołane manualnie przez użytkownika (forceImmediate = true), realizujemy natychmiast
+    if (!forceImmediate && (warsawHour >= 21 || warsawHour < 8)) {
+      console.log('[OutboundProcessor] Cisza nocna (Quiet Hours). Wstrzymuję automatyczną wysyłkę.');
       return;
     }
 

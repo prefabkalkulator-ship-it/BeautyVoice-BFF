@@ -314,31 +314,6 @@ export class BookingService {
               required: ['message_content', 'channel', 'audience_tags', 'campaign_name']
             }
           },
-      {
-        name: 'confirmAppointment',
-        description: 'Potwierdza rezerwację w systemie. Użyj tego narzędzia, gdy dzwonisz do klienta by potwierdzić rezerwację i klient odpowie twierdząco (np. "Tak, będę"). Jeśli znasz ID rezerwacji z kontekstu, podaj je.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta, z którym aktualnie rozmawiasz' },
-            appointmentId: { type: 'STRING', description: 'ID rezerwacji (opcjonalnie)' }
-          },
-          required: ['customerPhone']
-        }
-      },
-      {
-        name: 'cancelAppointment',
-        description: 'Odwołuje rezerwację w systemie. Użyj tego narzędzia, gdy klient poinformuje, że nie przyjdzie, chce zrezygnować, lub odpowie przecząco na prośbę o potwierdzenie wizyty.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta' }
-          },
-          required: ['customerPhone']
-        }
-      },
-
-        
           {
             name: 'updateCustomerSource',
             description: 'Używaj TEGO narztdzia wycznie wtedy, gdy zapytasz nowego klienta "Skd si o nas dowiedziae?" a on odpowie (np. z Google, od znajomego, z Facebooka).',

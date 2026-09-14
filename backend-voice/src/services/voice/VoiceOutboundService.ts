@@ -51,6 +51,13 @@ export class VoiceOutboundService {
         } catch (e) {}
       }
 
+      // KRYTYCZNE ZABEZPIECZENIE: Nigdy nie wolno dzwonić z numeru na ten sam numer (from === to)
+      // Operatorzy telekomunikacyjni odrzucają takie połączenia z błędem pętli (Failed)
+      if (from === to) {
+        console.warn(`[VoiceOutbound] Wykryto from === to (${from}). Zmiana na zweryfikowany numer zastępczy +48343433088.`);
+        from = '+48343433088';
+      }
+
       let call;
       try {
         call = await client.calls.create({
@@ -62,7 +69,10 @@ export class VoiceOutboundService {
         return true;
       } catch (err: any) {
         console.warn(`[VoiceOutbound] Próba połączenia z ${from} zwróciła błąd: ${err.message}. Próbuję alternatywnych zweryfikowanych numerów...`);
-        const fallbacks = ['+48459568507', '+48533989987', '+48343433088'].filter(f => f !== from);
+        // Bezwzględnie wykluczamy zarówno numer bieżący (from), jak i numer docelowy (to)!
+        const candidateFallbacks = ['+48459568507', '+48343433088', '+48533989987'];
+        const fallbacks = candidateFallbacks.filter(f => f !== from && f !== to);
+
         for (const fallbackFrom of fallbacks) {
           try {
             call = await client.calls.create({
