@@ -33,6 +33,60 @@ export default function Auth() {
     setTermsAccepted(false);
   }, [location]);
 
+  // Mapowanie technicznych błędów (np. "failed to fetch", CORS, timeout) na elegancki język polski
+  const mapAuthErrorMessage = (err: any): string => {
+    if (!err) return 'Wystąpił nieoczekiwany błąd. Spróbuj ponownie.';
+    const raw = String(err?.message || err || '').toLowerCase();
+
+    // Błędy braku łączności / sieciowe (w tym 'failed to fetch' na telefonie)
+    if (
+      raw.includes('failed to fetch') ||
+      raw.includes('networkerror') ||
+      raw.includes('load failed') ||
+      raw.includes('network request failed') ||
+      raw.includes('abort') ||
+      err.name === 'TypeError'
+    ) {
+      return 'Brak połączenia z serwerem. Upewnij się, że masz aktywne połączenie z internetem i spróbuj ponownie.';
+    }
+
+    // Błędy parsowania odpowiedzi serwera (np. 502 Bad Gateway / timeout HTML)
+    if (raw.includes('unexpected token') || raw.includes('json') || raw.includes('syntaxerror')) {
+      return 'Serwer jest chwilowo niedostępny lub trwa krótka aktualizacja. Spróbuj ponownie za moment.';
+    }
+
+    // Błędy autoryzacji i PIN
+    if (raw.includes('nieprawidłowy pin') || raw.includes('zły pin') || raw.includes('invalid pin') || raw.includes('błędny pin')) {
+      return 'Podany kod PIN jest nieprawidłowy. Sprawdź 4-cyfrowy PIN lub skorzystaj z opcji „Nie pamiętasz kodu PIN?” poniżej.';
+    }
+
+    if (raw.includes('nie znaleziono konta')) {
+      return 'Nie znaleziono konta dla podanego numeru telefonu. Sprawdź wpisany numer lub załóż konto w zakładce Rejestracja.';
+    }
+
+    if (raw.includes('podaj numer')) {
+      return 'Wprowadź swój numer telefonu oraz 4-cyfrowy kod PIN.';
+    }
+
+    if (raw.includes('pin musi zawierać') || raw.includes('identyczne')) {
+      return err.message;
+    }
+
+    if (raw.includes('zbyt wiele prób') || raw.includes('rate limit') || raw.includes('odczekaj')) {
+      return 'Zbyt wiele prób. Ze względów bezpieczeństwa odczekaj chwilę przed kolejną próbą.';
+    }
+
+    if (raw.includes('niepoprawny kod sms') || raw.includes('błędny kod sms') || raw.includes('wygasł')) {
+      return 'Podany kod SMS jest nieprawidłowy lub wygasł. Poproś o nowy kod.';
+    }
+
+    if (err?.message && !raw.includes('error') && !raw.includes('fail') && !raw.includes('object')) {
+      return err.message;
+    }
+
+    return 'Wystąpił problem podczas logowania. Sprawdź wprowadzone dane i spróbuj ponownie.';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isLogin && !termsAccepted) {
@@ -54,7 +108,14 @@ export default function Auth() {
         body: JSON.stringify(body)
       });
       
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        if (!res.ok) {
+          throw new Error('Serwer jest chwilowo niedostępny. Spróbuj ponownie za chwilę.');
+        }
+      }
       
       if (!res.ok) {
         throw new Error(data.error || 'Błąd uwierzytelniania');
@@ -71,7 +132,7 @@ export default function Auth() {
       navigate('/dashboard/subscription');
       
     } catch (err: any) {
-      setError(err.message || 'Wystąpił błąd podczas uwierzytelniania');
+      setError(mapAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -94,7 +155,12 @@ export default function Auth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber })
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        throw new Error('Serwer jest chwilowo niedostępny. Spróbuj ponownie za chwilę.');
+      }
       if (!res.ok) {
         throw new Error(data.error || 'Nie udało się wysłać kodu SMS');
       }
@@ -104,7 +170,7 @@ export default function Auth() {
       setSuccessMsg('Kod weryfikacyjny został wysłany SMS-em na Twój numer telefonu.');
       setForgotStep(2);
     } catch (err: any) {
-      setError(err.message || 'Wystąpił błąd podczas wysyłania SMS');
+      setError(mapAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -136,7 +202,12 @@ export default function Auth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber, code: resetSmsCode, newPin })
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        throw new Error('Serwer jest chwilowo niedostępny. Spróbuj ponownie za chwilę.');
+      }
       if (!res.ok) {
         throw new Error(data.error || 'Błąd zmiany kodu PIN');
       }
@@ -153,7 +224,7 @@ export default function Auth() {
         navigate('/dashboard/appointments');
       }, 1000);
     } catch (err: any) {
-      setError(err.message || 'Błąd weryfikacji kodu SMS');
+      setError(mapAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }

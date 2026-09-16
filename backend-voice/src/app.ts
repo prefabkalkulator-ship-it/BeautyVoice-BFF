@@ -1322,19 +1322,27 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { phoneNumber, pinCode } = req.body;
     if (!phoneNumber || !pinCode) {
-      return res.status(400).json({ error: 'Podaj numer telefonu i PIN' });
+      return res.status(400).json({ error: 'Podaj numer telefonu i 4-cyfrowy kod PIN.' });
     }
-    const tenant = await prisma.tenant.findUnique({ where: { phoneNumber } });
+    const clean = String(phoneNumber).replace(/[\s\-()]/g, '');
+    const variants = [phoneNumber, clean];
+    if (!clean.startsWith('+')) variants.push('+' + clean);
+    if (clean.startsWith('+48')) variants.push(clean.replace('+48', ''));
+    else if (!clean.startsWith('+')) variants.push('+48' + clean);
+
+    const tenant = await prisma.tenant.findFirst({
+      where: { phoneNumber: { in: variants } }
+    });
     if (!tenant) {
-      return res.status(400).json({ error: 'Nie znaleziono konta.' });
+      return res.status(404).json({ error: 'Nie znaleziono konta dla podanego numeru telefonu.' });
     }
-    if (tenant.pinCode !== pinCode) {
-      return res.status(401).json({ error: 'Nieprawidłowy PIN.' });
+    if (tenant.pinCode !== String(pinCode).trim()) {
+      return res.status(401).json({ error: 'Podany kod PIN jest nieprawidłowy.' });
     }
     res.json({ tenantId: tenant.id, phoneNumber: tenant.phoneNumber, name: tenant.name, message: 'Zalogowano pomyślnie' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Błąd podczas logowania' });
+    console.error('[auth/login error]', err);
+    res.status(500).json({ error: 'Wystąpił błąd serwera podczas logowania. Spróbuj ponownie za chwilę.' });
   }
 });
 
