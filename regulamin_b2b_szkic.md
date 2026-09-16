@@ -20,6 +20,10 @@ Niniejszy dokument stanowi zarys punktów, które należy zawrzeć w ostatecznym
    - Przestępstw oszustwa,
    - Odbierania połączeń o charakterze nielegalnym lub naruszającym dobre obyczaje.
 4. **Zwolnienie z odpowiedzialności (Indemnity)**: Usługobiorca zgadza się w pełni zwolnić Usługodawcę z wszelkiej odpowiedzialności finansowej, cywilnej i karnej wynikającej z roszczeń osób trzecich w związku z nieodpowiednim zarządzaniem ruchem telefonicznym przez Usługobiorcę.
+5. **Weryfikacja Bezpieczeństwa i Zgodności Bazy Wiedzy (FAQ) oraz Instrukcji AI**:
+   a) W celu zapobiegania naruszeniom powszechnie obowiązującego prawa, wyłudzeniom, oszustwom, zjawisku phishingu oraz bezprawnemu świadczeniu usług regulowanych (w szczególności niedozwolonych porad medycznych, farmakologicznych, prawnych lub finansowych), **Usługodawca zastrzega sobie prawo do zautomatyzowanego oraz incydentalnego audytu wyłącznie zawartości wprowadzonej przez Usługobiorcę do Bazy Wiedzy (FAQ), profilu działalności oraz instrukcji konfiguracyjnych asystenta głosowego**.
+   b) **Gwarancja Prywatności i Tajemnicy Telekomunikacyjnej:** Monitoring, o którym mowa w lit. a, ma charakter wyłącznie prewencyjny i **kategorycznie nie obejmuje ani nie dopuszcza odsłuchiwania prowadzonych rozmów telefonicznych**, wglądu w prywatne bilingi połączeń czy analizy treści zapytań dzwoniących klientów końcowych. Wszelkie dane transkrypcyjne i audio z połączeń podlegają bezwzględnej ochronie w ramach Umowy Powierzenia Przetwarzania Danych Osobowych (§ 4 Regulaminu) oraz przepisów o tajemnicy telekomunikacyjnej.
+   c) W przypadku wykrycia w Bazie Wiedzy (FAQ) lub profilu treści naruszających Regulamin lub powszechnie obowiązujące przepisy prawa, Usługodawca ma prawo wezwać Usługobiorcę do ich niezwłocznej modyfikacji, zablokować określone odpowiedzi asystenta lub czasowo zawiesić świadczenie usługi do momentu usunięcia naruszenia.
 
 ## 3. Komunikacja Wychodząca SMS
 1. W ramach funkcjonowania usługi asystenta, Platforma wysyła automatyczne powiadomienia SMS na numery pacjentów/klientów (np. potwierdzenie wizyty, możliwość anulacji).

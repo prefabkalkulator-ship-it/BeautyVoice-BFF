@@ -1215,7 +1215,10 @@ export function SuperAdminDashboard() {
                     <button 
                       onClick={(e) => {
                         e.preventDefault();
-                        const msg = window.prompt("Wpisz treść wiadomości SMS do właściciela firmy:");
+                        const defaultMsg = selectedTenant.riskLevel === 'HIGH'
+                          ? `EVA: Dzień dobry. Zgodnie z § 2 ust. 5 Regulaminu (veritas-app.com/eva/regulamin), weryfikacja bazy wiedzy FAQ Twojego asystenta wykryła naruszenie: ${selectedTenant.moderationNotes || 'niezgodność treści z regulaminem'}. Prosimy o korektę wpisów w panelu.`
+                          : "";
+                        const msg = window.prompt("Wpisz treść wiadomości SMS do właściciela firmy:", defaultMsg);
                         if (msg) handleAction(selectedTenant.id, "sms", { message: msg });
                       }}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow text-xs transition"
@@ -1238,10 +1241,26 @@ export function SuperAdminDashboard() {
                 {/* Sekcja Oflagowania przez AI (HIGH RISK BANNER) */}
                 {selectedTenant.riskLevel === 'HIGH' && selectedTenant.moderationNotes && (
                   <div className="bg-red-950/40 border border-red-600 p-4 mb-6 rounded-2xl">
-                    <div className="flex items-center gap-2 text-red-400 font-black text-sm mb-1">
-                      <span>🚨</span> Naruszenie Regulaminu Platformy (TOS):
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 text-red-400 font-black text-sm">
+                        <span>🚨</span> Naruszenie Regulaminu Platformy (§ 2 ust. 5 TOS):
+                      </div>
+                      <button
+                        onClick={() => {
+                          const defaultMsg = `EVA: Dzień dobry. Zgodnie z § 2 ust. 5 Regulaminu (veritas-app.com/eva/regulamin), weryfikacja bazy wiedzy FAQ Twojego asystenta wykryła niezgodność: ${selectedTenant.moderationNotes}. Prosimy o pilną korektę w panelu lub kontakt.`;
+                          const msg = window.prompt("Treść powiadomienia SMS (wezwanie na podstawie § 2 ust. 5 Regulaminu):", defaultMsg);
+                          if (msg) handleAction(selectedTenant.id, "sms", { message: msg });
+                        }}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow shrink-0"
+                      >
+                        ✉️ Wyślij wezwanie SMS (§ 2 ust. 5)
+                      </button>
                     </div>
                     <p className="text-red-300 text-xs leading-relaxed">{selectedTenant.moderationNotes}</p>
+                    <div className="mt-2.5 pt-2 border-t border-red-900/60 text-[11px] text-gray-400 flex items-center gap-1.5">
+                      <span>⚖️</span>
+                      <span><strong>Podstawa prawna:</strong> § 2 ust. 5 Regulaminu — audyt dotyczy wyłącznie jawnych wpisów FAQ/profilu firmy (zapobieganie przestępstwom i poradom medycznym). Monitoring wyklucza podsłuchiwanie prywatnych rozmów klientów.</span>
+                    </div>
                   </div>
                 )}
 
@@ -1266,9 +1285,14 @@ export function SuperAdminDashboard() {
                   {/* Sekcja FAQ (Baza Wiedzy) z przyciskiem usuwania wpisów */}
                   <div className="border border-gray-800 rounded-2xl p-4 bg-gray-950 flex flex-col max-h-[400px]">
                     <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-bold text-xs uppercase tracking-wider text-gray-400">
-                        Baza Wiedzy (FAQ) ({selectedTenant.faqEntries?.length || 0})
-                      </h3>
+                      <div>
+                        <h3 className="font-bold text-xs uppercase tracking-wider text-gray-400">
+                          Baza Wiedzy (FAQ) ({selectedTenant.faqEntries?.length || 0})
+                        </h3>
+                        <span className="text-[10px] text-gray-500">
+                          Audyt zgodności z § 2 ust. 5 Regulaminu (brak niedozwolonych porad / przestępstw)
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex flex-col gap-2.5 overflow-y-auto pr-1 flex-1">

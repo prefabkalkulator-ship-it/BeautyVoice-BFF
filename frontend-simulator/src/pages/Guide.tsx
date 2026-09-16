@@ -3,7 +3,8 @@ import {
   BookOpen, Search, ChevronDown, ChevronUp, ArrowRight, Sparkles, 
   PhoneCall, Users, Calendar, HelpCircle, ClipboardList, CreditCard,
   CheckCircle2, AlertCircle, Copy, Check, Clock, Lock, 
-  Share2, Bell, UserCheck, Star, GraduationCap, MapPin, MessageSquare, Ban, ShieldCheck
+  Share2, Bell, UserCheck, Star, GraduationCap, MapPin, MessageSquare, Ban, ShieldCheck,
+  Mail, Globe, FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -664,6 +665,62 @@ export default function Guide() {
       )
     },
     {
+      id: 'personal-terms-and-contact',
+      category: 'subscription',
+      question: 'Regulamin B2B, kontakt z administratorem i strona projektu',
+      summary: 'Regulamin Świadczenia Usług B2B z DPA, oficjalna strona projektu EVA oraz bezpośredni kontakt mailowy do administratora platformy.',
+      actionPath: 'https://veritas-app.com/eva',
+      actionLabel: 'Strona Główna EVA',
+      answer: (
+        <div className="space-y-4 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Dbamy o pełną przejrzystość zasad, bezpieczeństwo danych i stałe wsparcie dla wszystkich użytkowników pakietów osobistych:
+          </p>
+          <div className="grid sm:grid-cols-3 gap-3 pt-1">
+            <a
+              href="mailto:support@veritas-app.com"
+              className="p-3.5 bg-surface-50 hover:bg-gold-50/50 rounded-2xl border border-surface-200 hover:border-gold-300 transition-all flex flex-col items-start group cursor-pointer"
+            >
+              <span className="text-xs font-bold text-surface-900 group-hover:text-gold-700 mb-1 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-gold-600" /> Kontakt z administratorem
+              </span>
+              <span className="text-xs text-gold-600 font-mono break-all">support@veritas-app.com</span>
+              <span className="text-[11px] text-surface-500 mt-1">Pomoc techniczna i zgłoszenia</span>
+            </a>
+
+            <a
+              href="https://veritas-app.com/eva/regulamin"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3.5 bg-surface-50 hover:bg-gold-50/50 rounded-2xl border border-surface-200 hover:border-gold-300 transition-all flex flex-col items-start group cursor-pointer"
+            >
+              <span className="text-xs font-bold text-surface-900 group-hover:text-gold-700 mb-1 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-gold-600" /> Regulamin B2B i DPA
+              </span>
+              <span className="text-xs text-gold-600 font-medium underline">veritas-app.com/eva/regulamin</span>
+              <span className="text-[11px] text-surface-500 mt-1">Zasady świadczenia usług i RODO</span>
+            </a>
+
+            <a
+              href="https://veritas-app.com/eva"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3.5 bg-surface-50 hover:bg-gold-50/50 rounded-2xl border border-surface-200 hover:border-gold-300 transition-all flex flex-col items-start group cursor-pointer"
+            >
+              <span className="text-xs font-bold text-surface-900 group-hover:text-gold-700 mb-1 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-gold-600" /> Strona internetowa EVA
+              </span>
+              <span className="text-xs text-gold-600 font-medium underline">veritas-app.com/eva</span>
+              <span className="text-[11px] text-surface-500 mt-1">Oficjalna strona projektu</span>
+            </a>
+          </div>
+          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs text-surface-600">
+            <strong>Weryfikacja Bazy Wiedzy (§ 2 ust. 5 Regulaminu):</strong> W trosce o bezpieczeństwo platforma automatycznie weryfikuje wyłącznie zawartość wpisów FAQ i profilu biznesowego. Twoje połączenia telefoniczne i bilingi są całkowicie prywatne i nie podlegają odsłuchiwaniu.
+          </div>
+        </div>
+      )
+    },
+    {
       id: 'personal-qualification-budget',
       category: 'expert',
       question: 'Jak działa Inteligentna Kwalifikacja Sprawy i Budżetu w Ustawieniach Asystenta?',
@@ -1074,32 +1131,62 @@ export default function Guide() {
     {
       id: 'terms-and-dpa',
       category: 'subscription',
-      question: 'Gdzie znajdę Regulamin Świadczenia Usług B2B i Umowę Powierzenia Danych (DPA)?',
-      summary: 'Zasady świadczenia usług B2B, odpowiedzialność za ruch telefoniczny, zgody SMS oraz warunki RODO.',
+      question: 'Regulamin B2B, kontakt z administratorem i strona serwisu',
+      summary: 'Regulamin Świadczenia Usług B2B, Umowa Powierzenia Danych (DPA), oficjalna witryna oraz bezpośredni kontakt mailowy do administratora platformy.',
       actionPath: 'https://veritas-app.com/eva/regulamin',
       actionLabel: 'Otwórz Regulamin B2B',
       answer: (
-        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+        <div className="space-y-4 text-sm text-surface-700 leading-relaxed">
           <p>
             Platforma EVA działa w relacji <strong>Business-to-Business (B2B)</strong>. Korzystając z asystenta głosowego oraz numeru technicznego, 
             Twoja firma zachowuje pełną kontrolę i zgodność z przepisami prawa telekomunikacyjnego oraz RODO.
           </p>
-          <ul className="list-disc pl-5 space-y-1.5">
-            <li><strong>Relacja powierzenia (DPA):</strong> Twoja firma jest Administratorem Danych Osobowych (ADO) swoich klientów, a nasza platforma jest Podmiotem Przetwarzającym (Procesorem).</li>
-            <li><strong>Bezpieczeństwo numeru technicznego:</strong> Numer techniczny służy wyłącznie do odbioru przekierowanych połączeń – nie może być wykorzystywany do telemarketingu (cold calling) ani spamu.</li>
-            <li><strong>Powiadomienia SMS:</strong> Wiadomości z potwierdzeniem rezerwacji są wysyłane transakcyjnie w imieniu Twojej firmy.</li>
-          </ul>
-          <div className="pt-2">
-            <a 
-              href="https://veritas-app.com/eva/regulamin" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="inline-flex items-center gap-1.5 font-semibold text-gold-600 hover:text-gold-700 underline text-xs"
+
+          <div className="grid sm:grid-cols-3 gap-3 pt-1">
+            <a
+              href="mailto:support@veritas-app.com"
+              className="p-3.5 bg-surface-50 hover:bg-gold-50/50 rounded-2xl border border-surface-200 hover:border-gold-300 transition-all flex flex-col items-start group cursor-pointer"
             >
-              <span>Przeczytaj pełny Regulamin Świadczenia Usług B2B</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span className="text-xs font-bold text-surface-900 group-hover:text-gold-700 mb-1 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-gold-600" /> Kontakt z administratorem
+              </span>
+              <span className="text-xs text-gold-600 font-mono break-all">support@veritas-app.com</span>
+              <span className="text-[11px] text-surface-500 mt-1">Pomoc techniczna i zgłoszenia</span>
+            </a>
+
+            <a
+              href="https://veritas-app.com/eva/regulamin"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3.5 bg-surface-50 hover:bg-gold-50/50 rounded-2xl border border-surface-200 hover:border-gold-300 transition-all flex flex-col items-start group cursor-pointer"
+            >
+              <span className="text-xs font-bold text-surface-900 group-hover:text-gold-700 mb-1 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-gold-600" /> Regulamin B2B i DPA
+              </span>
+              <span className="text-xs text-gold-600 font-medium underline">veritas-app.com/eva/regulamin</span>
+              <span className="text-[11px] text-surface-500 mt-1">Zasady świadczenia usług i RODO</span>
+            </a>
+
+            <a
+              href="https://veritas-app.com/eva"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3.5 bg-surface-50 hover:bg-gold-50/50 rounded-2xl border border-surface-200 hover:border-gold-300 transition-all flex flex-col items-start group cursor-pointer"
+            >
+              <span className="text-xs font-bold text-surface-900 group-hover:text-gold-700 mb-1 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-gold-600" /> Strona internetowa EVA
+              </span>
+              <span className="text-xs text-gold-600 font-medium underline">veritas-app.com/eva</span>
+              <span className="text-[11px] text-surface-500 mt-1">Oficjalna strona projektu</span>
             </a>
           </div>
+
+          <ul className="list-disc pl-5 space-y-1.5 text-xs text-surface-600">
+            <li><strong>Relacja powierzenia (DPA):</strong> Twoja firma jest Administratorem Danych Osobowych (ADO) swoich klientów, a nasza platforma jest Podmiotem Przetwarzającym (Procesorem).</li>
+            <li><strong>Bezpieczeństwo numeru technicznego:</strong> Numer techniczny służy wyłącznie do odbioru przekierowanych połączeń – nie może być wykorzystywany do telemarketingu (cold calling) ani spamu.</li>
+            <li><strong>Weryfikacja Bazy Wiedzy FAQ (§ 2 ust. 5 Regulaminu):</strong> Platforma audytuje wyłącznie zawartość wprowadzonej bazy FAQ i profilu pod kątem bezpieczeństwa prawnego (zakaz porad medycznych, farmakologicznych, prawnych i oszustw). Audyt bezwzględnie nie obejmuje i wyklucza odsłuchiwanie prywatnych rozmów Twoich klientów.</li>
+            <li><strong>Powiadomienia SMS:</strong> Wiadomości z potwierdzeniem rezerwacji są wysyłane transakcyjnie w imieniu Twojej firmy.</li>
+          </ul>
         </div>
       )
     }
@@ -1266,6 +1353,51 @@ export default function Guide() {
             );
           })
         )}
+      </div>
+
+      {/* Karta szybkiego kontaktu i informacji prawnych */}
+      <div className="mt-10 p-6 sm:p-8 bg-gradient-to-br from-surface-900 via-surface-950 to-surface-900 rounded-3xl text-white shadow-xl border border-surface-800">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-500/20 text-gold-300 text-xs font-semibold mb-3 border border-gold-500/30">
+              <ShieldCheck className="w-3.5 h-3.5" /> Pomoc, Regulamin i Kontakt
+            </div>
+            <h3 className="text-xl font-serif font-bold text-white">
+              Potrzebujesz wsparcia lub masz pytania prawne?
+            </h3>
+            <p className="text-surface-300 text-xs sm:text-sm mt-1 max-w-xl leading-relaxed">
+              Nasz zespół techniczny odpowiada na zgłoszenia w dni robocze. Sprawdź oficjalną witrynę projektu, skontaktuj się z administratorem lub zapoznaj z regulaminem świadczenia usług.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap sm:flex-nowrap gap-3 shrink-0">
+            <a
+              href="mailto:support@veritas-app.com"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold transition border border-white/15 cursor-pointer"
+            >
+              <Mail className="w-3.5 h-3.5 text-gold-400" />
+              <span>support@veritas-app.com</span>
+            </a>
+            <a
+              href="https://veritas-app.com/eva/regulamin"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold transition border border-white/15 cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5 text-gold-400" />
+              <span>Regulamin B2B</span>
+            </a>
+            <a
+              href="https://veritas-app.com/eva"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gold-600 hover:bg-gold-500 text-white rounded-xl text-xs font-semibold transition shadow-md cursor-pointer"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>Strona EVA</span>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

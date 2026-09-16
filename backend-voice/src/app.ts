@@ -1309,7 +1309,19 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Konto dla tego numeru telefonu już istnieje.' });
     }
     const tenant = await prisma.tenant.create({
-      data: { name, phoneNumber, pinCode }
+      data: { 
+        name, 
+        phoneNumber, 
+        pinCode,
+        subscription: {
+          create: {
+            planName: 'starter',
+            minutesIncluded: 100,
+            minutesUsed: 0,
+            status: 'trialing'
+          }
+        }
+      }
     });
     res.json({ tenantId: tenant.id, phoneNumber: tenant.phoneNumber, name: tenant.name, message: 'Zarejestrowano pomyślnie' });
   } catch (err) {

@@ -38,9 +38,11 @@ export class ModerationService {
 
       const prompt = `
 Jesteś rygorystycznym audytorem bezpieczeństwa i zgodności prawnej dla platformy SaaS EasyVoiceAssistant (EVA / BeautyVoice).
-Twoim zadaniem jest sprawdzenie, czy profil firmy, instrukcje oraz pytania i odpowiedzi w bazie wiedzy (FAQ) naruszają Regulamin Świadczenia Usług (TOS: https://veritas-app.com/eva/regulamin) lub obowiązujące w Polsce prawo.
+Audyt prowadzony jest na podstawie § 2 ust. 5 Regulaminu Świadczenia Usług (TOS: https://veritas-app.com/eva/regulamin), który uprawnia Usługodawcę do weryfikacji wyłącznie bazy wiedzy (FAQ) i instrukcji konfiguracyjnych w celu zapobiegania naruszeniom prawa i oszustwom, z bezwzględnym wyłączeniem wglądu w prywatne rozmowy telefoniczne i bilingi klientów.
 
-KRYTYCZNE ZAKAZY REGULAMINU (CZERWONE FLAGI / HIGH RISK):
+Twoim zadaniem jest sprawdzenie, czy profil firmy, wytyczne kwalifikacji oraz pytania i odpowiedzi w bazie wiedzy (FAQ) naruszają postanowienia § 2 ust. 3 i ust. 5 Regulaminu lub powszechnie obowiązujące w Polsce prawo.
+
+KRYTYCZNE ZAKAZY REGULAMINU (§ 2 ust. 3 i 5 — CZERWONE FLAGI / HIGH RISK):
 1. **ZAKAZ PORAD MEDYCZNYCH I FARMAKOLOGICZNYCH**:
    - Diagnozowanie chorób, objawów (np. ból głowy, brzucha, gorączka).
    - Zalecanie lub dawkowanie leków (np. paracetamol, ibuprofen, antybiotyki, leki na receptę i bez recepty).
@@ -62,7 +64,7 @@ ZASADY OCENY:
 - Jeśli znajdziesz JAKIEKOLWIEK z powyższych naruszeń (nawet w pojedynczym wpisie FAQ, np. zalecenie paracetamolu na ból głowy), MUSISZ natychmiast zwrócić:
 {
   "riskLevel": "HIGH",
-  "reason": "Konkretny, precyzyjny opis w języku polskim, co narusza regulamin (np. 'Wpis FAQ zaleca przyjmowanie paracetamolu na ból głowy, co stanowi niedozwoloną poradę medyczną i farmakologiczną.')."
+  "reason": "Na podstawie § 2 ust. 5 Regulaminu wykryto naruszenie: [precyzyjny opis naruszenia, np. 'Wpis FAQ zaleca przyjmowanie leków (paracetamol), co stanowi niedozwoloną poradę farmakologiczną i medyczną.']"
 }
 - Jeśli profil i baza wiedzy dotyczą typowych dozwolonych usług (np. budownictwo, architektura, kosmetyka, fryzjerstwo, restauracje, stomatologia z rejestracją wizyt bez diagnozowania, mechanika itp.) i nie naruszają zakazów:
 {
