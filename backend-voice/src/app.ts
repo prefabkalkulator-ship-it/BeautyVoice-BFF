@@ -6,6 +6,7 @@ import twilio from 'twilio';
 import { webhookController } from './controllers/WebhookController';
 import { knowledgeService } from './services/KnowledgeExtractorService';
 import { VoiceOutboundService } from './services/voice/VoiceOutboundService';
+import { PushService } from './services/PushService';
 
 const app = express();
 
@@ -283,7 +284,9 @@ app.post('/api/campaigns/execute', async (req, res) => {
           where: {
             tenantId: tenant.id,
             startTime: { gte: new Date() },
-            status: { in: ['pending', 'unconfirmed', 'confirmed', 'pending_confirmation'] }
+            status: { in: ['pending', 'unconfirmed', 'confirmed', 'pending_confirmation'] },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
           },
           orderBy: { startTime: 'asc' }
         });
@@ -298,21 +301,44 @@ app.post('/api/campaigns/execute', async (req, res) => {
           where: { 
             tenantId: tenant.id, 
             startTime: { gte: tomorrow, lte: tomorrowEnd },
-            status: { notIn: ['cancelled', 'confirmed_by_client'] }
+            status: { notIn: ['cancelled', 'confirmed_by_client'] },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
           },
           orderBy: { startTime: 'asc' }
         });
       } else if (customerPhone) {
         const cleanPhone = customerPhone.replace(/[\s\-()]/g, '');
-        const phoneAppts = await prisma.appointment.findMany({
+        // Szukamy wyłącznie rzeczywistych spotkań (wykluczamy wewnętrzne zadania oddzwonienia CALL)
+        let phoneAppts = await prisma.appointment.findMany({
           where: { 
             tenantId: tenant.id,
             customerPhone: { contains: cleanPhone.slice(-9) },
-            startTime: { gte: new Date() }
+            startTime: { gte: new Date() },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } },
+            status: { notIn: ['cancelled', 'confirmed_by_client'] }
           },
           orderBy: { startTime: 'asc' },
           take: 1
         });
+
+        // Jeśli wszystkie są potwierdzone lub brak niepotwierdzonych, weź najbliższe aktywne spotkanie
+        if (phoneAppts.length === 0) {
+          phoneAppts = await prisma.appointment.findMany({
+            where: { 
+              tenantId: tenant.id,
+              customerPhone: { contains: cleanPhone.slice(-9) },
+              startTime: { gte: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } },
+              status: { notIn: ['cancelled'] }
+            },
+            orderBy: { startTime: 'asc' },
+            take: 1
+          });
+        }
+
         if (phoneAppts.length > 0) {
           appointments = phoneAppts;
         } else {
@@ -336,7 +362,9 @@ app.post('/api/campaigns/execute', async (req, res) => {
           where: { 
             tenantId: tenant.id, 
             startTime: { gte: tomorrow, lte: tomorrowEnd },
-            status: { notIn: ['cancelled', 'confirmed_by_client'] }
+            status: { notIn: ['cancelled', 'confirmed_by_client'] },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
           }
         });
 
@@ -346,7 +374,9 @@ app.post('/api/campaigns/execute', async (req, res) => {
             where: { 
               tenantId: tenant.id, 
               startTime: { gte: new Date() },
-              status: { notIn: ['cancelled', 'confirmed_by_client'] }
+              status: { notIn: ['cancelled', 'confirmed_by_client'] },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
             },
             orderBy: { startTime: 'asc' },
             take: 3
@@ -430,10 +460,12 @@ app.get('/api/tenant', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak' });
+    const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
+    const fullTenant = { ...tenant, subscription: sub };
     if (tenant.name === 'DEMO') {
-      return res.json({ ...tenant, proactiveMode: tenant.proactiveMode ?? true });
+      return res.json({ ...fullTenant, proactiveMode: tenant.proactiveMode ?? true });
     }
-    res.json(tenant);
+    res.json(fullTenant);
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
 });
 app.post('/api/tenant/fcm-token', async (req, res) => {
@@ -441,29 +473,47 @@ app.post('/api/tenant/fcm-token', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak salonu' });
     const token = req.body?.token;
-    const isStandalone = req.body?.isStandalone === true;
-    if (token && typeof token === 'string') {
-      let existing = tenant.fcmTokens || [];
-      if (isStandalone) {
-        // Jeśli użytkownik korzysta z zainstalowanej aplikacji PWA / WebAPK,
-        // jej token ma priorytet. Czyścimy starsze tokeny przeglądarkowe, aby powiadomienia
-        // nie dublowały się na telefonie (z ikonką PWA i osobno z Chrome z literą B).
-        existing = [token];
-      } else if (!existing.includes(token)) {
-        existing.push(token);
-        if (existing.length > 3) existing = existing.slice(-3);
-      }
+    if (token && typeof token === 'string' && token.trim().length > 10) {
+      const cleanToken = token.trim();
+      const currentTokens = Array.isArray(tenant.fcmTokens) ? tenant.fcmTokens : [];
+      // Usuwamy ten sam token jeśli już był (by wstawić go na koniec jako najświeższy)
+      const filtered = currentTokens.filter(t => t && t !== cleanToken);
+      const updatedTokens = [...filtered, cleanToken].slice(-5); // Zawsze max 5 najświeższych unikalnych urządzeń
+
       await prisma.tenant.update({
         where: { id: tenant.id },
         data: {
-          fcmTokens: existing
+          fcmTokens: updatedTokens
         }
       });
+      console.log(`[FCM] Zaktualizowano tokeny (${updatedTokens.length}) dla tenanta ${tenant.name} (${tenant.id}): ${cleanToken.substring(0, 20)}...`);
     }
     res.json({ success: true });
   } catch (err) {
     console.error('[FCM] Error saving token:', err);
     res.status(500).json({ error: 'Błąd' });
+  }
+});
+
+app.post('/api/tenant/test-push', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(404).json({ error: 'Brak tenanta' });
+    if (!tenant.fcmTokens || tenant.fcmTokens.length === 0) {
+      return res.status(400).json({ error: 'Brak zarejestrowanych tokenów FCM' });
+    }
+    await PushService.sendNotification(
+      tenant.fcmTokens,
+      'Test powiadomienia EVA 🚀',
+      'Pojedyncze markowe powiadomienie aplikacji z przyciskiem Zadzwoń.',
+      'https://beautyvoice-bff.web.app/dashboard',
+      '+48533989987',
+      tenant.id
+    );
+    res.json({ success: true, tokensCount: tenant.fcmTokens.length });
+  } catch (err: any) {
+    console.error('[test-push error]', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -512,7 +562,10 @@ app.put('/api/tenant', async (req, res) => {
         bookingExternalUrl: req.body.bookingExternalUrl !== undefined ? req.body.bookingExternalUrl : undefined,
         serviceAreaDescription: req.body.serviceAreaDescription !== undefined ? req.body.serviceAreaDescription : undefined,
         rejectionSmsTemplate: req.body.rejectionSmsTemplate !== undefined ? req.body.rejectionSmsTemplate : undefined,
-        qualificationPrompt: req.body.qualificationPrompt !== undefined ? req.body.qualificationPrompt : undefined
+        qualificationPrompt: req.body.qualificationPrompt !== undefined ? req.body.qualificationPrompt : undefined,
+        leadQuestion1: req.body.leadQuestion1 !== undefined ? req.body.leadQuestion1 : undefined,
+        leadQuestion2: req.body.leadQuestion2 !== undefined ? req.body.leadQuestion2 : undefined,
+        leadQuestion3: req.body.leadQuestion3 !== undefined ? req.body.leadQuestion3 : undefined
       }
     });
 
@@ -1679,19 +1732,58 @@ app.post("/api/zadarma-sms", async (req, res) => {
       try {
         const ten = await prisma.tenant.findFirst({ where: { OR: [ { appointments: { some: { customerPhone: callerPhone } } } ] }, include: { subscription: true } }); if (ten && (ten.isSuspended || (ten.subscription && (ten.subscription.status === 'paused' || ten.subscription.status === 'canceled')))) { console.log('[Zadarma] SMS zignorowany, konto zawieszone'); return res.send('OK'); }
 
-        const upcomingList = await prisma.appointment.findMany({
-          where: { 
-            customerPhone: callerPhone, 
-            status: { in: ['pending_confirmation', 'confirmed'] }, 
-            startTime: { gt: new Date() } 
+        const cleanPhone = callerPhone.replace(/[\s\-()]/g, '');
+
+        // 1. Sprawdzamy, czy do tego numeru wysłano niedawno SMS potwierdzający z konkretnym appointmentId
+        let upcoming: any = null;
+        const recentOutboundSms = await prisma.outboundQueue.findFirst({
+          where: {
+            targetPhone: { contains: cleanPhone.slice(-9) },
+            channel: 'sms',
+            status: 'done'
           },
-          orderBy: { startTime: 'asc' },
-          take: 1
+          orderBy: { scheduledFor: 'desc' }
         });
-        
-        if (upcomingList.length === 1) {
-          const upcoming = upcomingList[0];
-          await prisma.appointment.update({ where: { id: upcoming.id }, data: { status: 'confirmed_by_client' } });
+
+        if (recentOutboundSms && recentOutboundSms.payload) {
+          const payload = recentOutboundSms.payload as any;
+          if (payload.appointmentId && !String(payload.appointmentId).startsWith('adhoc_')) {
+            upcoming = await prisma.appointment.findFirst({
+              where: { id: payload.appointmentId }
+            });
+          }
+        }
+
+        // 2. Jeśli nie znaleziono po zadaniu z kolejki, szukamy wizyty oczekującej na potwierdzenie ('pending_confirmation')
+        if (!upcoming) {
+          upcoming = await prisma.appointment.findFirst({
+            where: {
+              customerPhone: { contains: cleanPhone.slice(-9) },
+              status: 'pending_confirmation',
+              startTime: { gt: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
+            },
+            orderBy: { startTime: 'asc' }
+          });
+        }
+
+        // 3. Fallback: najwcześniejsze spotkanie o statusie 'confirmed' lub 'pending'
+        if (!upcoming) {
+          upcoming = await prisma.appointment.findFirst({
+            where: {
+              customerPhone: { contains: cleanPhone.slice(-9) },
+              status: { in: ['confirmed', 'pending', 'unconfirmed'] },
+              startTime: { gt: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
+            },
+            orderBy: { startTime: 'asc' }
+          });
+        }
+
+        if (upcoming) {
+          await prisma.appointment.update({ where: { id: upcoming.id }, data: { status: 'confirmed_by_client', isProcessed: true } });
           
           const dateStr = upcoming.startTime.toLocaleDateString('pl-PL');
           const timeStr = upcoming.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
@@ -1709,7 +1801,7 @@ app.post("/api/zadarma-sms", async (req, res) => {
           }).catch(err => console.error('[Zadarma SMS] Błąd tworzenia CallLog CONFIRMED_SMS:', err));
 
           import('./services/sms/SMSService').then(sms => {
-            sms.SMSService.sendSMS(callerPhone, `Dziękujemy, Twoja wizyta została pomyślnie potwierdzona!`).catch(console.error);
+            sms.SMSService.sendSMS(callerPhone, `Dziękujemy, Twoja wizyta w dniu ${dateStr} o godz. ${timeStr} została pomyślnie potwierdzona!`).catch(console.error);
           });
           return res.send("OK");
         }
@@ -1757,11 +1849,49 @@ app.post("/api/zadarma-sms", async (req, res) => {
       try {
         const ten = await prisma.tenant.findFirst({ where: { OR: [ { appointments: { some: { customerPhone: callerPhone } } } ] }, include: { subscription: true } }); if (ten && (ten.isSuspended || (ten.subscription && (ten.subscription.status === 'paused' || ten.subscription.status === 'canceled')))) { console.log('[Zadarma] SMS zignorowany, konto zawieszone'); return res.send('OK'); }
 
-        const upcomingList = await prisma.appointment.findMany({
+        const cleanPhone = callerPhone.replace(/[\s\-()]/g, '');
+
+        // 1. Sprawdzamy, czy do tego numeru wysłano niedawno SMS potwierdzający z konkretnym appointmentId
+        let targetAppt: any = null;
+        const recentOutboundSms = await prisma.outboundQueue.findFirst({
+          where: {
+            targetPhone: { contains: cleanPhone.slice(-9) },
+            channel: 'sms',
+            status: 'done'
+          },
+          orderBy: { scheduledFor: 'desc' }
+        });
+
+        if (recentOutboundSms && recentOutboundSms.payload) {
+          const payload = recentOutboundSms.payload as any;
+          if (payload.appointmentId && !String(payload.appointmentId).startsWith('adhoc_')) {
+            targetAppt = await prisma.appointment.findFirst({
+              where: { id: payload.appointmentId }
+            });
+          }
+        }
+
+        // 2. Jeśli brak po zadaniu z kolejki, szukamy wizyty oczekującej na potwierdzenie ('pending_confirmation')
+        if (!targetAppt) {
+          targetAppt = await prisma.appointment.findFirst({
+            where: {
+              customerPhone: { contains: cleanPhone.slice(-9) },
+              status: 'pending_confirmation',
+              startTime: { gt: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
+            },
+            orderBy: { startTime: 'asc' }
+          });
+        }
+
+        const upcomingList = targetAppt ? [targetAppt] : await prisma.appointment.findMany({
           where: { 
-            customerPhone: callerPhone, 
+            customerPhone: { contains: cleanPhone.slice(-9) }, 
             status: { in: ['pending_confirmation', 'confirmed', 'confirmed_by_client'] }, 
-            startTime: { gt: new Date() } 
+            startTime: { gt: new Date() },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
           },
           orderBy: { startTime: 'asc' }
         });
@@ -1772,7 +1902,7 @@ app.post("/api/zadarma-sms", async (req, res) => {
 
         if (upcomingList.length === 1) {
           const upcoming = upcomingList[0];
-          await prisma.appointment.update({ where: { id: upcoming.id }, data: { status: 'cancelled' } });
+          await prisma.appointment.update({ where: { id: upcoming.id }, data: { status: 'cancelled', isProcessed: true } });
           const dateStr = upcoming.startTime.toLocaleDateString('pl-PL');
           const timeStr = upcoming.startTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
           
@@ -2105,7 +2235,47 @@ app.get('/api/call-logs', async (req, res) => {
       take: takeCount
     });
 
-    res.json(logs);
+    // Wzbogać wpisy o powiązane spotkanie z kalendarza (wykluczając wewnętrzne zadania CALL)
+    const logIds = logs.map(l => l.id);
+    const phones = Array.from(new Set(logs.map(l => l.callerPhone).filter(p => p && p !== 'nieznany')));
+
+    const relatedAppts = await prisma.appointment.findMany({
+      where: {
+        tenantId: tenant.id,
+        contactLevel: { not: 'CALL' },
+        customerName: { not: { startsWith: '📞' } },
+        OR: [
+          { callLogId: { in: logIds } },
+          { customerPhone: { in: phones } }
+        ]
+      },
+      include: { service: true },
+      orderBy: { startTime: 'asc' }
+    });
+
+    const enrichedLogs = logs.map(log => {
+      // 1. Szukaj po bezpośrednim callLogId
+      let appt = relatedAppts.find(a => a.callLogId === log.id);
+      // 2. Jeśli brak po ID, szukaj nadchodzącej rezerwacji dla numeru telefonu
+      if (!appt && log.callerPhone && log.callerPhone !== 'nieznany') {
+        const cleanPhone = log.callerPhone.replace(/[\s\-()]/g, '');
+        appt = relatedAppts.find(a => 
+          a.customerPhone && 
+          a.customerPhone.replace(/[\s\-()]/g, '').endsWith(cleanPhone.slice(-9)) && 
+          new Date(a.startTime) >= new Date(Date.now() - 24 * 3600 * 1000)
+        );
+      }
+
+      return {
+        ...log,
+        appointmentId: appt?.id || null,
+        appointmentDate: appt?.startTime || null,
+        appointmentStatus: appt?.status || null,
+        appointmentService: appt?.service?.name || null
+      };
+    });
+
+    res.json(enrichedLogs);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

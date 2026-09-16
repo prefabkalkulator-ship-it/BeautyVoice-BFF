@@ -38,6 +38,7 @@ export class CallOrchestrator {
   private readonly SILENCE_TIMEOUT_MS: number = 30000; // 30 sekund ciszy / szumu w tle
   private shouldHangupAfterTurn: boolean = false;
   private hangupTimeout: NodeJS.Timeout | null = null;
+  private isTerminating: boolean = false;
   
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
@@ -112,11 +113,17 @@ export class CallOrchestrator {
             if (tenantIdParam) {
               tenant = await prisma.tenant.findUnique({ where: { id: tenantIdParam }, include: { subscription: true } });
             }
-            if (!tenant && outboundTaskId) {
-              const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId }, include: { tenant: true } });
-              if (task && task.tenant) {
-                tenant = task.tenant;
-              }
+            if (outboundTaskId) {
+              try {
+                const task = await prisma.outboundQueue.findUnique({ where: { id: outboundTaskId }, include: { tenant: true } });
+                if (task) {
+                  if (task.tenant && !tenant) tenant = task.tenant;
+                  const payload = (typeof task.payload === 'object' && task.payload !== null) ? task.payload as any : {};
+                  if (payload.appointmentId) {
+                    this.outboundAppointmentId = payload.appointmentId;
+                  }
+                }
+              } catch (err) {}
             }
             
             if (!tenant) {
@@ -260,15 +267,23 @@ export class CallOrchestrator {
             });
             console.log(`📝 [CallOrchestrator] Zaktualizowano confirmed CallLog (${callLog.id}) czasem: ${durationSeconds}s`);
           } else if (callLog) {
+            const isOutboundResult = Boolean(this.isConfirmedOutbound || this.isCancelledOutbound || callLog.status === 'CONFIRMED_PHONE' || callLog.status === 'CANCELLED_PHONE');
+            const logStatus = this.isConfirmedOutbound 
+              ? 'CONFIRMED_PHONE' 
+              : (this.isCancelledOutbound ? 'CANCELLED_PHONE' : callLog.status);
+            const isProcessed = isOutboundResult || callLog.isProcessed;
+
             callLog = await prisma.callLog.update({
               where: { id: callLog.id },
               data: { 
                 durationSeconds,
                 summary: resolvedSummary || callLog.summary,
-                callerName: resolvedCallerName || callLog.callerName
+                callerName: resolvedCallerName || callLog.callerName,
+                status: logStatus,
+                isProcessed: isProcessed
               }
             });
-            console.log(`📝 [CallOrchestrator] Zaktualizowano istniejący CallLog (${callLog.id}) czasem: ${durationSeconds}s`);
+            console.log(`📝 [CallOrchestrator] Zaktualizowano istniejący CallLog (${callLog.id}) czasem: ${durationSeconds}s, status=${logStatus}, isProcessed=${isProcessed}`);
           } else {
             const logStatus = this.isConfirmedOutbound 
               ? 'CONFIRMED_PHONE' 
@@ -290,8 +305,8 @@ export class CallOrchestrator {
             console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s, status=${logStatus}, isProcessed=${isProcessed}, summary="${resolvedSummary || ''}"`);
           }
 
-          // Powiąż od razu utworzone w trakcie rozmowy wydarzenia w kalendarzu z tym CallLog
-          if (callLog) {
+          // Powiąż od razu utworzone w trakcie rozmowy wydarzenia w kalendarzu z tym CallLog (tylko dla połączeń przychodzących, nie nadpisuj przy outbound)
+          if (callLog && !this.isConfirmedOutbound && !this.isCancelledOutbound) {
             await prisma.appointment.updateMany({
               where: {
                 tenantId: this.tenantId,
@@ -414,10 +429,26 @@ export class CallOrchestrator {
                 })
               ]);
 
-              const foundName = prevLog?.callerName || cust?.name;
-              if (foundName && foundName.trim() && !['nieznany', 'brak', 'unknown', 'nieznany rozmówca'].includes(foundName.toLowerCase().trim())) {
+              const rawName = (prevLog?.callerName || cust?.name || '').trim();
+              const cleanName = rawName.replace(/[\(\)\[\]\{\}\<\>]/g, '').trim();
+              const lowerName = cleanName.toLowerCase();
+              const isGenericPlaceholder = 
+                !cleanName ||
+                cleanName.length < 3 ||
+                lowerName.includes('nieznan') ||
+                lowerName.includes('brak') ||
+                lowerName.includes('unknown') ||
+                lowerName.includes('anonim') ||
+                lowerName.includes('klient') ||
+                lowerName.includes('gość') ||
+                lowerName.includes('gosc') ||
+                lowerName.includes('połączenie') ||
+                lowerName.includes('polaczenie') ||
+                /^[\d\s\+\-\.]+$/.test(cleanName);
+
+              if (!isGenericPlaceholder) {
                 this.isReturningCaller = true;
-                this.returningCallerName = foundName.trim();
+                this.returningCallerName = cleanName;
                 const firstWord = this.returningCallerName.split(' ')[0].toLowerCase().replace(/[^a-ząćęłńóśźż]/g, '');
                 if (['kuba', 'bonawentura', 'kosma', 'jarema', 'barnaba'].includes(firstWord)) {
                   this.returningCallerGender = 'MALE';
@@ -427,6 +458,9 @@ export class CallOrchestrator {
                   this.returningCallerGender = 'MALE';
                 }
                 console.log(`🔁 [CallOrchestrator] Rozpoznano powracającego rozmówcę: ${this.returningCallerName} (Płeć: ${this.returningCallerGender})`);
+              } else {
+                this.isReturningCaller = false;
+                this.returningCallerName = '';
               }
             } catch (retErr) {
               console.error('[CallOrchestrator] Błąd szukania powracającego rozmówcy:', retErr);
@@ -483,7 +517,10 @@ export class CallOrchestrator {
       confidentialTopics: this.confidentialTopics,
       bookingExternalUrl: tenant?.bookingExternalUrl || undefined,
       serviceAreaDescription: tenant?.serviceAreaDescription || undefined,
-      qualificationPrompt: tenant?.qualificationPrompt || undefined
+      qualificationPrompt: tenant?.qualificationPrompt || undefined,
+      leadQuestion1: tenant?.leadQuestion1 || undefined,
+      leadQuestion2: tenant?.leadQuestion2 || undefined,
+      leadQuestion3: tenant?.leadQuestion3 || undefined
     });
 
     this.geminiClient.connect();
@@ -567,19 +604,12 @@ export class CallOrchestrator {
 
                      const openingSentence = `${clientGreeting}. Jestem ${assistantTitleInstrumental} ${ownerPrefix} ${ownerFirstGenitive}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
 
-                     contextText = `UWAGA: To jest połączenie wychodzące (Outbound), które TY wykonujesz do klienta! Klient (${rawCustomerName || task.targetPhone}) właśnie odebrał telefon. Numer telefonu klienta to: ${task.targetPhone}.
-BEZWZGLĘDNY NAKAZ: Twoim PIERWSZYM ZDANIEM musi być DOKŁADNIE i DOSŁOWNIE:
-"${openingSentence}"
-KATEGORYCZNY ZAKAZ przedstawiania się jako ${ownerDisplayName}! Jesteś JEGO ASYSTENTEM (${assistantTitleInstrumental}), a nie samym właścicielem!
-Po usłyszeniu odpowiedzi klienta:
-- Jeśli klient potwierdza (np. "Tak", "Będę", "Potwierdzam", "Pasuje mi"): NATYCHMIAST wywołaj narzędzie confirmAppointment, podziękuj uprzejmie za potwierdzenie, pożegnaj się i wywołaj narzędzie endCall.
-- Jeśli klient informuje, że nie może, rezygnuje lub odwołuje (np. "Nie mogę", "Muszę odwołać", "Rezygnuję"): NATYCHMIAST wywołaj narzędzie cancelAppointment, wyraź zrozumienie, pożegnaj się i wywołaj narzędzie endCall.
-- Jeśli klient zadaje pytanie: odpowiedz krótko i życzliwie, a następnie potwierdź status wizyty.`;
-                   }
+                      contextText = `Połączenie wychodzące do klienta (${rawCustomerName || task.targetPhone}). Wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}".`;
+                    }
                 }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
-              contextText = `To jest połączenie na linię testową platformy EasyVoiceAssistant, EVA. Numer dzwoniącego: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być dokładnie: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. Czy chcesz dowiedzieć się, jak działam, czy wolisz poznać, co obejmują nasze plany cenowe?". ZAKAZ mówienia, że ktoś nie może odebrać! KATEGORYCZNY ZAKAZ mówienia "Dobry wieczór" w ciągu dnia!`;
+              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. W czym mogę pomóc?".`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
               const isMale = ['Puck', 'Charon'].includes(this.voiceName);
@@ -594,9 +624,9 @@ Po usłyszeniu odpowiedzi klienta:
 
               if (this.callerRole === 'OWNER') {
                 if (this.ownerRequirePin && !this.isOwnerPinVerified) {
-                  contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Ze względów bezpieczeństwa włączona jest autoryzacja kodem PIN. Twoim PIERWSZYM ZDANIEM musi być: "${timeGreeting} ${ownerFirst}! Ze względów bezpieczeństwa, proszę podaj swój kod PIN, aby odblokować funkcje asystenta." KATEGORYCZNY ZAKAZ podawania jakichkolwiek informacji o kalendarzu, wiadomościach czy połączeniach, dopóki rozmówca nie poda PIN-u i nie zweryfikujesz go pomyślnie narzędziem verify_owner_pin.`;
+                  contextText = `Rozmawiasz ze swoim szefem: ${ownerDisplayName}. Wymagana autoryzacja PIN. Poproś o podanie kodu PIN w pierwszym zdaniu: "${timeGreeting} ${ownerFirst}! Ze względów bezpieczeństwa proszę podaj swój kod PIN, aby odblokować funkcje asystenta."`;
                 } else {
-                  contextText = `Rozmawiasz ze swoim WŁAŚCICIELEM / SZEFEM: ${ownerDisplayName}. Przywitaj się krótko po imieniu ("Cześć ${ownerDisplayName}!"). Zapytaj co słychać lub czy przedstawić raport.`;
+                  contextText = `Rozmawiasz ze swoim szefem: ${ownerDisplayName}. Przywitaj się krótko po imieniu: "Cześć ${ownerDisplayName}! W czym mogę pomóc?".`;
                 }
               } else if (this.callerRole === 'VIP' && this.vipContact) {
                 const vipFormality = (this.vipContact.formalityLevel && this.vipContact.formalityLevel !== 'default')
@@ -604,37 +634,35 @@ Po usłyszeniu odpowiedzi klienta:
                   : this.defaultFormalityLevel;
 
                 if (vipFormality === 'direct_ty') {
-                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się bezpośrednio na "Ty". Przywitaj się wyjątkowo ciepło i po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałbyś/chciałabyś zostawić wiadomość, czy umówić dogodny termin rozmowy?".`;
+                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się na "Ty". Przywitaj się ciepło po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałbyś/chciałabyś zostawić wiadomość, czy umówić termin rozmowy?".`;
                 } else {
-                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się z pełnym szacunkiem per Pan/Pani. Przywitaj się serdecznie: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy zarezerwować dogodny termin rozmowy?".
-DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
+                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się serdecznie: "${timeGreeting}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy umówić termin rozmowy?".`;
                 }
-              } else if (this.isReturningCaller && this.returningCallerName) {
-                // POWRACAJĄCY ROZMÓWCA ZE ZNANĄ TOŻSAMOŚCIĄ (Krótkie, zgodne z prawem powitanie)
+              } else if (this.isReturningCaller && this.returningCallerName && !this.returningCallerName.toLowerCase().includes('nieznan')) {
+                // POWRACAJĄCY ROZMÓWCA ZE ZNANĄ TOŻSAMOŚCIĄ (Krótkie powitanie po imieniu)
                 const firstName = this.returningCallerName.split(' ')[0];
                 let vocative = '';
                 if (this.returningCallerGender === 'FEMALE') {
                   vocative = `Pani ${firstName}`;
                 } else {
                   if (firstName.endsWith('ek')) vocative = `Panie ${firstName.slice(0, -2)}ku`;
-                  else if (firstName.endsWith('r')) vocative = `Panie ${firstName}ze`;
-                  else if (firstName.endsWith('ł')) vocative = `Panie ${firstName.slice(0, -1)}le`;
+                  else if (firstName.endsWith('j')) vocative = `Panie ${firstName}u`;
+                  else if (firstName.endsWith('sz')) vocative = `Panie ${firstName}u`;
+                  else if (firstName.endsWith('ch')) vocative = `Panie ${firstName}u`;
+                  else if (firstName.endsWith('tr')) vocative = `Panie ${firstName.slice(0, -2)}trze`;
+                  else if (firstName.endsWith('ał') || firstName.endsWith('eł')) vocative = `Panie ${firstName.slice(0, -1)}e`;
                   else if (firstName.endsWith('n')) vocative = `Panie ${firstName}ie`;
+                  else if (firstName.endsWith('k')) vocative = `Panie ${firstName}u`;
+                  else if (firstName.endsWith('b')) vocative = `Panie ${firstName}ie`;
+                  else if (firstName.endsWith('r')) vocative = `Panie ${firstName}ze`;
+                  else if (firstName.endsWith('ł')) vocative = `Panie ${firstName.slice(0, -1)}u`;
                   else vocative = `Panie ${firstName}`;
                 }
 
-                contextText = `Rozmawiasz ze ZNANYM POWRACAJĄCYM ROZMÓWCĄ: ${this.returningCallerName} (${vocative}). Numer: ${callerPhone}. Dzwonił już wcześniej i zna Twoje możliwości.
-ABSOLUTNY ZAKAZ pytania "z kim mam przyjemność?" i ZAKAZ długiego dwuetapowego onboardingu!
-Twoim PIERWSZYM ZDANIEM musi być krótkie, profesjonalne powitanie z imieniem w wołaczu:
-"${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".
-JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni"): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: ...") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
-DYSKRECJA NAZWISKA: Mów wyłącznie '${ownerTitle} ${ownerFirst}'. ZAKAZ podawania nazwiska z własnej inicjatywy.`;
+                contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".`;
               } else {
-                // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST): 100% neutralność i prośba o przedstawienie się
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Reprezentujesz: ${ownerDisplayName}. Twoim PIERWSZYM ZDANIEM (Tura 1) musi być DOKŁADNIE: "Witam, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".
-JEŚLI ROZMÓWCA OD RAZU PODAJE DYSPOZYCJĘ LUB WIADOMOŚĆ (np. "Przekaż żeby podszedł do biura", "Niech oddzwoni", "Niech zadzwoni do..."): NATYCHMIAST potwierdź przyjęcie ("Oczywiście, przekazuję panu ${ownerFirst} wiadomość: żeby podszedł do biura") i wywołaj narzędzie save_call_message! ZAKAZ formułek odmownych!
-DYSKRECJA NAZWISKA: W powitaniu i trakcie rozmowy mów wyłącznie '${ownerTitle} ${ownerFirst}' (np. 'pan ${ownerFirst}'). KATEGORYCZNY ZAKAZ podawania nazwiska właściciela, chyba że rozmówca wprost o to zapyta ("A o jakiego pana ${ownerFirst} chodzi?"). Wtedy i tylko wtedy potwierdź pełne nazwisko.
-W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 według instrukcji systemowych.`;
+                // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST)
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "Witam, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".`;
               }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // PAKIET BIZNESOWY (Standard / Premium)
@@ -660,12 +688,12 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
                     : this.defaultFormalityLevel;
 
                   if (custFormality === 'direct_ty') {
-                    contextText = `To jest połączenie od stałego klienta: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Zwracaj się bezpośrednio na "Ty". Powitaj ciepło po imieniu: "Cześć ${knownCustomer.name}! Miło Cię słyszeć. Z tej strony ${botDisplayName} z firmy ${compName}. W czym mogę dzisiaj pomóc?". ZAKAZ pytania o imię i numer.`;
+                    contextText = `Stały klient: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj po imieniu: "Cześć ${knownCustomer.name}! Miło Cię słyszeć. Z tej strony ${botDisplayName} z firmy ${compName}. W czym mogę dzisiaj pomóc?".`;
                   } else {
-                    contextText = `To jest połączenie od stałego klienta: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj ciepło i z szacunkiem po imieniu w pierwszym zdaniu. ZAKAZ pytania o imię i numer (masz już te dane).`;
+                    contextText = `Stały klient: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj z szacunkiem po imieniu: "${timeGreeting}, z tej strony ${botDisplayName} z firmy ${compName}. W czym mogę dzisiaj pomóc?".`;
                   }
                 } else {
-                  contextText = `Nowy klient dzwoni z numeru: ${callerPhone}. Twoim PIERWSZYM ZDANIEM musi być: "${timeGreeting}, dodzwoniłeś się do firmy ${compName}. Z tej strony ${botDisplayName}. W czym mogę dzisiaj pomóc?".`;
+                  contextText = `Nowy klient z numeru: ${callerPhone}. Powitaj słowami: "${timeGreeting}, witamy w firmie ${compName}. Z tej strony ${botDisplayName}. W czym mogę dzisiaj pomóc?".`;
                 }
               } catch (err) {
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
@@ -688,6 +716,10 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
   }
 
   private handleGeminiInterrupted() {
+    if (this.isTerminating) {
+      console.log('🛡️ [CallOrchestrator] Zignorowano sygnał interrupted po zainicjowaniu endCall (isTerminating=true).');
+      return;
+    }
     console.log('⚡ [CallOrchestrator] Sygnał interrupted z Gemini Live API (Google wykrył mowę użytkownika).');
     this.executeBargeInMechanism();
   }
@@ -715,6 +747,27 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
 
   private executeBargeInMechanism() {
     if (this.isTurnCanceled) return;
+    if (this.outboundTaskId && this.callStartTime && (Date.now() - this.callStartTime < 2500)) {
+      console.log('🛡️ [Barge-in] Zignorowano wczesne przerwanie w pierwszych 2.5s połączenia wychodzącego (Outbound opening protection).');
+      return;
+    }
+    if (this.isTerminating) {
+      console.log('🛡️ [Barge-in] Rozmowa w trakcie kończenia (isTerminating=true) – uciszam audio i finalizuję rozłączenie.');
+      this.twilioWs.send(JSON.stringify({
+        event: 'clear',
+        streamSid: this.streamSid
+      }));
+      if (!this.hangupTimeout) {
+        this.hangupTimeout = setTimeout(() => {
+          if (this.silenceWatchdogInterval) {
+            clearInterval(this.silenceWatchdogInterval);
+            this.silenceWatchdogInterval = null;
+          }
+          this.twilioWs.close();
+        }, 500);
+      }
+      return;
+    }
     console.log('🛑 [Barge-in] Wykryto przerwanie! Natychmiastowe zatrzymanie mowy asystenta.');
     
     this.isTurnCanceled = true;
@@ -775,7 +828,7 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             console.log(`🔓 [CallOrchestrator] Właściciel autoryzowany kodem PIN!`);
             return {
               success: true,
-              message: "Kod PIN poprawny. Dostęp do funkcji zarządczych został autoryzowany. Przywitaj szefa po imieniu i zaoferuj podsumowanie dnia lub zapytaj w czym możesz pomóc."
+              authorized: true
             };
           } else {
             this.ownerPinAttempts = (this.ownerPinAttempts || 0) + 1;
@@ -784,12 +837,15 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
               this.callerRole = 'GUEST';
               return {
                 success: false,
-                message: "Przekroczono maksymalną liczbę prób (3). Odmowa autoryzacji do trybu Właściciela. Przełączono w tryb gościa."
+                authorized: false,
+                locked: true,
+                attemptsRemaining: 0
               };
             }
             return {
               success: false,
-              message: `Niepoprawny kod PIN. Pozostało prób: ${3 - this.ownerPinAttempts}. Poproś o ponowne podanie PIN.`
+              authorized: false,
+              attemptsRemaining: 3 - this.ownerPinAttempts
             };
           }
         }
@@ -803,7 +859,6 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             console.log(`🔓 [CallOrchestrator] Wiedza poufna odblokowana kodem PIN!`);
             return {
               success: true,
-              message: result.message,
               answer: result.answer
             };
           } else {
@@ -812,12 +867,13 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             if (this.confidentialPinAttempts >= 3) {
               return {
                 success: false,
-                message: "Przekroczono maksymalną liczbę prób PIN. Dostęp do tej informacji został zablokowany. Zaproponuj kontakt w innej sprawie lub pozostawienie wiadomości dla właściciela."
+                locked: true,
+                attemptsRemaining: 0
               };
             }
             return {
               success: false,
-              message: `Błędny kod PIN do wiedzy poufnej. Pozostało prób: ${3 - this.confidentialPinAttempts}. Poproś o ponowne podanie PIN.`
+              attemptsRemaining: 3 - this.confidentialPinAttempts
             };
           }
         }
@@ -873,15 +929,16 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           if (nextAvailableDate && nextAvailableSlots.length > 0) {
             return {
               availableSlots: [],
-              message: `Brak wolnych terminów w dniu ${args.date}. Najbliższy dzień z wolnymi terminami to ${nextAvailableDate} (${nextDayName}). Dostępne godziny w tym dniu: ${nextAvailableSlots.slice(0, 4).join(', ')}. Zaproponuj rozmówcy 2 konkretne godziny z tego dnia (${nextDayName}, ${nextAvailableDate})!`,
               suggestedDate: nextAvailableDate,
-              suggestedSlots: nextAvailableSlots.slice(0, 4)
+              suggestedDayName: nextDayName,
+              suggestedSlots: nextAvailableSlots.slice(0, 4),
+              info: `Brak wolnych terminów na dzień ${args.date}. Najbliższy dzień z terminami: ${nextAvailableDate} (${nextDayName}), godziny: ${nextAvailableSlots.slice(0, 4).join(', ')}.`
             };
           }
 
           return { 
             availableSlots: [], 
-            message: `Brak wolnych terminów na dzień ${args.date} oraz w kolejnych kilku dniach roboczych.` 
+            info: `Brak wolnych terminów na dzień ${args.date} oraz w kolejnych kilku dniach roboczych.` 
           };
         }
         case 'bookAppointment': {
@@ -890,7 +947,9 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           }
           // Zabezpieczenie przed podwójną rezerwacją: jeśli klient w trakcie rozmowy zmienił termin,
           // usuwamy wcześniejszą rezerwację z tej samej rozmowy, zachowując ostatecznie wybrany termin
+          let isReschedule = false;
           if (this.bookedAppointments.length > 0) {
+            isReschedule = true;
             for (const prevId of this.bookedAppointments) {
               try {
                 await prisma.appointment.delete({ where: { id: prevId } });
@@ -916,7 +975,8 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             args.contactLevel, 
             this.callerRole, 
             this.vipContact?.category, 
-            this.vipContact?.allowPrioritySlots
+            this.vipContact?.allowPrioritySlots,
+            isReschedule
           );
           if (bookRes && (bookRes.success || bookRes.appointment || !bookRes.error)) {
             const formattedDate = new Date(args.startTime).toLocaleString('pl-PL', { 
@@ -938,7 +998,7 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
         }
         case 'confirmAppointment': {
           const targetPhone = args.customerPhone || this.callerPhone;
-          const targetId = args.appointmentId || this.outboundAppointmentId || undefined;
+          const targetId = this.outboundAppointmentId || args.appointmentId || undefined;
           const res = await bookingService.confirmAppointment(tenantId, targetPhone, targetId);
           if (res && (res.success || !res.error)) {
             this.isConfirmedOutbound = true;
@@ -957,7 +1017,7 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
         }
         case 'cancelAppointment': {
           const targetPhone = args.customerPhone || this.callerPhone;
-          const targetId = args.appointmentId || this.outboundAppointmentId || undefined;
+          const targetId = this.outboundAppointmentId || args.appointmentId || undefined;
           const res = await bookingService.cancelAppointment(tenantId, targetPhone, targetId);
           if (res && (res.success || !res.error)) {
             this.isCancelledOutbound = true;
@@ -1008,13 +1068,12 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           if (this.businessProfile !== 'personal' || this.callerRole !== 'VIP' || !['VIP', 'Rodzina'].includes(this.vipContact?.category || '')) {
             return {
               status: "transfer_rejected",
-              message: "Bezpośrednie przełączanie połączeń jest zarezerwowane wyłącznie dla kontaktów z kategorii VIP oraz Rodzina. Poinformuj rozmówcę uprzejmie, że nie masz możliwości połączenia na żywo, ale chętnie zapiszesz dokładną wiadomość i przekażesz ją natychmiast właścicielowi."
+              reason: "vip_only"
             };
           }
           if (this.transferAttempted) {
             return {
-              status: "transfer_already_attempted",
-              message: "Próba bezpośredniego połączenia została już wcześniej podjęta w tej rozmowie i właściciel nie odebrał. Poproś rozmówcę o podyktowanie wiadomości, a przekażesz ją natychmiast."
+              status: "transfer_already_attempted"
             };
           }
           const twilioSid = process.env.TWILIO_ACCOUNT_SID;
@@ -1022,8 +1081,7 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           if (!this.callSid || !this.ownerPhone || !twilioSid || !twilioToken) {
             console.warn(`[Transfer] Brak danych do transferu: callSid=${this.callSid}, ownerPhone=${this.ownerPhone}`);
             return {
-              status: "technical_unavailable",
-              message: "Przełączenie techniczne jest chwilowo niedostępne. Zaproponuj rozmówcy zapisanie pilnej notatki."
+              status: "technical_unavailable"
             };
           }
 
@@ -1046,18 +1104,17 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
             });
 
             return {
-              status: "transferring",
-              message: "Przełączam rozmowę do właściciela. Proszę czekać na linii."
+              status: "transferring"
             };
           } catch (err: any) {
             console.error(`[Transfer] Błąd wywołania Twilio call update:`, err);
             return {
-              status: "transfer_error",
-              message: "Wystąpił problem techniczny podczas próby łączenia. Zaproponuj zapisanie wiadomości."
+              status: "transfer_error"
             };
           }
         }
         case 'endCall':
+          this.isTerminating = true;
           this.shouldHangupAfterTurn = true;
           if (args?.callSummary) {
             this.callSummaryFromAi = args.callSummary;
@@ -1066,7 +1123,7 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
           if (args?.callerName) {
             this.callerNameFromAi = args.callerName;
           }
-          return { status: "call_ending", message: "Pożegnaj się uprzejmie z klientem jednym krótkim zdaniem. Połączenie zostanie automatycznie rozłączone." };
+          return { status: "ok", success: true };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
       }
@@ -1077,6 +1134,10 @@ W przeciwnym razie, gdy rozmówca tylko się przedstawi, przejdź do Tury 2 wed�
   }
 
   private async processIncomingAudio(payloadBase64: string) {
+    if (this.isTerminating) {
+      return;
+    }
+
     const float32Array = AudioPipeline.decodeTwilioMulawTo16kHz(payloadBase64);
     
     // 1. Sprawdzamy lokalny Silero VAD pod kątem wtrącenia użytkownika (Barge-in)

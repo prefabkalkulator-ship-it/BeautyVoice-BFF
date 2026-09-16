@@ -62,6 +62,9 @@ model Tenant {
   serviceAreaDescription String?        @db.Text // np. Warszawa i okolice do 30 km, powiaty piaseczyński i pruszkowski
   rejectionSmsTemplate   String?        @db.Text // Szablon wiadomości SMS przy odrzuceniu zlecenia
   qualificationPrompt    String?        @db.Text // Wytyczne kwalifikacji sprawy i budżetu
+  leadQuestion1          String?        @db.Text // Pytanie 1: Kwalifikacja leada / zasobów (np. czy ma kupioną działkę)
+  leadQuestion2          String?        @db.Text // Pytanie 2: Badanie marketingowe (np. skąd o nas wie)
+  leadQuestion3          String?        @db.Text // Pytanie 3: Termin realizacji lub budżet
 
   betaStatus          String         @default("none") // none, pending, approved, rejected
   betaContactPerson   String?

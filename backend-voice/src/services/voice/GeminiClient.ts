@@ -42,6 +42,9 @@ export interface GeminiClientCallbacks {
   bookingExternalUrl?: string;
   serviceAreaDescription?: string;
   qualificationPrompt?: string;
+  leadQuestion1?: string;
+  leadQuestion2?: string;
+  leadQuestion3?: string;
 }
 
 export class GeminiClient {
@@ -118,7 +121,10 @@ export class GeminiClient {
               confidentialTopics: this.callbacks.confidentialTopics,
               bookingExternalUrl: this.callbacks.bookingExternalUrl,
               serviceAreaDescription: this.callbacks.serviceAreaDescription,
-              qualificationPrompt: this.callbacks.qualificationPrompt
+              qualificationPrompt: this.callbacks.qualificationPrompt,
+              leadQuestion1: this.callbacks.leadQuestion1,
+              leadQuestion2: this.callbacks.leadQuestion2,
+              leadQuestion3: this.callbacks.leadQuestion3
             }) }]
         },
         tools: [{
@@ -208,8 +214,8 @@ export class GeminiClient {
       : `Aktualna godzina w Warszawie to ${warsawTime}. Użyj powitania "${exactGreeting}".`;
 
     const text = contextText 
-      ? `Rozmówca połączył się. ${contextText} ${instruction} WAŻNE: Wypowiedz powyższe pierwsze zdanie dokładnie i naturalnie. Kategoryczny zakaz dublowania powitania (np. mówienia "Dzień dobry" dwa razy)!` 
-      : `Rozmówca połączył się. ${instruction} Przywitaj się zwięźle i profesjonalnie jednym zwrotem powitalnym.`;
+      ? `Rozmówca połączył się. ${contextText}` 
+      : `Rozmówca połączył się. ${instruction} Przywitaj się zwięźle jednym zwrotem powitalnym.`;
       
     const greetingObj = {
       clientContent: {

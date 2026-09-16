@@ -26,16 +26,30 @@ export const requestForToken = async () => {
     const currentToken = await getToken(messaging, { vapidKey: 'BHGAMyLplV3orS4FcZVaNyj7xcMjl6fFcc5SAMRNeihzEgIC43HLsVJ4llUDnYG0bPq3rOFDWpEPRQLt4XPdkRU' });
     if (currentToken) {
       console.log('FCM Token generated');
+      const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       const isStandalone = typeof window !== 'undefined' && (
         window.matchMedia('(display-mode: standalone)').matches ||
         (window.navigator as any).standalone === true ||
         document.referrer.includes('android-app://')
       );
-      // Wysyłamy token do backendu wraz z flagą PWA
+
+      // Identyfikator urządzenia dla unikania dublowania sesji
+      let deviceId = '';
+      if (typeof window !== 'undefined') {
+        try {
+          deviceId = localStorage.getItem('bv_device_id') || '';
+          if (!deviceId) {
+            deviceId = 'dev_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+            localStorage.setItem('bv_device_id', deviceId);
+          }
+        } catch (e) {}
+      }
+
+      // Wysyłamy token do backendu wraz z flagami PWA, Mobile oraz deviceId
       fetch('/api/tenant/fcm-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: currentToken, isStandalone })
+        body: JSON.stringify({ token: currentToken, isStandalone, isMobile, deviceId })
       }).catch(console.error);
       return currentToken;
     } else {

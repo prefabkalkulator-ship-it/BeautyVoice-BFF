@@ -43,6 +43,10 @@ interface CallLog {
   isProcessed: boolean;
   rejectionReason?: string | null;
   createdAt: string;
+  appointmentId?: string | null;
+  appointmentDate?: string | null;
+  appointmentStatus?: string | null;
+  appointmentService?: string | null;
 }
 
 export default function CallHistoryMessages() {
@@ -58,6 +62,9 @@ export default function CallHistoryMessages() {
     isOpen: boolean;
     phone?: string;
     customerName?: string;
+    appointmentId?: string;
+    date?: string;
+    time?: string;
   }>({ isOpen: false });
 
   // Stan modala "Doszkól asystenta" (1-Click FAQ)
@@ -527,11 +534,22 @@ export default function CallHistoryMessages() {
                       </a>
                       <button
                         type="button"
-                        onClick={() => setConfirmationModalData({
-                          isOpen: true,
-                          phone: log.callerPhone,
-                          customerName: log.callerName || undefined
-                        })}
+                        onClick={() => {
+                          const apptDate = log.appointmentDate 
+                            ? new Date(log.appointmentDate).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }) 
+                            : undefined;
+                          const apptTime = log.appointmentDate 
+                            ? new Date(log.appointmentDate).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) 
+                            : undefined;
+                          setConfirmationModalData({
+                            isOpen: true,
+                            phone: log.callerPhone,
+                            customerName: log.callerName || undefined,
+                            appointmentId: log.appointmentId || undefined,
+                            date: apptDate,
+                            time: apptTime
+                          });
+                        }}
                         className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80 font-bold rounded-xl text-xs transition shadow-2xs w-full md:w-auto text-center cursor-pointer"
                         title="Wyślij SMS lub uruchom telefon z EVA w celu potwierdzenia spotkania / wizyty"
                       >
@@ -772,6 +790,9 @@ export default function CallHistoryMessages() {
         }}
         initialPhone={confirmationModalData.phone}
         initialCustomerName={confirmationModalData.customerName}
+        initialAppointmentId={confirmationModalData.appointmentId}
+        initialDate={confirmationModalData.date}
+        initialTime={confirmationModalData.time}
       />
     </div>
   );

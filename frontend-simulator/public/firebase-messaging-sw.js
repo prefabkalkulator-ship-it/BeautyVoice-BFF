@@ -1,4 +1,4 @@
-﻿importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
 const firebaseConfig = {
@@ -13,29 +13,52 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 messaging.onBackgroundMessage((payload) => {
-  const notificationTitle = payload.data?.title || 'BeautyVoice';
-  const phone = payload.data?.phone;
+  console.log('[firebase-messaging-sw.js] Otrzymano powiadomienie w tle:', payload);
   
+  const title = payload.notification?.title || payload.data?.title || 'BeautyVoice AI';
+  const body = payload.notification?.body || payload.data?.body || '';
+  const clickUrl = payload.data?.url || payload.data?.click_action || '/dashboard';
+  const phone = payload.data?.phone || payload.notification?.data?.phone || '';
+  const tag = payload.data?.tag || payload.notification?.tag || ('bv-alert-' + (phone ? phone.replace(/[^0-9]/g, '') : 'general'));
+
   const notificationOptions = {
-    body: payload.data?.body,
+    body: body,
     icon: '/EVA_favicon_192.png',
+    badge: '/EVA_favicon_192.png',
+    tag: tag,
+    renotify: true,
     data: {
-      url: payload.data?.click_action || '/',
+      url: clickUrl,
       phone: phone
     },
-    actions: phone ? [{ action: 'call', title: 'Zadzwoń' }] : []
+    actions: phone ? [
+      {
+        action: 'call',
+        title: '📞 Zadzwoń'
+      }
+    ] : []
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  return self.registration.showNotification(title, notificationOptions);
 });
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
-  if (event.action === 'call' && event.notification.data.phone) {
-    const phone = event.notification.data.phone.replace('+', '%2B');
-    clients.openWindow('/dashboard?call=' + phone);
+  const data = event.notification.data || {};
+  if (event.action === 'call' && data.phone) {
+    const rawPhone = data.phone.trim();
+    clients.openWindow('tel:' + rawPhone);
   } else {
-    clients.openWindow(event.notification.data.url);
+    const targetUrl = data.url || '/dashboard';
+    clients.openWindow(targetUrl);
   }
 });

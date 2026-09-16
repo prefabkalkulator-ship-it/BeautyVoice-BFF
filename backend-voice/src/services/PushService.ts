@@ -16,28 +16,66 @@ initializeApp({
 import { prisma } from '../prisma';
 
 export class PushService {
-  static async sendNotification(tokens: string[], title: string, body: string, url?: string, phone?: string, tenantId?: string) {
-    if (!tokens || tokens.length === 0) return;
+  static async sendNotification(
+    tokens: string[], 
+    title: string, 
+    body: string, 
+    url?: string, 
+    phone?: string, 
+    tenantId?: string,
+    tag?: string
+  ) {
+    // Deduplikacja tokenów
+    const uniqueTokens = Array.from(new Set(tokens.filter(Boolean)));
+    if (uniqueTokens.length === 0) return;
     
     const clickUrl = url || 'https://beautyvoice-bff.web.app/dashboard';
+    const iconUrl = 'https://beautyvoice-bff.web.app/EVA_favicon_192.png';
+    const notificationTag = tag || ('bv-alert-' + (phone ? phone.replace(/[^0-9]/g, '') : 'general'));
 
+    // Pełny payload zgodny ze standardem WebPush:
+    // 1. Obiekt 'notification' gwarantuje natychmiastowe wybudzenie urządzenia
+    // 2. Obiekt 'data' i 'webpush.notification' ze stabilnym 'tag' zapobiegają duplikatom na Androidzie
     const message = {
       notification: {
-        title,
-        body
+        title: String(title || 'BeautyVoice'),
+        body: String(body || '')
       },
       data: {
-        title,
-        body,
-        click_action: clickUrl,
-        phone: phone || ''
+        title: String(title || 'BeautyVoice'),
+        body: String(body || ''),
+        click_action: String(clickUrl),
+        phone: String(phone || ''),
+        tag: notificationTag
       },
       webpush: {
+        headers: {
+          Urgency: 'high'
+        },
+        notification: {
+          title: String(title || 'BeautyVoice'),
+          body: String(body || ''),
+          icon: iconUrl,
+          badge: iconUrl,
+          tag: notificationTag,
+          renotify: true,
+          data: {
+            url: String(clickUrl),
+            phone: String(phone || ''),
+            tag: notificationTag
+          },
+          actions: phone ? [
+            {
+              action: 'call',
+              title: '📞 Zadzwoń'
+            }
+          ] : []
+        },
         fcmOptions: {
           link: clickUrl
         }
       },
-      tokens
+      tokens: uniqueTokens
     };
 
     try {

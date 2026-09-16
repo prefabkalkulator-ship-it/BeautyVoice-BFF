@@ -316,12 +316,12 @@ export class BookingService {
           },
           {
             name: 'updateCustomerSource',
-            description: 'Używaj TEGO narztdzia wycznie wtedy, gdy zapytasz nowego klienta "Skd si o nas dowiedziae?" a on odpowie (np. z Google, od znajomego, z Facebooka).',
+            description: 'Używaj tego narzędzia wyłącznie wtedy, gdy zapytasz nowego klienta "Skąd się o nas dowiedziałeś?" a on odpowie (np. z Google, od znajomego, z Facebooka).',
             parameters: {
               type: 'OBJECT',
               properties: {
                 customerPhone: { type: 'STRING', description: 'Numer telefonu klienta' },
-                source: { type: 'STRING', description: 'Źrdo pozyskania klienta (np. Google, Facebook, polecenie, ulotka)' }
+                source: { type: 'STRING', description: 'Źródło pozyskania klienta (np. Google, Facebook, polecenie, ulotka)' }
               },
               required: ['customerPhone', 'source']
             }
@@ -953,30 +953,70 @@ export class BookingService {
    */
   public async confirmAppointment(tenantId: string, customerPhone?: string, appointmentId?: string) {
     try {
-      let whereClause: any = { 
-        tenantId, 
-        status: { in: ['pending_confirmation', 'confirmed', 'confirmed_by_client'] } 
-      };
-
-      if (appointmentId) {
-        whereClause.id = appointmentId;
-      } else if (customerPhone) {
+      // 1. Jeśli nie przekazano appointmentId, sprawdź czy dla tego numeru było niedawno zlecone zadanie w outboundQueue
+      if (!appointmentId && customerPhone) {
         const clean = customerPhone.replace(/[\s\-()]/g, '');
-        whereClause.customerPhone = { contains: clean.slice(-9) };
-        whereClause.startTime = { gt: new Date() };
+        const recentOutbound = await prisma.outboundQueue.findFirst({
+          where: {
+            tenantId,
+            targetPhone: { contains: clean.slice(-9) },
+            status: { in: ['processing', 'in_progress', 'done', 'pending'] }
+          },
+          orderBy: { scheduledFor: 'desc' }
+        });
+        if (recentOutbound?.payload) {
+          const payload = recentOutbound.payload as any;
+          if (payload.appointmentId && !String(payload.appointmentId).startsWith('adhoc_')) {
+            appointmentId = payload.appointmentId;
+          }
+        }
       }
 
-      const appointments = await prisma.appointment.findMany({
-        where: whereClause,
-        orderBy: { startTime: 'asc' },
-        take: 1
-      });
+      let appointments: any[] = [];
+
+      if (appointmentId) {
+        appointments = await prisma.appointment.findMany({
+          where: { id: appointmentId, tenantId },
+          take: 1
+        });
+      } else if (customerPhone) {
+        const clean = customerPhone.replace(/[\s\-()]/g, '');
+        // Priorytet 1: Wizyty ze statusem 'pending_confirmation' (oczekujące na potwierdzenie)
+        appointments = await prisma.appointment.findMany({
+          where: {
+            tenantId,
+            customerPhone: { contains: clean.slice(-9) },
+            status: 'pending_confirmation',
+            startTime: { gt: new Date() },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
+          },
+          orderBy: { startTime: 'asc' },
+          take: 1
+        });
+
+        // Priorytet 2: Inne nadchodzące wizyty
+        if (appointments.length === 0) {
+          appointments = await prisma.appointment.findMany({
+            where: {
+              tenantId,
+              customerPhone: { contains: clean.slice(-9) },
+              status: { in: ['confirmed', 'confirmed_by_client', 'pending', 'unconfirmed'] },
+              startTime: { gt: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
+            },
+            orderBy: { startTime: 'asc' },
+            take: 1
+          });
+        }
+      }
 
       if (appointments.length > 0) {
         const appt = appointments[0];
         await prisma.appointment.update({
           where: { id: appt.id },
-          data: { status: 'confirmed_by_client' }
+          data: { status: 'confirmed_by_client', isProcessed: true }
         });
 
         // Rejestracja zdarzenia w CallLog
@@ -1009,7 +1049,7 @@ export class BookingService {
           const nameToSave = cust ? cust.name : `Nieznany (tel: ${customerPhone})`;
           await prisma.appointment.update({
              where: { id: offer.id },
-             data: { status: 'confirmed_by_client', customerPhone: customerPhone, customerName: nameToSave, customerId: cust ? cust.id : null }
+             data: { status: 'confirmed_by_client', customerPhone: customerPhone, customerName: nameToSave, customerId: cust ? cust.id : null, isProcessed: true }
           });
           return { success: true, message: "Rezerwacja została pomyślnie potwierdzona i przypisana klientowi." };
       }
@@ -1020,30 +1060,70 @@ export class BookingService {
 
   public async cancelAppointment(tenantId: string, customerPhone?: string, appointmentId?: string) {
     try {
-      let whereClause: any = { 
-        tenantId, 
-        status: { in: ['pending_confirmation', 'confirmed', 'confirmed_by_client'] } 
-      };
-
-      if (appointmentId) {
-        whereClause.id = appointmentId;
-      } else if (customerPhone) {
+      // 1. Jeśli nie przekazano appointmentId, sprawdź czy dla tego numeru było niedawno zlecone zadanie w outboundQueue
+      if (!appointmentId && customerPhone) {
         const clean = customerPhone.replace(/[\s\-()]/g, '');
-        whereClause.customerPhone = { contains: clean.slice(-9) };
-        whereClause.startTime = { gt: new Date() };
+        const recentOutbound = await prisma.outboundQueue.findFirst({
+          where: {
+            tenantId,
+            targetPhone: { contains: clean.slice(-9) },
+            status: { in: ['processing', 'in_progress', 'done', 'pending'] }
+          },
+          orderBy: { scheduledFor: 'desc' }
+        });
+        if (recentOutbound?.payload) {
+          const payload = recentOutbound.payload as any;
+          if (payload.appointmentId && !String(payload.appointmentId).startsWith('adhoc_')) {
+            appointmentId = payload.appointmentId;
+          }
+        }
       }
 
-      const appointments = await prisma.appointment.findMany({
-        where: whereClause,
-        orderBy: { startTime: 'asc' },
-        take: 1
-      });
+      let appointments: any[] = [];
+
+      if (appointmentId) {
+        appointments = await prisma.appointment.findMany({
+          where: { id: appointmentId, tenantId },
+          take: 1
+        });
+      } else if (customerPhone) {
+        const clean = customerPhone.replace(/[\s\-()]/g, '');
+        // Priorytet 1: Wizyty ze statusem 'pending_confirmation'
+        appointments = await prisma.appointment.findMany({
+          where: {
+            tenantId,
+            customerPhone: { contains: clean.slice(-9) },
+            status: 'pending_confirmation',
+            startTime: { gt: new Date() },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
+          },
+          orderBy: { startTime: 'asc' },
+          take: 1
+        });
+
+        // Priorytet 2: Inne nadchodzące wizyty
+        if (appointments.length === 0) {
+          appointments = await prisma.appointment.findMany({
+            where: {
+              tenantId,
+              customerPhone: { contains: clean.slice(-9) },
+              status: { in: ['confirmed', 'confirmed_by_client', 'pending', 'unconfirmed'] },
+              startTime: { gt: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
+            },
+            orderBy: { startTime: 'asc' },
+            take: 1
+          });
+        }
+      }
 
       if (appointments.length > 0) {
         const appt = appointments[0];
         await prisma.appointment.update({
           where: { id: appt.id },
-          data: { status: 'cancelled' }
+          data: { status: 'cancelled', isProcessed: true }
         });
 
         // Rejestracja zdarzenia w CallLog
@@ -1082,7 +1162,7 @@ export class BookingService {
           tenantId
         );
       }
-      return { success: true, message: 'Powiadomienie zostało wysłane. Możesz się pożegnać.' };
+      return { success: true, status: 'dispatched' };
     } catch(e: any) {
       console.error('Błąd przy requestHumanContact:', e);
       return { error: e.message };
@@ -1104,7 +1184,8 @@ export class BookingService {
     contactLevel?: string,
     callerRole: string = "GUEST",
     vipCategory?: string,
-    allowPrioritySlots?: boolean
+    allowPrioritySlots?: boolean,
+    isReschedule?: boolean
   ): Promise<boolean> {
     try {
       // Jeśli LLM przekazał niekompletny/błędny numer telefonu, a mamy Caller ID (callerPhone), użyj Caller ID
@@ -1397,6 +1478,9 @@ export class BookingService {
           contactLevel: contactLevel || 'MEETING'
         }
       });
+
+      // Powiadomienie Push zostanie wysłane po zakończeniu rozmowy w PersonalAssistantWorker
+      // jako jedno, kompletne podsumowanie (wraz z zebranymi odpowiedziami na pytania kwalifikacyjne).
 
       // Update tags & lastVisit
       const visitCount = await prisma.appointment.count({
@@ -1825,7 +1909,8 @@ export class BookingService {
             rawMessage,
             'https://beautyvoice-bff.web.app/dashboard',
             callerPhone,
-            tenantId
+            tenantId,
+            `bv-msg-${callLog.id}`
           );
           await prisma.callLog.update({ where: { id: callLog.id }, data: { pushSent: true } });
         }

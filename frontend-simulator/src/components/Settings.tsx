@@ -1,7 +1,8 @@
 import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight } from 'lucide-react';
 
 const defaultSchedule = {
   "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
@@ -81,11 +82,16 @@ export default function Settings() {
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const isPersonalExpert = tenant?.subscription?.planName === 'personal_expert' || tenant?.subscription?.planName?.toLowerCase()?.includes('expert');
+
   // Nowo dodane pola: ścieżka hybrydowa, zasięg, odmowa SMS, kwalifikacja
   const [bookingExternalUrl, setBookingExternalUrl] = useState('');
   const [serviceAreaDescription, setServiceAreaDescription] = useState('');
   const [rejectionSmsTemplate, setRejectionSmsTemplate] = useState('');
   const [qualificationPrompt, setQualificationPrompt] = useState('');
+  const [leadQuestion1, setLeadQuestion1] = useState('');
+  const [leadQuestion2, setLeadQuestion2] = useState('');
+  const [leadQuestion3, setLeadQuestion3] = useState('');
 
   const [ownerName, setOwnerName] = useState('');
   const [ownerGender, setOwnerGender] = useState('MALE');
@@ -156,6 +162,9 @@ export default function Settings() {
         setServiceAreaDescription(tData.serviceAreaDescription || '');
         setRejectionSmsTemplate(tData.rejectionSmsTemplate || '');
         setQualificationPrompt(tData.qualificationPrompt || '');
+        setLeadQuestion1(tData.leadQuestion1 || '');
+        setLeadQuestion2(tData.leadQuestion2 || '');
+        setLeadQuestion3(tData.leadQuestion3 || '');
 
         setOwnerName(tData.ownerName || tData.name || '');
         setOwnerGender(tData.ownerGender || 'MALE');
@@ -232,7 +241,10 @@ export default function Settings() {
           bookingExternalUrl,
           serviceAreaDescription,
           rejectionSmsTemplate,
-          qualificationPrompt
+          qualificationPrompt,
+          leadQuestion1,
+          leadQuestion2,
+          leadQuestion3
         })
       });
       alert('Zapisano ustawienia.');
@@ -713,10 +725,45 @@ export default function Settings() {
               </div>
 
               {/* Zasięg działania & Kwalifikacja (Pakiet Osobisty Ekspert) */}
-              <div className="md:col-span-2 p-3.5 sm:p-4 rounded-xl border border-purple-200 bg-purple-50/40 space-y-3">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-purple-700 shrink-0" />
-                  <span className="text-sm font-bold text-surface-900">Zasięg Działania & Kwalifikacja Spraw (Pakiet Ekspert)</span>
+              <div className="md:col-span-2 relative rounded-2xl border-2 border-purple-200 bg-purple-50/40 p-4 sm:p-5 space-y-4 overflow-hidden shadow-2xs">
+                {!isPersonalExpert && (
+                  <div className="absolute inset-0 bg-white/85 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center">
+                    <div className="p-3 bg-purple-100 text-purple-700 rounded-2xl mb-3 shadow-2xs">
+                      <Lock className="w-6 h-6" />
+                    </div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-3 py-1 rounded-full border border-purple-200 mb-2">
+                      Pakiet Osobisty Ekspert
+                    </span>
+                    <h4 className="text-base font-bold text-surface-900 mb-1.5">
+                      Zasięg Działania, Kwalifikacja Leadów & Badania Marketingowe
+                    </h4>
+                    <p className="text-xs text-surface-600 max-w-md mb-4 leading-relaxed">
+                      Inteligentna kwalifikacja nowych zapytań (pytania handlowe), badanie źródła leada, kontrola obszaru dojazdów oraz szablon 1-klik SMS są dostępne wyłącznie w Pakiecie Osobisty Ekspert.
+                    </p>
+                    <Link
+                      to="/dashboard/subscription"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                    >
+                      Ulepsz do Pakietu Osobisty Ekspert <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-2 border-b border-purple-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-surface-900">Zasięg Działania & Kwalifikacja Spraw</span>
+                      <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-900 uppercase">Pakiet Ekspert</span>
+                    </div>
+                  </div>
+                  {isPersonalExpert && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Aktywny
+                    </span>
+                  )}
                 </div>
                 
                 <div>
@@ -725,10 +772,11 @@ export default function Settings() {
                   </label>
                   <input
                     type="text"
+                    disabled={!isPersonalExpert}
                     value={serviceAreaDescription}
                     onChange={e => setServiceAreaDescription(e.target.value)}
                     placeholder="np. Warszawa i powiaty ościenne (Piaseczno, Pruszków, Legionowo, Wołomin) do 30 km"
-                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
                   />
                   <p className="text-[11px] text-surface-500 mt-1">
                     Asystent poinformuje dzwoniącego o rejonie Twojej działalności i zapyta o miejscowość, której dotyczy sprawa.
@@ -741,10 +789,11 @@ export default function Settings() {
                   </label>
                   <textarea
                     rows={2}
+                    disabled={!isPersonalExpert}
                     value={qualificationPrompt}
                     onChange={e => setQualificationPrompt(e.target.value)}
                     placeholder="np. Wypytaj o rodzaj sprawy (karne / cywilne / gospodarcze) oraz upewnij się, czy klient dysponuje budżetem min. 1000 zł na wstępną analizę."
-                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white disabled:opacity-60"
                   />
                   <p className="text-[11px] text-surface-500 mt-1">
                     Asystent przeprowadzi wstępny wywiad merytoryczny przed zaproponowaniem spotkania.
@@ -757,14 +806,74 @@ export default function Settings() {
                   </label>
                   <textarea
                     rows={2}
+                    disabled={!isPersonalExpert}
                     value={rejectionSmsTemplate}
                     onChange={e => setRejectionSmsTemplate(e.target.value)}
                     placeholder="Dzień dobry, dziękujemy za kontakt z naszą kancelarią. Uprzejmie informujemy, że ze względu na specjalizację oraz rejon działania, nie podejmujemy się prowadzenia tej sprawy. Pozdrawiamy."
-                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white disabled:opacity-60"
                   />
                   <p className="text-[11px] text-surface-500 mt-1">
                     Treść gotowej wiadomości SMS, którą wyślesz jednym kliknięciem z poziomu „Wiadomości i Połączenia”.
                   </p>
+                </div>
+
+                {/* Sekcja Pytań Kwalifikacyjnych & Badań Marketingowych */}
+                <div className="pt-3 border-t border-purple-200/80 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl shrink-0 mt-0.5">🎯</span>
+                    <div>
+                      <h5 className="text-xs font-bold text-surface-900 uppercase tracking-wider">
+                        Wstępna Kwalifikacja Leadów & Badania Marketingowe (Rola Handlowca)
+                      </h5>
+                      <p className="text-[11px] text-surface-500 mt-0.5">
+                        Zadawane w trakcie rozmowy wyłącznie nowym klientom (brak numeru w bazie), którzy pytają o ofertę lub usługi. Puste pola są pomijane, a odpowiedzi asystent zapisze w podsumowaniu połączenia.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Pytanie 1 – Kwalifikacja zasobów / przedmiotu sprawy
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isPersonalExpert}
+                        value={leadQuestion1}
+                        onChange={e => setLeadQuestion1(e.target.value)}
+                        placeholder="np. Czy posiada już Pan / Pani kupioną działkę pod budowę?"
+                        className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Pytanie 2 – Termin realizacji lub budżet
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isPersonalExpert}
+                        value={leadQuestion2}
+                        onChange={e => setLeadQuestion2(e.target.value)}
+                        placeholder="np. Na kiedy planują Państwo rozpoczęcie prac lub jaki jest preferowany termin?"
+                        className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Pytanie 3 – Badanie marketingowe (skąd klient o nas wie)
+                      </label>
+                      <input
+                        type="text"
+                        disabled={!isPersonalExpert}
+                        value={leadQuestion3}
+                        onChange={e => setLeadQuestion3(e.target.value)}
+                        placeholder="np. Z ciekawości – skąd dowiedział(a) się Pan / Pani o naszej firmie?"
+                        className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1124,50 +1233,6 @@ export default function Settings() {
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input 
                     type="checkbox" 
-                    checked={morningBriefingEnabled} 
-                    onChange={e => setMorningBriefingEnabled(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 text-primary rounded accent-primary shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-surface-900 uppercase tracking-wider break-words">Poranny Raport Wykonawczy (Push & Panel z Kopiuj / Udostępnij)</span>
-                      <PageHelpButton
-                        variant="circle_i"
-                        title="Poranny Raport i Podsumowanie Dnia"
-                        description="Codzienny raport wykonawczy trafia bezpośrednio jako powiadomienie Push na Twój smartfon."
-                        tips={[
-                          "Raport zawiera zwięzłą liczbę spotkań, ważne rocznice i święta oraz sprawy pilne wymagające kontaktu.",
-                          "Dzięki atomowej blokadzie w bazie danych raport przychodzi dokładnie raz, bez niepotrzebnych duplikatów.",
-                          "Możesz też w dowolnym momencie zadzwonić do asystenta i poprosić o podsumowanie dnia głosem lub wysłanie szczegółowego raportu na e-mail."
-                        ]}
-                        guideSectionId="personal-reports-share"
-                      />
-                    </div>
-                    <p className="text-xs text-surface-600 mt-0.5">Codzienny poranny briefing trafia bezpośrednio jako powiadomienie Push na Twój telefon oraz do panelu z możliwością szybkiego Skopiowania i Udostępnienia.</p>
-                  </div>
-                </label>
-
-                {morningBriefingEnabled && (
-                  <div className="pl-0 sm:pl-7 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-2 border-t border-surface-100">
-                    <label className="text-xs font-medium text-surface-700">Godzina wysyłki raportu:</label>
-                    <select 
-                      value={morningBriefingHour} 
-                      onChange={e => setMorningBriefingHour(parseInt(e.target.value, 10))}
-                      className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs outline-none focus:border-primary bg-white w-full sm:w-auto"
-                    >
-                      <option value={6}>06:00 rano</option>
-                      <option value={7}>07:00 rano</option>
-                      <option value={8}>08:00 rano (domyślnie)</option>
-                      <option value={9}>09:00 rano</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              <div className="md:col-span-2 p-3.5 sm:p-4 rounded-xl border border-amber-200/80 bg-white space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input 
-                    type="checkbox" 
                     checked={ownerRequirePin} 
                     onChange={e => setOwnerRequirePin(e.target.checked)}
                     className="mt-0.5 w-4 h-4 text-primary rounded accent-primary shrink-0"
@@ -1362,7 +1427,7 @@ export default function Settings() {
 
             <div className="md:col-span-2 mt-2">
               <label className="block text-sm font-medium text-surface-700 mb-1">
-                {businessProfile === 'personal' ? 'Twój prywatny adres e-mail (do raportów i powiadomień)' : 'Email kontaktowy firmy'}
+                {businessProfile === 'personal' ? 'Twój adres e-mail (do kontaktu i raportów)' : 'Email kontaktowy firmy'}
               </label>
               <input 
                 type="email" 
@@ -1383,6 +1448,45 @@ export default function Settings() {
                   Udostępnij AI (dzwoniący mogą pytać o email) / odznacz, jeśli tylko do kontaktu z nami
                 </label>
               </div>
+
+              {businessProfile === 'personal' && isPersonalExpert && (
+                <div className="mt-3 p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/40 space-y-2.5">
+                  <div className="flex items-start gap-2.5 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      id="morningBriefing"
+                      checked={morningBriefingEnabled} 
+                      onChange={e => setMorningBriefingEnabled(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 text-primary rounded accent-primary shrink-0 cursor-pointer"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <label htmlFor="morningBriefing" className="text-xs sm:text-sm font-bold text-surface-900 cursor-pointer flex items-center gap-2 flex-wrap">
+                        <span>Chcę otrzymywać Poranny Raport Asystenta AI na email</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-900 uppercase">Pakiet Ekspert</span>
+                      </label>
+                      <p className="text-xs text-surface-600 mt-0.5 leading-relaxed">
+                        Codzienny e-mail z pełnym podsumowaniem zaplanowanych spotkań, notatkami ze spraw i pilnymi kontaktami.
+                      </p>
+                    </div>
+                  </div>
+
+                  {morningBriefingEnabled && (
+                    <div className="pl-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-2 border-t border-amber-200/60">
+                      <label className="text-xs font-medium text-surface-700">Godzina wysyłki raportu na e-mail:</label>
+                      <select 
+                        value={morningBriefingHour} 
+                        onChange={e => setMorningBriefingHour(parseInt(e.target.value, 10))}
+                        className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs outline-none focus:border-primary bg-white w-full sm:w-auto font-medium"
+                      >
+                        <option value={6}>06:00 rano</option>
+                        <option value={7}>07:00 rano</option>
+                        <option value={8}>08:00 rano (domyślnie)</option>
+                        <option value={9}>09:00 rano</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {/* Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz / Zewnętrzny Kalendarz WWW) */}
             <div className="md:col-span-2 mt-2 p-3.5 sm:p-4 rounded-xl border border-gold-200 bg-gold-50/40 space-y-2">

@@ -46,8 +46,15 @@ export class PersonalAssistantWorker {
         }
       }
 
+      // Sprawdzamy w DB czy nie wysłano już natychmiastowego pusha z poziomu BookingService
+      const freshCallLog = await prisma.callLog.findUnique({
+        where: { id: callLogId },
+        select: { pushSent: true }
+      });
+      const alreadySent = freshCallLog?.pushSent || callLog.pushSent;
+
       // Wysyłka Push FCM jeśli nie była jeszcze wysłana
-      if (!callLog.pushSent && tenant.fcmTokens && tenant.fcmTokens.length > 0) {
+      if (!alreadySent && tenant.fcmTokens && tenant.fcmTokens.length > 0) {
         const isUrgent = callLog.urgency === 'HIGH' || callLog.urgency === 'CRITICAL' || summary.includes('[🚨');
         const isVip = callLog.callerRole === 'VIP';
         const isLead = summary.includes('[💼');
@@ -68,23 +75,35 @@ export class PersonalAssistantWorker {
           title,
           body,
           'https://beautyvoice-bff.web.app/dashboard',
-          callLog.callerPhone !== 'nieznany' ? callLog.callerPhone : undefined
+          callLog.callerPhone !== 'nieznany' ? callLog.callerPhone : undefined,
+          tenant.id,
+          `bv-call-${callLog.id}`
         );
 
         console.log(`📲 [PersonalAssistantWorker] Wysłano Push powiadomienie do właściciela (${tenant.name})`);
       }
 
-      // Aktualizacja rekordu CallLog w bazie (domyślnie isProcessed = false: "Do załatwienia")
+      // Aktualizacja rekordu CallLog w bazie (dla połączeń potwierdzających/odwołujących lub już oznaczonych zachowaj isProcessed = true)
+      const isHandledOutbound = callLog.status === 'CONFIRMED_PHONE' || callLog.status === 'CANCELLED_PHONE';
+      const finalIsProcessed = Boolean(callLog.isProcessed || isHandledOutbound);
+
       await prisma.callLog.update({
         where: { id: callLogId },
         data: {
           summary,
           pushSent: true,
-          isProcessed: false
+          isProcessed: finalIsProcessed
         }
       });
 
-      // Synchronizacja zdarzenia z Kalendarzem (Appointment)
+      // Jeśli to było połączenie potwierdzające lub odwołujące (outbound),
+      // rezerwacja została już obsłużona w confirmAppointment / cancelAppointment - nie nadpisujemy kalendarza
+      if (isHandledOutbound) {
+        console.log(`ℹ️ [PersonalAssistantWorker] Połączenie ${callLog.id} to outbound (${callLog.status}) - rezerwacja obsłużona, zachowano isProcessed=true.`);
+        return;
+      }
+
+      // Synchronizacja zdarzenia z Kalendarzem (Appointment) dla połączeń przychodzących
       try {
         const existingAppt = await prisma.appointment.findFirst({
           where: {
@@ -175,12 +194,24 @@ export class PersonalAssistantWorker {
         where: { id: tenantId },
         include: {
           annualEvents: true,
-          vipContacts: true
+          vipContacts: true,
+          subscription: true
         }
       });
 
       if (!tenant) {
         return { error: 'Nie znaleziono tenanta' };
+      }
+
+      const isExpert = tenant.subscription?.planName === 'personal_expert' || tenant.subscription?.planName?.toLowerCase()?.includes('expert');
+      if (!isExpert) {
+        console.log(`[Morning Briefing] Tenant ${tenant.name} nie ma pakietu Osobisty Ekspert - raport e-mail nie jest wysyłany.`);
+        return { error: 'Poranny raport jest dostępny wyłącznie w pakiecie Osobisty Ekspert' };
+      }
+
+      if (tenant.morningBriefingEnabled === false) {
+        console.log(`[Morning Briefing] Tenant ${tenant.name} ma wyłączoną opcję porannego raportu e-mail.`);
+        return { error: 'Poranny raport został wyłączony przez użytkownika' };
       }
 
       const email = tenant.contactEmail || tenant.betaContactEmail;
@@ -258,13 +289,37 @@ export class PersonalAssistantWorker {
               hour: '2-digit',
               minute: '2-digit'
             }).format(new Date(a.startTime));
+
+            const typeLabel = a.contactLevel === 'CALL' 
+              ? '📞 Rozmowa telefoniczna' 
+              : a.contactLevel === 'TASK' 
+              ? '📋 Zadanie do wykonania' 
+              : '🗓️ Spotkanie osobiste';
+
+            const summaryText = (a.callSummary || a.notes || '').trim();
+            const actionText = (a.actionItems || '').trim();
+
             return `
-              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
-                <div style="font-weight: 700; color: #1e293b; font-size: 15px;">⏰ ${timeStr} — ${a.customerName}</div>
-                <div style="color: #64748b; font-size: 13px; margin-top: 4px;">
-                  📞 <a href="tel:${a.customerPhone}" style="color: #4f46e5; text-decoration: none;">${a.customerPhone}</a> 
-                  ${a.service ? `• Cel: <strong>${a.service.name}</strong>` : ''}
+              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+                  <span style="font-weight: 700; color: #0f172a; font-size: 15px;">⏰ ${timeStr} — ${a.customerName}</span>
+                  <span style="font-size: 11px; font-weight: 600; color: #4338ca; background: #e0e7ff; padding: 2px 8px; border-radius: 4px;">${typeLabel}</span>
                 </div>
+                <div style="color: #64748b; font-size: 13px; margin-bottom: 6px;">
+                  📞 <a href="tel:${a.customerPhone}" style="color: #4f46e5; font-weight: 600; text-decoration: none;">${a.customerPhone}</a> 
+                  ${a.service ? `• Cel / Usługa: <strong>${a.service.name}</strong>` : ''}
+                </div>
+                ${summaryText ? `
+                  <div style="background: #f8fafc; border-left: 3px solid #6366f1; border-radius: 4px; padding: 10px 12px; margin-top: 8px; font-size: 13px; color: #334155; line-height: 1.45;">
+                    <div style="font-weight: 700; color: #4338ca; font-size: 11px; text-transform: uppercase; margin-bottom: 3px;">📝 Podsumowanie ustaleń / AI:</div>
+                    ${summaryText}
+                  </div>
+                ` : `<div style="color: #94a3b8; font-size: 12px; font-style: italic; margin-top: 6px;">Brak szczegółowego podsumowania ustaleń.</div>`}
+                ${actionText ? `
+                  <div style="margin-top: 8px; font-size: 12px; color: #92400e; background: #fef3c7; border-radius: 4px; padding: 6px 10px; border-left: 3px solid #f59e0b;">
+                    <strong>🎯 Sugerowane działanie:</strong> ${actionText}
+                  </div>
+                ` : ''}
               </div>
             `;
           }).join('')
@@ -293,16 +348,18 @@ export class PersonalAssistantWorker {
              Brak ważnych rocznic i dat podatkowych w najbliższych dniach.
            </div>`;
 
-      const callSummarySection = messagesWaiting.length > 0
+      const callsWithDetails = recentCalls.filter(c => c.summary || c.isMessageLeft || c.urgency === 'HIGH');
+
+      const callSummarySection = callsWithDetails.length > 0
         ? `
           <div style="margin-top: 10px;">
-            ${messagesWaiting.map(m => `
+            ${callsWithDetails.map(m => `
               <div style="background: #ffffff; border-left: 4px solid ${m.urgency === 'HIGH' ? '#ef4444' : '#6366f1'}; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 12px 16px; margin-bottom: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                   <strong style="color: #0f172a; font-size: 14px;">${m.callerRole === 'VIP' ? '⭐ [VIP] ' : ''}${m.callerName || m.callerPhone}</strong>
-                  ${m.urgency === 'HIGH' ? '<span style="color: #ef4444; font-weight: 700; font-size: 11px;">🚨 PILNE</span>' : ''}
+                  ${m.urgency === 'HIGH' ? '<span style="color: #ef4444; font-weight: 700; font-size: 11px; background: #fee2e2; padding: 2px 6px; border-radius: 4px;">🚨 PILNE</span>' : ''}
                 </div>
-                <div style="color: #334155; font-size: 13px; margin-top: 4px; line-height: 1.4;">${m.summary || 'Brak treści wiadomości'}</div>
+                <div style="color: #334155; font-size: 13px; margin-top: 4px; line-height: 1.45;">${m.summary || 'Brak treści wiadomości'}</div>
                 <div style="margin-top: 6px; font-size: 12px;">
                   <a href="tel:${m.callerPhone}" style="color: #4f46e5; font-weight: 600; text-decoration: none;">📞 Oddzwoń: ${m.callerPhone}</a>
                   ${m.actionItems ? `<span style="color: #64748b; margin-left: 8px;">• ${m.actionItems}</span>` : ''}
@@ -312,7 +369,7 @@ export class PersonalAssistantWorker {
           </div>
         `
         : `<div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px; text-align: center; color: #94a3b8; font-size: 13px;">
-             Wszystkie sprawy z wczoraj są załatwione. Brak oczekujących wiadomości (odebrano łącznie: ${recentCalls.length} połączeń).
+             Wszystkie sprawy z ostatnich 24h są załatwione. Brak oczekujących wiadomości (odebrano łącznie: ${recentCalls.length} połączeń).
            </div>`;
 
       const html = `
@@ -426,7 +483,10 @@ export class PersonalAssistantWorker {
             tenant.fcmTokens,
             pushTitle,
             pushBody,
-            'https://beautyvoice-bff.web.app/dashboard'
+            'https://beautyvoice-bff.web.app/dashboard',
+            undefined,
+            tenant.id,
+            `bv-briefing-${formattedDate}`
           );
           console.log(`📱 [Morning Briefing] Pomyślnie wysłano powiadomienie PUSH do ${tenant.fcmTokens.length} urządzeń (${tenant.name})`);
         } catch (pushErr) {
@@ -475,12 +535,21 @@ export class PersonalAssistantWorker {
         where: {
           businessProfile: 'personal',
           morningBriefingEnabled: true
+        },
+        include: {
+          subscription: true
         }
       });
 
-      console.log(`[Morning Briefing Cron] Znaleziono ${personalTenants.length} aktywnych asystentów osobistych.`);
+      console.log(`[Morning Briefing Cron] Znaleziono ${personalTenants.length} asystentów osobistych z włączonym porannym raportem.`);
 
       for (const tenant of personalTenants) {
+        // Raport poranny wysyłany jest WYŁĄCZNIE dla abonentów pakietu "Osobisty Ekspert"
+        const isExpert = tenant.subscription?.planName === 'personal_expert' || tenant.subscription?.planName?.toLowerCase()?.includes('expert');
+        if (!isExpert) {
+          continue;
+        }
+
         // Sprawdzamy czy nadeszła godzina wysyłki dla danego właściciela (domyślnie 8:00)
         const targetHour = tenant.morningBriefingHour || 8;
         if (warsawHour < targetHour) {
