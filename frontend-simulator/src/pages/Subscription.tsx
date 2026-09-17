@@ -694,8 +694,119 @@ export default function Subscription() {
     );
   };
 
-  // --- WIDOK 1: Subskrypcja aktywna / zawieszona ---
-  if (subStatus !== 'none') {
+  // --- WIDOK 2: Wniosek oczekuje na weryfikację przez SuperAdmina ---
+  if (tenant?.betaStatus === 'pending') {
+    return (
+      <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-amber-200 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600" />
+          
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <Clock className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                Weryfikacja w toku
+              </span>
+              <h2 className="text-2xl font-serif text-surface-900 mt-1">Twój wniosek pilotażowy jest przetwarzany</h2>
+            </div>
+          </div>
+
+          <p className="text-surface-600 leading-relaxed mb-6">
+            Dziękujemy za zgłoszenie do programu pilotażowego Premium asystenta EVA. 
+            Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM.
+          </p>
+
+          {/* Baner motywacyjny: konfiguracja w krokach */}
+          <div className="p-5 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-2xl mb-6 shadow-xs">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-bold text-surface-900 text-sm mb-1">
+                  💡 Nie trać czasu podczas oczekiwania na numer!
+                </h4>
+                <p className="text-xs text-surface-600 leading-relaxed mb-3">
+                  Możesz już teraz w pełni przygotować asystenta EVA w kilku prostych krokach. Sprawdź pasek <strong>„Kolejność wdrożenia asystenta EVA”</strong> widoczny u góry ekranu i skonfiguruj profil, bazę wiedzy (FAQ) oraz pozostałe ustawienia.
+                </p>
+                <a 
+                  href="/dashboard/settings" 
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-900 hover:bg-surface-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+                >
+                  Przejdź do konfiguracji <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-surface-50 rounded-2xl p-6 border border-surface-200 mb-6 space-y-3 text-sm">
+            <h4 className="font-semibold text-surface-900 mb-2">Szczegóły Twojego zgłoszenia:</h4>
+            <div className="flex justify-between border-b border-surface-200/60 pb-2">
+              <span className="text-surface-500">Firma / Imię i Nazwisko:</span>
+              <span className="font-medium text-surface-900">{tenant?.name || salonName}</span>
+            </div>
+            <div className="flex justify-between border-b border-surface-200/60 pb-2">
+              <span className="text-surface-500">Telefon kontaktowy:</span>
+              <span className="font-mono font-medium text-surface-900">{tenant?.phoneNumber || contactPhone || localStorage.getItem('tenantPhone') || '—'}</span>
+            </div>
+            <div className="flex justify-between border-b border-surface-200/60 pb-2">
+              <span className="text-surface-500">E-mail:</span>
+              <span className="font-medium text-surface-900">{tenant?.betaContactEmail || tenant?.contactEmail || contactEmail || '—'}</span>
+            </div>
+            {tenant?.betaRequestedAt && (
+              <div className="flex justify-between">
+                <span className="text-surface-500">Data wysłania:</span>
+                <span className="font-medium text-surface-900">{new Date(tenant.betaRequestedAt).toLocaleString('pl-PL')}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3 mb-6">
+            <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-800 leading-relaxed">
+              <strong>Co nastąpi dalej?</strong> Po przydzieleniu numeru przez administratora otrzymasz 
+              <strong> wiadomość SMS z powiadomieniem</strong> o aktywacji dedykowanego numeru EVA. 
+              Bezpłatny miesięczny pakiet pilotażowy Premium z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty. Do logowania używasz swojego numeru telefonu i kodu PIN ustalonego przy rejestracji.
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center pt-4 border-t border-surface-100">
+            <span className="text-xs text-surface-500">Strona sprawdza status w tle</span>
+            <button 
+              onClick={handleManualRefresh} 
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface-900 text-white rounded-xl hover:bg-surface-800 transition text-sm font-medium disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Sprawdź status teraz
+            </button>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-surface-100 flex justify-end">
+            <button
+              onClick={() => {
+                setWipeError('');
+                setWipePin('');
+                setWipeConfirmText('');
+                setIsWipeModalOpen(true);
+              }}
+              className="text-xs text-red-500 hover:text-red-700 underline transition inline-flex items-center gap-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Anuluj wniosek i trwale usuń dane z bazy (art. 17 RODO)
+            </button>
+          </div>
+        </div>
+
+        {renderModals()}
+      </div>
+    );
+  }
+
+  // --- WIDOK 1: Subskrypcja aktywna / zawieszona Z PRZYDZIELONYM NUMEREM ---
+  if (subStatus !== 'none' && tenant?.assignedPhoneNumber) {
     const isPilot = subDetails?.planName === 'beta_pilot' || subDetails?.planName === 'pilot';
     const isPersonalExpert = subDetails?.planName === 'personal_expert';
     const isPersonal = (subDetails?.planName === 'personal' || tenant?.businessProfile === 'personal') && !isPersonalExpert;
@@ -828,117 +939,6 @@ export default function Subscription() {
     );
   }
 
-  // --- WIDOK 2: Wniosek oczekuje na weryfikację przez SuperAdmina ---
-  if (tenant?.betaStatus === 'pending') {
-    return (
-      <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-amber-200 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600" />
-          
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <Clock className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                Weryfikacja w toku
-              </span>
-              <h2 className="text-2xl font-serif text-surface-900 mt-1">Twój wniosek pilotażowy jest przetwarzany</h2>
-            </div>
-          </div>
-
-          <p className="text-surface-600 leading-relaxed mb-6">
-            Dziękujemy za zgłoszenie do programu pilotażowego Premium asystenta EVA. 
-            Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM.
-          </p>
-
-          {/* Baner motywacyjny: konfiguracja w 5 krokach */}
-          <div className="p-5 bg-gradient-to-r from-amber-500/10 via-gold-500/10 to-amber-500/10 border-2 border-gold-400/50 rounded-2xl mb-6 shadow-xs">
-            <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-md">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-surface-900 text-sm mb-1">
-                  💡 Nie trać czasu podczas oczekiwania na numer!
-                </h4>
-                <p className="text-xs text-surface-600 leading-relaxed mb-3">
-                  Możesz już teraz w pełni przygotować asystenta EVA w 5 prostych krokach. Sprawdź pasek <strong>„Kolejność wdrożenia asystenta EVA”</strong> widoczny u góry ekranu i skonfiguruj profil firmy, usługi, godziny pracy oraz bazę wiedzy (FAQ).
-                </p>
-                <a 
-                  href="/dashboard/settings" 
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-900 hover:bg-surface-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
-                >
-                  Przejdź do konfiguracji firmy <ArrowRight className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-surface-50 rounded-2xl p-6 border border-surface-200 mb-6 space-y-3 text-sm">
-            <h4 className="font-semibold text-surface-900 mb-2">Szczegóły Twojego zgłoszenia:</h4>
-            <div className="flex justify-between border-b border-surface-200/60 pb-2">
-              <span className="text-surface-500">Firma:</span>
-              <span className="font-medium text-surface-900">{tenant?.name || salonName}</span>
-            </div>
-            <div className="flex justify-between border-b border-surface-200/60 pb-2">
-              <span className="text-surface-500">Telefon kontaktowy:</span>
-              <span className="font-mono font-medium text-surface-900">{tenant?.phoneNumber || contactPhone || localStorage.getItem('tenantPhone') || '—'}</span>
-            </div>
-            <div className="flex justify-between border-b border-surface-200/60 pb-2">
-              <span className="text-surface-500">E-mail:</span>
-              <span className="font-medium text-surface-900">{tenant?.betaContactEmail || tenant?.contactEmail || contactEmail || '—'}</span>
-            </div>
-            {tenant?.betaRequestedAt && (
-              <div className="flex justify-between">
-                <span className="text-surface-500">Data wysłania:</span>
-                <span className="font-medium text-surface-900">{new Date(tenant.betaRequestedAt).toLocaleString('pl-PL')}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3 mb-6">
-            <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-blue-800 leading-relaxed">
-              <strong>Co nastąpi dalej?</strong> Po przydzieleniu numeru przez administratora otrzymasz 
-              <strong> wiadomość SMS z powiadomieniem</strong> o aktywacji dedykowanego numeru EVA. 
-              Bezpłatny miesięczny pakiet pilotażowy Premium z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty. Do logowania używasz swojego numeru telefonu i kodu PIN ustalonego przy rejestracji.
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center pt-4 border-t border-surface-100">
-            <span className="text-xs text-surface-500">Strona sprawdza status w tle</span>
-            <button 
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-surface-900 text-white rounded-xl hover:bg-surface-800 transition text-sm font-medium disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Sprawdź status teraz
-            </button>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-surface-100 flex justify-end">
-            <button
-              onClick={() => {
-                setWipeError('');
-                setWipePin('');
-                setWipeConfirmText('');
-                setIsWipeModalOpen(true);
-              }}
-              className="text-xs text-red-500 hover:text-red-700 underline transition inline-flex items-center gap-1"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Anuluj wniosek i trwale usuń dane z bazy (art. 17 RODO)
-            </button>
-          </div>
-        </div>
-
-        {renderModals()}
-      </div>
-    );
-  }
-
   // --- WIDOK 3: Formularz Zgłoszeniowy do Programu Pilotażowego Beta (3 miesiące gratis) ---
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -982,21 +982,21 @@ export default function Subscription() {
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
         <div className="mb-6">
           <h2 className="text-xl font-serif text-surface-900 mb-1">Formularz zgłoszenia do programu pilotażowego</h2>
-          <p className="text-sm text-surface-500">Wypełnij poniższe dane. Skontaktujemy się i natychmiast przydzielimy numer dla Twojej firmy.</p>
+          <p className="text-sm text-surface-500">Wypełnij poniższe dane. Skontaktujemy się i natychmiast przydzielimy dedykowany numer dla Twojego asystenta.</p>
         </div>
 
         <form onSubmit={handleApplyBeta} className="space-y-6">
           <div className="grid sm:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-                Nazwa Twojej Firmy *
+                Nazwa firmy albo Imię i Nazwisko *
               </label>
               <input 
-                type="text"
+                type="text" 
                 required
                 value={salonName}
                 onChange={e => setSalonName(e.target.value)}
-                placeholder="np. Twoja Firma, Gabinet, Salon"
+                placeholder="np. Jan Kowalski, Twoja Firma, Kancelaria, Gabinet"
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
               />
             </div>

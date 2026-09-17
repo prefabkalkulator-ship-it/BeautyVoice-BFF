@@ -1254,8 +1254,9 @@ app.post('/api/knowledge/save', async (req, res) => {
     // Zapisujemy FAQ z uwzględnieniem limitu Q&A
     if (faq && faq.length > 0) {
       const sub = await prisma.subscription.findUnique({ where: { tenantId } });
-      const isPremium = sub?.planName?.toLowerCase() === 'premium';
-      const maxFaqLimit = isPremium ? 10000 : 150;
+      const plan = (sub?.planName || '').toLowerCase();
+      const isPremium = plan === 'premium' || plan === 'beta_pilot' || plan === 'pilot' || plan === 'personal_expert';
+      const maxFaqLimit = isPremium ? 10000 : 500;
 
       const currentCount = await prisma.faqEntry.count({ where: { tenantId } });
       const availableSlots = Math.max(0, maxFaqLimit - currentCount);

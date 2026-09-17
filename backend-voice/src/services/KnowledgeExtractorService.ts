@@ -30,6 +30,11 @@ export class KnowledgeExtractorService {
    * Szybka heurystyczna ekstrakcja gotowych par pytań i odpowiedzi (np. z plików .txt, CSV, JSON).
    * Trwa < 5ms i eliminuje konieczność wywoływania powolnego LLM dla przygotowanych list FAQ.
    */
+  /**
+   * Szybka heurystyczna ekstrakcja gotowych par pytań i odpowiedzi (np. z plików .txt, CSV, JSON, Markdown).
+   * Obsługuje formaty numerowane (1. Pytanie?), Q&A (Pytanie: / Odpowiedź:), Markdown (**Pytanie:**),
+   * wieloliniowe odpowiedzi oraz formaty tabelaryczne.
+   */
   parseStructuredFaq(text?: string): StructuredKnowledgeResult | null {
     if (!text || typeof text !== 'string') return null;
     let trimmed = text.trim();
@@ -64,49 +69,78 @@ export class KnowledgeExtractorService {
       } catch (_) {}
     }
 
-    // 2. Sprawdź linie z wzorcami Pytanie: / Odpowiedź:, Q: / A:, P: / O: itp.
+    // 2. Parsowanie linii z obsługą markdown, numeracji i wielolinijkowych odpowiedzi
     const lines = trimmed.split(/\r?\n/);
     const pairs: Array<{ question: string; answer: string }> = [];
     let curQ = '';
     let curA = '';
-    let inAnswer = false;
 
-    const qRegex = /^(?:(?:(?:\d+[\.\)]\s*)?(?:pytanie|question|pyt|q|p)(?:\s*\d+)?[\s:\.\-–]+)|\d+[\.\)]\s+)(.+)$/i;
-    const aRegex = /^(?:(?:(?:odpowiedź|odpowiedz|answer|odp|a|o)(?:\s*\d+)?[\s:\.\-–]+))(.+)$/i;
-    const numberedQRegex = /^\d+[\.\)]\s+([^?\n\r]+?\?)\s*$/i;
+    // Wzorce regex
+    const explicitQRegex = /^(?:[*#\-_>\s]*)(?:(?:pytanie|question|pyt|q)(?:\s*\d+)?[\s:\.\-–]+)(.+)$/i;
+    const singlePQRegex = /^(?:[*#\-_>\s]*)(?:p(?:\s*\d+)?[:\.\-–]\s*)(.+)$/i;
+    const numberedQRegex = /^(?:[*#\-_>\s]*)(\d+)[\.\)]\s*(?:(?:pytanie|question|pyt|q|p)(?:\s*\d+)?[\s:\.\-–]+)?(.+)$/i;
+    
+    const explicitARegex = /^(?:[*#\-_>\s]*)(?:(?:odpowiedź|odpowiedz|answer|odp|a)(?:\s*\d+)?[\s:\.\-–]+)(.+)$/i;
+    const singleOARegex = /^(?:[*#\-_>\s]*)(?:o(?:\s*\d+)?[:\.\-–]\s*)(.+)$/i;
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
+    const cleanMarkdown = (str: string): string => {
+      return str.replace(/^[*_`#\s]+/, '').replace(/[*_`\s]+$/, '').trim();
+    };
+
+    const isLikelyNewQuestion = (line: string): boolean => {
+      if (explicitQRegex.test(line) || singlePQRegex.test(line)) return true;
+      if (numberedQRegex.test(line)) return true;
+      if (line.endsWith('?') && line.length < 200) {
+        if (!explicitARegex.test(line) && !singleOARegex.test(line)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const extractQuestionText = (line: string): string => {
+      let m = line.match(explicitQRegex);
+      if (m) return cleanMarkdown(m[1]);
+      m = line.match(singlePQRegex);
+      if (m) return cleanMarkdown(m[1]);
+      m = line.match(numberedQRegex);
+      if (m) return cleanMarkdown(m[2]);
+      return cleanMarkdown(line);
+    };
+
+    const extractAnswerText = (line: string): string => {
+      let m = line.match(explicitARegex);
+      if (m) return cleanMarkdown(m[1]);
+      m = line.match(singleOARegex);
+      if (m) return cleanMarkdown(m[1]);
+      return cleanMarkdown(line);
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmedLine = lines[i].trim();
       if (!trimmedLine) continue;
 
-      const qMatch = trimmedLine.match(qRegex);
-      const aMatch = trimmedLine.match(aRegex);
-      const numQMatch = !qMatch && !aMatch ? trimmedLine.match(numberedQRegex) : null;
+      const isExpA = explicitARegex.test(trimmedLine) || singleOARegex.test(trimmedLine);
+      const isNewQ = !isExpA && isLikelyNewQuestion(trimmedLine);
 
-      if (qMatch) {
+      if (isNewQ) {
         if (curQ && curA) {
           pairs.push({ question: curQ.trim(), answer: curA.trim() });
+          curQ = '';
+          curA = '';
         }
-        curQ = qMatch[1];
-        curA = '';
-        inAnswer = false;
-      } else if (numQMatch) {
-        if (curQ && curA) {
-          pairs.push({ question: curQ.trim(), answer: curA.trim() });
-        }
-        curQ = numQMatch[1];
-        curA = '';
-        inAnswer = true;
-      } else if (aMatch) {
+        curQ = extractQuestionText(trimmedLine);
+      } else if (isExpA) {
+        const aText = extractAnswerText(trimmedLine);
         if (curQ) {
-          curA = aMatch[1];
-          inAnswer = true;
+          curA = curA ? (curA + ' ' + aText) : aText;
         }
       } else {
-        if (inAnswer) {
-          curA += (curA ? ' ' : '') + trimmedLine;
-        } else if (curQ) {
-          curQ += ' ' + trimmedLine;
+        // Zwykła linia tekstu (np. po pytaniu bez prefiksu "Odpowiedź:")
+        if (curQ && !curA) {
+          curA = cleanMarkdown(trimmedLine);
+        } else if (curQ && curA) {
+          curA += '\n' + cleanMarkdown(trimmedLine);
         }
       }
     }
@@ -127,8 +161,8 @@ export class KnowledgeExtractorService {
         else if (trimmedLine.includes('|') && (trimmedLine.match(/\|/g) || []).length === 1) parts = trimmedLine.split('|');
 
         if (parts && parts.length === 2) {
-          const q = parts[0].replace(/^["']|["']$/g, '').trim();
-          const a = parts[1].replace(/^["']|["']$/g, '').trim();
+          const q = cleanMarkdown(parts[0].replace(/^["']|["']$/g, ''));
+          const a = cleanMarkdown(parts[1].replace(/^["']|["']$/g, ''));
           if (q && a && q.length > 3 && a.length > 1 && !q.toLowerCase().includes('pytanie') && !a.toLowerCase().includes('odpowiedz')) {
             csvPairs.push({ question: q, answer: a });
           }
@@ -139,11 +173,18 @@ export class KnowledgeExtractorService {
       }
     }
 
-    if (pairs.length >= 3) {
-      return { services: [], faq: pairs };
+    // Sprawdzanie jakości / sanity check:
+    const questionMarkCount = (trimmed.match(/\?/g) || []).length;
+    if (pairs.length < 3) {
+      return null;
+    }
+    // Jeśli tekst miał ewidentnie dziesiątki pytań, a heurystyka zgubiła ponad połowę, nie odcinajmy tekstu
+    if (questionMarkCount >= 10 && pairs.length < questionMarkCount * 0.4) {
+      console.warn(`⚠️ Szybka heurystyka znalazła ${pairs.length} par przy ${questionMarkCount} znakach '?'. Przekazuję do pełnego modelu Gemini.`);
+      return null;
     }
 
-    return null;
+    return { services: [], faq: pairs };
   }
 
   /**
@@ -254,8 +295,9 @@ ${rawText ? `"""\n${rawText}\n"""` : ''}
       start = end;
     }
 
-    const limitedChunks = chunks.slice(0, 5);
-    console.log(`⏱️ Uruchamianie ${limitedChunks.length} równoległych zapytań do Gemini 3.5 Flash...`);
+    // Przetwarzamy do 25 fragmentów (do ~175 000 znaków) bez ucinania
+    const limitedChunks = chunks.slice(0, 25);
+    console.log(`⏱️ Uruchamianie ${limitedChunks.length} równoległych zapytań do Gemini 3.5 Flash (z ${chunks.length} fragmentów)...`);
 
     const results = await Promise.all(
       limitedChunks.map(chunk => this.callGeminiSingle(chunk))

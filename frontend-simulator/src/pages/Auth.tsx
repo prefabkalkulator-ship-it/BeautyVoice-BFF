@@ -411,7 +411,7 @@ export default function Auth() {
             <form className="space-y-6" onSubmit={handleSubmit}>
               {!isLogin && (
                 <div>
-                  <label className="block text-sm font-medium text-surface-700">Nazwa firmy / salonu</label>
+                  <label className="block text-sm font-medium text-surface-700">Nazwa firmy albo Imię i Nazwisko</label>
                   <div className="mt-2 relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
                       <Sparkles className="h-5 w-5" />
@@ -422,7 +422,7 @@ export default function Auth() {
                       value={salonName}
                       onChange={(e) => setSalonName(e.target.value)}
                       className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
-                      placeholder="Np. Twoja Firma, Gabinet, Kancelaria, Salon"
+                      placeholder="Np. Jan Kowalski, Twoja Firma, Kancelaria, Gabinet"
                     />
                   </div>
                 </div>

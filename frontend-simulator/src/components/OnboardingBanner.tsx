@@ -99,29 +99,36 @@ export default function OnboardingBanner() {
       isDone: hasProfile
     },
     {
+      id: 'faq',
+      title: '2. Baza Wiedzy (FAQ)',
+      desc: 'Czat AI sam uzupełni pytania i odpowiedzi o Twojej pracy i preferencjach.',
+      path: '/dashboard/faq',
+      isDone: hasFaq
+    },
+    {
       id: 'forwarding',
-      title: '2. Przekierowanie GSM',
+      title: '3. Przekierowanie GSM',
       desc: 'Włącz przekierowanie *61* lub *21* na wirtualny numer asystenta.',
       path: '/dashboard/subscription',
       isDone: Boolean(currentTenant?.assignedPhoneNumber)
     },
     {
       id: 'vip',
-      title: '3. Kontakty VIP',
+      title: '4. Kontakty VIP',
       desc: 'Dodaj pierwsze kontakty: Rodzina, Współpracownicy, Kluczowi partnerzy.',
       path: '/dashboard/vip-contacts',
       isDone: hasVip
     },
     {
       id: 'events',
-      title: '4. Ważne Daty',
+      title: '5. Ważne Daty',
       desc: 'Wprowadź Ważne Daty w roku (urodziny bliskich, kluczowe terminy).',
       path: '/dashboard/annual-events',
       isDone: hasAnnualEvents
     },
     {
       id: 'test',
-      title: '5. Test Asystenta',
+      title: '6. Test Asystenta',
       desc: 'Zadzwoń do asystenta ze swojej komórki lub sprawdź powiadomienia.',
       path: '',
       isDone: hasCallLogs
@@ -207,6 +214,8 @@ export default function OnboardingBanner() {
             <p className="text-xs text-surface-600 mt-0.5">
               {allDone 
                 ? 'Gratulacje! Wszystkie etapy konfiguracji zostały zrealizowane. Twój asystent jest w pełni gotowy do pracy!'
+                : isPersonal
+                ? 'Zalecana kolejność: Profil & BIO → Baza wiedzy (FAQ) → Przekierowanie GSM → Kontakty VIP → Ważne Daty → Test Asystenta.'
                 : 'Zalecana kolejność: Profil → Baza wiedzy → Usługi → Zespół → Dni wolne.'}
             </p>
           </div>
@@ -256,7 +265,7 @@ export default function OnboardingBanner() {
 
       {/* Rozwinięte kafelki kroków */}
       {!isCollapsed && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4 pt-3 border-t border-gold-200/50">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${steps.length >= 6 ? 'lg:grid-cols-3 xl:grid-cols-6' : 'lg:grid-cols-5'} gap-3 mt-4 pt-3 border-t border-gold-200/50`}>
           {steps.map((s) => {
             const isCurrent = !allDone && s.id === nextStep.id;
             const isClickable = s.id !== 'test' && Boolean(s.path);
