@@ -39,6 +39,7 @@ export class CallOrchestrator {
   private shouldHangupAfterTurn: boolean = false;
   private hangupTimeout: NodeJS.Timeout | null = null;
   private isTerminating: boolean = false;
+  private isTerminatedAudio: boolean = false;
   
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
@@ -634,20 +635,19 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 ŻELAZNE ZASADY DALSZEGO PROWADZENIA ROZMOWY:
 1. WARIANT A (Klient POTWIERDZA obecność: "tak", "będę", "potwierdzam", "pasuje", "do zobaczenia"):
    - Wywołaj narzędzie 'confirmAppointment'.
-   - Podziękuj serdecznie: "Dziękuję bardzo za potwierdzenie. Jesteśmy umówieni na ${dateText} ${timeText}. Do zobaczenia!"
-   - Zakończ rozmowę wywołując 'endCall'.
+   - Podziękuj serdecznie dokładnie jednym zwięzłym zdaniem: "Dziękuję bardzo za potwierdzenie. Jesteśmy umówieni na ${dateText} ${timeText}. Do zobaczenia!" i wywołaj narzędzie 'endCall'. Po tym zdaniu natychmiast zamilknij.
 2. WARIANT B (Klient CHCE PRZEŁOŻYĆ TERMIN / ZMIENIĆ GODZINĘ: "nie zdążę", "czy mogę przenieść o godzinę", "czy możemy na 14:00 / na jutro?"):
    - ⛔ KATEGORYCZNY, BEZWZGLĘDNY ZAKAZ wywoływania narzędzia 'confirmAppointment'! Klient NIE potwierdził obecnego terminu!
    - Ustal preferowaną nową godzinę lub dzień (np. jeśli spotkanie było o 13:00, a klient prosi o godzinę później -> chodzi o 14:00).
    - NATYCHMIAST wywołaj narzędzie 'checkAvailability' na ten dzień, aby sprawdzić czy slot jest wolny!
    - Jeśli slot jest wolny: zapytaj klienta: "O godzinie 14:00 termin jest wolny. Czy przepisać spotkanie na 14:00?"
    - Gdy klient potwierdzi ("tak", "proszę zapisać"): NATYCHMIAST wywołaj narzędzie 'rescheduleAppointment' z nową datą i godziną newStartTime!
-   - Potwierdź zmianę: "Termin został pomyślnie zmieniony. Dziękuję bardzo i do zobaczenia!" i wywołaj 'endCall'.
+   - Potwierdź zmianę dokładnie jednym zwięzłym zdaniem: "Termin został pomyślnie zmieniony. Dziękuję bardzo i do zobaczenia!" i wywołaj narzędzie 'endCall'. Po tym zdaniu natychmiast zamilknij.
    - Jeśli slot jest zajęty: zaproponuj najbliższy wolny termin z 'checkAvailability'.
 3. WARIANT C (Klient ODWOŁUJE spotkanie / rezygnuje: "muszę odwołać", "nie dam rady", "rezygnuję"):
    - ⛔ KATEGORYCZNY, BEZWZGLĘDNY ZAKAZ wywoływania narzędzia 'confirmAppointment'!
    - Wywołaj narzędzie 'cancelAppointment'.
-   - Powiedz uprzejmie: "Rozumiem, odwołałam spotkanie i zwolniłam termin. Dziękuję za informację i do usłyszenia." i wywołaj 'endCall'.
+   - Powiedz uprzejmie dokładnie jedno zwięzłe zdanie: "Rozumiem, odwołałam spotkanie i zwolniłam termin. Dziękuję za informację i do usłyszenia." i wywołaj narzędzie 'endCall'. Po tym zdaniu natychmiast zamilknij.
 4. WARIANT D (Klient prosi o kontakt z ${ownerDisplayName} lub pyta o szczegóły):
    - Odpowiedz na pytania merytoryczne narzędziem 'getFAQ'.
    - Jeśli klient prosi o oddzwonienie lub przekazanie wiadomości, zapisz to narzędziem 'save_call_message'.`;
@@ -783,14 +783,25 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     }
 
     if (this.shouldHangupAfterTurn) {
-      console.log('📞 [EndCall] Zakończenie rozmowy po pożegnaniu. Odłożenie słuchawki za 1.5s.');
+      console.log('📞 [EndCall] Zakończenie rozmowy po pożegnaniu. Natychmiastowe zablokowanie dalszej mowy Gemini.');
+      if (this.hangupTimeout) {
+        clearTimeout(this.hangupTimeout);
+        this.hangupTimeout = null;
+      }
+      this.isTurnCanceled = true;
+      this.isTerminatedAudio = true;
+      try {
+        this.geminiClient.close();
+      } catch (e) {
+        console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
+      }
       this.hangupTimeout = setTimeout(() => {
         if (this.silenceWatchdogInterval) {
           clearInterval(this.silenceWatchdogInterval);
           this.silenceWatchdogInterval = null;
         }
         this.twilioWs.close();
-      }, 1500);
+      }, 1000);
     }
   }
 
@@ -1196,7 +1207,29 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           if (args?.callerName) {
             this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
-          return { status: "ok", success: true };
+          // Awaryjny watchdog na wypadek, gdyby Gemini nie przysłało turnComplete po pożegnaniu
+          if (!this.hangupTimeout) {
+            this.hangupTimeout = setTimeout(() => {
+              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (timeout po wywołaniu endCall).');
+              this.isTurnCanceled = true;
+              this.isTerminatedAudio = true;
+              try {
+                this.geminiClient.close();
+              } catch (e) {
+                console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
+              }
+              if (this.silenceWatchdogInterval) {
+                clearInterval(this.silenceWatchdogInterval);
+                this.silenceWatchdogInterval = null;
+              }
+              this.twilioWs.close();
+            }, 6000);
+          }
+          return {
+            status: "ok",
+            success: true,
+            message: "Rozmowa zakończona. Jeśli wypowiedziałeś już pożegnanie, zamilknij natychmiast."
+          };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
       }
@@ -1234,8 +1267,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
   private streamGeminiAudioToCaller(audioBase64: string) {
     try {
-      // Jeśli bieżąca tura została przerwana (barge-in), odrzucamy spóźnione pakiety z Gemini
-      if (this.isTurnCanceled) {
+      // Jeśli bieżąca tura została przerwana (barge-in) lub rozmowa została zakończona, odrzucamy spóźnione pakiety z Gemini
+      if (this.isTurnCanceled || this.isTerminatedAudio) {
         return;
       }
 

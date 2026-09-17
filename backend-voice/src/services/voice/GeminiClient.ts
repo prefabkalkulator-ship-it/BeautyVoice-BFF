@@ -171,10 +171,6 @@ export class GeminiClient {
         this.callbacks.onInterrupted?.();
       }
 
-      if (response.serverContent?.turnComplete) {
-        this.callbacks.onTurnComplete?.();
-      }
-
       if (response.serverContent?.modelTurn) {
         const parts = response.serverContent.modelTurn.parts;
         for (const part of parts) {
@@ -182,6 +178,10 @@ export class GeminiClient {
             this.callbacks.onAudioReceived(part.inlineData.data);
           }
         }
+      }
+
+      if (response.serverContent?.turnComplete) {
+        this.callbacks.onTurnComplete?.();
       }
 
       if (response.toolCall) {
