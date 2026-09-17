@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import evaLogo from '../assets/EVA_favicon_192.png';
 import { 
   Calendar, 
   Clock, 
@@ -197,7 +198,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-surface-200/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-2.5 sm:gap-3">
-            <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl shadow-sm" />
+            <img src={evaLogo} alt="EVA Logo" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl shadow-sm object-contain" />
             <span className="font-serif text-xl sm:text-2xl text-surface-900 flex items-baseline">
               E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
             </span>
@@ -746,7 +747,7 @@ export default function LandingPage() {
               // Główny widok zaproszenia do instalacji PWA
               <div>
                 <div className="flex items-center gap-3.5 mb-4">
-                  <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-14 h-14 rounded-2xl shadow-md border border-surface-200 shrink-0" />
+                  <img src={evaLogo} alt="EVA Logo" className="w-14 h-14 rounded-2xl shadow-md border border-surface-200 shrink-0 object-contain" />
                   <div>
                     <div className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider mb-0.5">
                       <Sparkles className="w-3 h-3 text-amber-600" /> Aplikacja Mobilna PWA

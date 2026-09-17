@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Phone, Building2, ArrowRight, Loader2, X, Lock, KeyRound, CheckCircle2, ArrowLeft, Sparkles } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import evaLogo from '../assets/EVA_favicon_192.png';
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -238,7 +239,7 @@ export default function Auth() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <Link to="/" className="flex items-center justify-center gap-3 group">
-          <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-12 h-12 rounded-2xl shadow-sm group-hover:scale-105 transition-transform" />
+          <img src={evaLogo} alt="EVA Logo" className="w-12 h-12 rounded-2xl shadow-sm group-hover:scale-105 transition-transform object-contain" />
           <span className="font-serif text-3xl text-surface-900 flex items-baseline">
             E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
           </span>

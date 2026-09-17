@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { requestForToken, onMessageListener, subscribeToMessages } from '../firebase';
 import toast, { Toaster } from 'react-hot-toast';
 import OnboardingBanner from '../components/OnboardingBanner';
+import evaLogo from '../assets/EVA_favicon_192.png';
 
 export default function DashboardLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -113,7 +114,7 @@ export default function DashboardLayout() {
       {/* Mobile Header */}
       <div className="md:hidden bg-white border-b border-surface-200 p-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center gap-2">
-          <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-8 h-8 rounded-lg" />
+          <img src={evaLogo} alt="EVA Logo" className="w-8 h-8 rounded-lg object-contain" />
           <span className="font-serif font-semibold text-lg text-surface-900 flex items-baseline">
             E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
           </span>
@@ -129,7 +130,7 @@ export default function DashboardLayout() {
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <div className="p-6 border-b border-surface-100 flex items-center gap-3">
-          <img src="/EVA_favicon_192.png" alt="EVA Logo" className="w-10 h-10 rounded-xl shadow-sm" />
+          <img src={evaLogo} alt="EVA Logo" className="w-10 h-10 rounded-xl shadow-sm object-contain" />
           <div>
             <h1 className="font-serif font-semibold text-xl text-surface-900 leading-none flex items-baseline">
               E<span className="text-[0.65em]">asy</span>V<span className="text-[0.65em]">oice</span>A<span className="text-[0.65em]">ssistant</span>
