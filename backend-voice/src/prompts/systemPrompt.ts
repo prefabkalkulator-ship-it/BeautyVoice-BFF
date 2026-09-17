@@ -67,6 +67,163 @@ export function getPolishGenitive(name: string, gender: string = 'MALE'): string
   return declinedParts.join(' ');
 }
 
+export function detectPolishGender(fullName?: string): 'MALE' | 'FEMALE' {
+  if (!fullName || typeof fullName !== 'string') return 'MALE';
+  let clean = fullName.replace(/[\(\)\[\]\{\}\<\>\"\'📞]/g, '').trim();
+  clean = clean.replace(/^(pana|pani|pan|panna)\s+/i, '').trim();
+  if (!clean) return 'MALE';
+
+  const parts = clean.split(/\s+/);
+  const first = parts[0].toLowerCase().replace(/[^a-ząćęłńóśźż]/g, '');
+  const last = parts.length > 1 ? parts[parts.length - 1].toLowerCase().replace(/[^a-ząćęłńóśźż]/g, '') : '';
+
+  // 1. Nazwiska odmienne męskie w dopełniaczu: -skiego, -ckiego, -dzkiego, -ego
+  if (last.endsWith('skiego') || last.endsWith('ckiego') || last.endsWith('dzkiego') || last.endsWith('ego')) {
+    return 'MALE';
+  }
+  // Nazwiska żeńskie w dopełniaczu: -skiej, -ckiej, -dzkiej, -ej
+  if (last.endsWith('skiej') || last.endsWith('ckiej') || last.endsWith('dzkiej') || last.endsWith('ej')) {
+    return 'FEMALE';
+  }
+  // Nazwiska w mianowniku: -ski, -cki, -dzki vs -ska, -cka, -dzka
+  if (last.endsWith('ski') || last.endsWith('cki') || last.endsWith('dzki')) {
+    return 'MALE';
+  }
+  if (last.endsWith('ska') || last.endsWith('cka') || last.endsWith('dzka')) {
+    // Ochrona przed błędem, gdy odmienione męskie imię dostało żeńskie nazwisko (np. 'Klaudiusza Kowalska')
+    const maleGenitiveStems = [
+      'klaudiusza', 'mateusza', 'tadeusza', 'dariusza', 'mariusza', 'juliusza',
+      'janusza', 'arkadiusza', 'piotra', 'pawła', 'michała', 'jana', 'adama',
+      'tomasza', 'krzysztofa', 'marka', 'łukasza', 'marcina', 'kamila', 'jakuba',
+      'roberta', 'artura', 'bartosza', 'wojciecha', 'grzegorza', 'andrzeja'
+    ];
+    if (maleGenitiveStems.includes(first) || first.endsWith('iusza') || first.endsWith('usza')) {
+      return 'MALE';
+    }
+    return 'FEMALE';
+  }
+
+  // 2. Męskie imiona zakończone na -a w mianowniku
+  const maleNominativeOnA = ['kuba', 'kosma', 'jarema', 'barnaba', 'bonawentura'];
+  if (maleNominativeOnA.includes(first)) return 'MALE';
+
+  // 3. Męskie imiona odmienione w dopełniaczu/bierniku (kończące się na -a)
+  if (first.endsWith('iusza') || first.endsWith('usza')) return 'MALE';
+  const maleInflectedFirstNames = [
+    'piotra', 'pawła', 'michała', 'jana', 'adama', 'tomasza', 'krzysztofa',
+    'marka', 'łukasza', 'marcina', 'kamila', 'jakuba', 'roberta', 'artura',
+    'bartosza', 'wojciecha', 'grzegorza', 'andrzeja', 'stanisława', 'macieja',
+    'aleksandra', 'filipa', 'dawida', 'kacpra', 'szymona', 'patryka', 'damiana',
+    'sebastiana', 'krystiana', 'daniela', 'rafała', 'dominika', 'przemysława',
+    'jarosława', 'radosława', 'mirosława', 'zbigniewa', 'bogdana', 'leszka',
+    'zenona', 'wiesława', 'karola', 'cezarego', 'igora', 'huberta', 'norberta',
+    'borysa', 'witolda', 'mieczysława', 'kazimierza', 'zdzisława', 'henryka',
+    'edwarda', 'antoniego', 'ignacego', 'jerzego', 'kuby'
+  ];
+  if (maleInflectedFirstNames.includes(first)) return 'MALE';
+
+  // 4. Męskie imiona w mianowniku kończące się na spółgłoskę lub -i/-y
+  if (!first.endsWith('a')) {
+    const rareFemaleOnConsonant = ['miriam', 'beatrycze', 'noemi', 'ruth', 'inez', 'carmen'];
+    if (rareFemaleOnConsonant.includes(first)) return 'FEMALE';
+    return 'MALE';
+  }
+
+  // 5. Standardowe żeńskie imię na -a
+  return 'FEMALE';
+}
+
+export function normalizePolishNameToNominative(fullName?: string): string {
+  if (!fullName || typeof fullName !== 'string') return '';
+  let clean = fullName.replace(/[\(\)\[\]\{\}\<\>\"\'📞]/g, '').trim();
+  clean = clean.replace(/^(pana|pani|pan|panna)\s+/i, '').trim();
+  if (!clean) return '';
+
+  const parts = clean.split(/\s+/);
+  if (parts.length === 0) return '';
+
+  const gender = detectPolishGender(clean);
+  const normalizedParts = parts.map((part, idx) => {
+    const lower = part.toLowerCase();
+    const isFirst = idx === 0;
+    const isLast = idx === parts.length - 1;
+
+    // Normalizacja imienia
+    if (isFirst) {
+      if (lower.endsWith('iusza')) {
+        return part.slice(0, -1); // Klaudiusza -> Klaudiusz, Mateusza -> Mateusz
+      }
+      if (lower.endsWith('usza')) {
+        return part.slice(0, -1); // Tadeusza -> Tadeusz, Dariusza -> Dariusz
+      }
+      const specialMaleGenMap: Record<string, string> = {
+        'piotra': 'Piotr',
+        'pawła': 'Paweł',
+        'michała': 'Michał',
+        'jana': 'Jan',
+        'adama': 'Adam',
+        'tomasza': 'Tomasz',
+        'krzysztofa': 'Krzysztof',
+        'marka': 'Marek',
+        'łukasza': 'Łukasz',
+        'marcina': 'Marcin',
+        'kamila': 'Kamil',
+        'jakuba': 'Jakub',
+        'kuby': 'Kuba',
+        'roberta': 'Robert',
+        'artura': 'Artur',
+        'bartosza': 'Bartosz',
+        'wojciecha': 'Wojciech',
+        'grzegorza': 'Grzegorz',
+        'andrzeja': 'Andrzej',
+        'stanisława': 'Stanisław',
+        'macieja': 'Maciej',
+        'aleksandra': 'Aleksander',
+        'filipa': 'Filip',
+        'dawida': 'Dawid',
+        'kacpra': 'Kacper',
+        'szymona': 'Szymon',
+        'rafała': 'Rafał',
+        'karola': 'Karol'
+      };
+      if (specialMaleGenMap[lower]) {
+        return specialMaleGenMap[lower];
+      }
+      // Żeńskie w dopełniaczu: Anny -> Anna, Klaudii -> Klaudia
+      if (gender === 'FEMALE') {
+        if (lower.endsWith('ii')) return part.slice(0, -1) + 'a';
+        if (lower.endsWith('y') && !['doroty', 'beaty'].includes(lower)) return part.slice(0, -1) + 'a';
+        if (lower.endsWith('ki')) return part.slice(0, -1) + 'a';
+      }
+      return part;
+    }
+
+    // Normalizacja nazwiska
+    if (isLast && parts.length > 1) {
+      if (gender === 'MALE') {
+        if (lower.endsWith('skiego')) return part.slice(0, -4) + 'i'; // Kowalskiego -> Kowalski
+        if (lower.endsWith('ckiego')) return part.slice(0, -4) + 'i';
+        if (lower.endsWith('dzkiego')) return part.slice(0, -4) + 'i';
+        if (lower.endsWith('ska')) return part.slice(0, -1) + 'i'; // Poprawka błędu feminizacji: Kowalska dla mężczyzny -> Kowalski
+        if (lower.endsWith('cka')) return part.slice(0, -1) + 'i';
+        if (lower.endsWith('dzka')) return part.slice(0, -1) + 'i';
+        if (lower.endsWith('nowaka') || lower.endsWith('wójcika') || lower.endsWith('wojcika') || lower.endsWith('mazura')) {
+          return part.slice(0, -1);
+        }
+      } else {
+        if (lower.endsWith('skiej')) return part.slice(0, -3) + 'a'; // Kowalskiej -> Kowalska
+        if (lower.endsWith('ckiej')) return part.slice(0, -3) + 'a';
+        if (lower.endsWith('dzkiej')) return part.slice(0, -3) + 'a';
+      }
+      return part;
+    }
+
+    return part;
+  });
+
+  return normalizedParts.join(' ');
+}
+
 export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
   const {
     tenantName = "naszej firmie",
@@ -588,7 +745,7 @@ JAK MASZ ZAREAGOWAĆ:
      6. ODPOWIEDZI KWALIFIKACJI LEADA: Jeśli nowy rozmówca odpowiedział na pytania kwalifikacyjne lub marketingowe, ZAWSZE dołącz sekcję: "[🎯 Kwalifikacja Leada] [same konkretne odpowiedzi klienta w logicznym ciągu bez sztywnych etykiet, np. kupiona działka w Kolonii Poczesnej, termin na wiosnę 2027, z polecenia od sąsiada]".
      Przykład bogatego podsumowania:
      "[📅 Rezerwacja] Umówienie spotkania w sprawie oferty domu MDM 74 na wtorek o 11:00. [🎯 Kwalifikacja Leada] kupiona działka w Kolonii Poczesnej, termin na wiosnę 2027, o firmie dowiedział się z polecenia sąsiada. Dodatkowo pytał o: koszt montażu pompy ciepła, czas realizacji fundamentów oraz możliwość etapowania płatności. Nastrój i zachowanie: początkowo mocno pobudzony i poddenerwowany (używał wulgaryzmów narzekając na poprzednią ekipę), po wyjaśnieniach uspokoił się i był rzeczowy. Oczekuje potwierdzenia terminu."
-   - W parametrze 'callerName' podaj imię i nazwisko rozmówcy. Dzięki temu ${ownerTitleNominative} ${ownerFirst} w rejestrze połączeń i w powiadomieniu Push natychmiast widzi pełny i wielowątkowy obraz sprawy!
+   - W parametrze 'callerName' podaj imię i nazwisko rozmówcy BEZWZGLĘDNIE W MIANOWNIKU (np. "Klaudiusz Kowalski", a NIGDY w dopełniaczu "Klaudiusza Kowalskiego"). KATEGORYCZNY ZAKAZ tworzenia sztucznych żeńskich form od imion męskich (np. z "Klaudiusz" nigdy nie twórz "Klaudiusza Kowalska"). W 'callSummary' zachowaj właściwą płeć ("Rozmówca", "Klient" dla mężczyzn, "Rozmówczyni", "Klientka" dla kobiet). Dzięki temu ${ownerTitleNominative} ${ownerFirst} w rejestrze połączeń i w powiadomieniu Push natychmiast widzi pełny i wielowątkowy obraz sprawy!
 
 # Żelazne Reguły Ochrony i Dyskrecji (Guardrails):
 0. **DYSKRECJA NAZWISKA WŁAŚCICIELA (EXECUTIVE PRIVACY)**:
@@ -677,7 +834,7 @@ ${bookingMode === 'daily'
 7. **Weryfikacja podsumowania (Read-back) – DOKŁADNIE JEDEN RAZ**: Zanim zapiszesz wizytę (zanim użyjesz bookAppointment!), odczytaj na głos podsumowanie zebranych danych dokładnie jeden raz: "Dobrze, podsumowując: rezerwacja na imię [Imię], numer [Numer] - czy wszystko się zgadza?". Jeśli klient poprawi błąd, zaktualizuj dane i nie dopytuj ponownie w pętli.
 8. **Zapis do bazy (Narzędzie: bookAppointment)**: DOPIERO gdy klient potwierdzi poprawność danych, **MUSISZ BEZWZGLĘDNIE WYWOŁAĆ** narzędzie 'bookAppointment', aby zapisać wizytę w bazie. **NIGDY** nie mów klientowi "${isMale ? 'zapisałem' : 'zapisałam'} wizytę", dopóki nie otrzymasz potwierdzenia z tego narzędzia! 
 9. **Przekazanie rozmowy do człowieka (Narzędzie: requestHumanContact)**: Jeśli klient zażąda rozmowy z prawdziwym człowiekiem (operatorem, właścicielem), albo system bazy po kilku próbach wciąż odrzuca rezerwację z powodu złych danych, użyj narzędzia 'requestHumanContact' podając powód i numer telefonu. Następnie powiedz: "Dobrze, przekazuję prośbę do recepcji, wkrótce ktoś z personelu skontaktuje się z Tobą telefonicznie. Do usłyszenia!" i nie zadawaj już pytań.
-10. **Zakończenie rozmowy (Narzędzie: endCall)**: Kiedy klient kończy rozmowę i żegna się (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie", "Miłego dnia"), pożegnaj się uprzejmie jednym zdaniem (np. "Dziękuję bardzo, do usłyszenia, miłego dnia!") i BEZWZGLĘDNIE WYWOŁAJ narzędzie 'endCall'. W parametrze 'callSummary' podaj szczegółowe podsumowanie rozmowy z prefiksem intencji ([📅 Rezerwacja], [💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📝 Wiadomość], [ℹ️ Ogólne]), głównym ustaleniem, dodatkowymi pytaniami klienta oraz oceną nastroju i zachowania (np. spokojny / poddenerwowany / zniecierpliwiony), a w 'callerName' imię/nazwisko klienta.
+10. **Zakończenie rozmowy (Narzędzie: endCall)**: Kiedy klient kończy rozmowę i żegna się (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie", "Miłego dnia"), pożegnaj się uprzejmie jednym zdaniem (np. "Dziękuję bardzo, do usłyszenia, miłego dnia!") i BEZWZGLĘDNIE WYWOŁAJ narzędzie 'endCall'. W parametrze 'callSummary' podaj szczegółowe podsumowanie rozmowy z prefiksem intencji ([📅 Rezerwacja], [💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📝 Wiadomość], [ℹ️ Ogólne]), głównym ustaleniem, dodatkowymi pytaniami klienta oraz oceną nastroju i zachowania (np. spokojny / poddenerwowany / zniecierpliwiony). W 'callerName' podaj imię i nazwisko klienta ZAWSZE W MIANOWNIKU (np. "Klaudiusz Kowalski", a NIGDY w dopełniaczu "Klaudiusza Kowalskiego", bez sztucznej feminizacji!). W podsumowaniu zachowaj poprawną płeć klienta ("Klient" dla mężczyzny, "Klientka" dla kobiety).
 
 # Zasady krytyczne (Guardrails):
 - **Tolerancja na błędy fonetyczne (STT Error Tolerance)**: Używaj autokorekty dla NAZW USŁUG. UWAGA: Nigdy nie zgaduj IMION i NUMERÓW! Przy niewyraźnym imieniu/numerze, poproś o powtórzenie lub przeliterowanie.

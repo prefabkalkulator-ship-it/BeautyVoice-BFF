@@ -1,5 +1,6 @@
 import { SMSService } from './sms/SMSService';
 import { prisma } from '../prisma';
+import { normalizePolishNameToNominative } from '../prompts/systemPrompt';
 
 export interface ServiceItem {
   id: string;
@@ -1351,7 +1352,7 @@ export class BookingService {
     vipCategory?: string,
     allowPrioritySlots?: boolean,
     isReschedule?: boolean
-  ): Promise<boolean> {
+  ): Promise<any> {
     try {
       // Jeśli LLM przekazał niekompletny/błędny numer telefonu, a mamy Caller ID (callerPhone), użyj Caller ID
       let effectivePhone = (customerPhone || '').trim();
@@ -1381,6 +1382,9 @@ export class BookingService {
         }
       }
       
+      if (customerName) {
+        customerName = normalizePolishNameToNominative(customerName) || customerName;
+      }
       const cleanName = customerName.trim();
       if (cleanName.length < 3 || /\d/.test(cleanName)) {
          throw new Error("BŁĄD DANYCH: Imię klienta '" + cleanName + "' jest za krótkie lub zawiera cyfry. Poproś klienta o przeliterowanie imienia.");
@@ -1424,12 +1428,18 @@ export class BookingService {
       }
 
       const existingAppointment = await prisma.appointment.findFirst({
-        where: { tenantId, customerPhone, serviceId: service.id, startTime: startDate }
+        where: { 
+          tenantId, 
+          customerPhone, 
+          serviceId: service.id, 
+          startTime: startDate,
+          status: { in: ['confirmed', 'confirmed_by_client', 'pending', 'unconfirmed'] }
+        }
       });
 
       if (existingAppointment) {
-        console.log(`Rezerwacja dla ${customerPhone} na ${startTime} już istnieje.`);
-        return true;
+        console.log(`Aktywna rezerwacja dla ${customerPhone} na ${startTime} już istnieje.`);
+        return { success: true, appointment: existingAppointment, message: 'Rezerwacja już istnieje.' };
       }
 
       // 1. Znajdź listę kandydatów do wykonania usługi
@@ -1625,6 +1635,11 @@ export class BookingService {
         customer = await prisma.customer.create({
           data: { tenantId, name: customerName, phone: customerPhone, tags: [] }
         });
+      } else if (customerName && (!customer.name || customer.name.includes('Połączenie') || customer.name !== customerName)) {
+        customer = await prisma.customer.update({
+          where: { id: customer.id },
+          data: { name: customerName }
+        });
       }
 
       const createdAppt = await prisma.appointment.create({
@@ -1683,7 +1698,7 @@ export class BookingService {
         SMSService.sendSMS(customerPhone, smsBody).catch(console.error);
       }
 
-      return true;
+      return { success: true, appointment: createdAppt };
     } catch (error: any) {
       console.error('Błąd rezerwacji DB:', error);
       // Przekazujemy dokładny błąd walidacji do asystenta AI, żeby wiedział co powiedzieć klientowi

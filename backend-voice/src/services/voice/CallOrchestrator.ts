@@ -7,7 +7,7 @@ import { prisma } from '../../prisma';
 import { PushService } from '../PushService';
 
 import { BookingService } from '../BookingService';
-import { getPolishGenitive } from '../../prompts/systemPrompt';
+import { getPolishGenitive, detectPolishGender, normalizePolishNameToNominative } from '../../prompts/systemPrompt';
 import { PersonalAssistantWorker } from '../../jobs/PersonalAssistantWorker';
 
 const bookingService = new BookingService();
@@ -322,6 +322,26 @@ export class CallOrchestrator {
             }).catch(e => console.error('[CallOrchestrator] Błąd wiązania Appointment z CallLog:', e));
           }
 
+          // Aktualizacja profilu Customer w CRM jeśli rozpoznano poprawne imię rozmówcy
+          if (resolvedCallerName && this.callerRole !== 'OWNER' && this.callerPhone && this.callerPhone !== 'nieznany') {
+            try {
+              const existingCust = await prisma.customer.findFirst({
+                where: { tenantId: this.tenantId, phone: this.callerPhone }
+              });
+              if (existingCust) {
+                if (!existingCust.name || existingCust.name.includes('Połączenie') || existingCust.name !== resolvedCallerName) {
+                  await prisma.customer.update({
+                    where: { id: existingCust.id },
+                    data: { name: resolvedCallerName }
+                  });
+                  console.log(`👤 [CallOrchestrator] Zaktualizowano imię klienta w CRM: "${resolvedCallerName}"`);
+                }
+              }
+            } catch (custErr) {
+              console.warn('[CallOrchestrator] Błąd aktualizacji profilu Customer:', custErr);
+            }
+          }
+
           // Wywołanie Post-call workera dla asystenta osobistego (natychmiastowy Push FCM)
           if (this.businessProfile === 'personal' && callLog) {
             try {
@@ -430,8 +450,11 @@ export class CallOrchestrator {
                 })
               ]);
 
-              const rawName = (prevLog?.callerName || cust?.name || '').trim();
-              const cleanName = rawName.replace(/[\(\)\[\]\{\}\<\>]/g, '').trim();
+              // Priorytet 1: Zweryfikowany profil klienta w CRM (Customer)
+              // Priorytet 2: Poprzedni log połączenia (CallLog)
+              const rawName = (cust?.name || prevLog?.callerName || '').trim();
+              const normalizedName = normalizePolishNameToNominative(rawName);
+              const cleanName = (normalizedName || rawName).replace(/[\(\)\[\]\{\}\<\>]/g, '').trim();
               const lowerName = cleanName.toLowerCase();
               const isGenericPlaceholder = 
                 !cleanName ||
@@ -450,14 +473,7 @@ export class CallOrchestrator {
               if (!isGenericPlaceholder) {
                 this.isReturningCaller = true;
                 this.returningCallerName = cleanName;
-                const firstWord = this.returningCallerName.split(' ')[0].toLowerCase().replace(/[^a-ząćęłńóśźż]/g, '');
-                if (['kuba', 'bonawentura', 'kosma', 'jarema', 'barnaba'].includes(firstWord)) {
-                  this.returningCallerGender = 'MALE';
-                } else if (firstWord.endsWith('a')) {
-                  this.returningCallerGender = 'FEMALE';
-                } else {
-                  this.returningCallerGender = 'MALE';
-                }
+                this.returningCallerGender = detectPolishGender(cleanName);
                 console.log(`🔁 [CallOrchestrator] Rozpoznano powracającego rozmówcę: ${this.returningCallerName} (Płeć: ${this.returningCallerGender})`);
               } else {
                 this.isReturningCaller = false;
@@ -993,9 +1009,14 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             }
             this.bookedAppointments = [];
           }
+          const rawCustomerName = args.customerName || '';
+          const normalizedCustName = normalizePolishNameToNominative(rawCustomerName) || rawCustomerName;
+          if (normalizedCustName) {
+            this.callerNameFromAi = normalizedCustName;
+          }
           const bookRes: any = await bookingService.bookAppointment(
             tenantId, 
-            args.customerName, 
+            normalizedCustName, 
             args.customerPhone, 
             args.serviceName, 
             args.startTime, 
@@ -1020,7 +1041,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               hour: '2-digit', 
               minute: '2-digit' 
             });
-            const summaryText = `[📅 Rezerwacja] ${args.customerName || 'Klient'} zarezerwował termin na: ${formattedDate} (usługa: ${args.serviceName || 'Wizyta / Konsultacja'}).`;
+            const summaryText = `[📅 Rezerwacja] ${normalizedCustName || 'Klient'} zarezerwował termin na: ${formattedDate} (usługa: ${args.serviceName || 'Wizyta / Konsultacja'}).`;
             this.callActionJournal.push(summaryText);
             this.callSummaryFromAi = summaryText;
             if (bookRes.appointment?.id) {
@@ -1173,7 +1194,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
           }
           if (args?.callerName) {
-            this.callerNameFromAi = args.callerName;
+            this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
           return { status: "ok", success: true };
         default:
