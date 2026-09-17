@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
   Clock, 
@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showIosGuide, setShowIosGuide] = useState(false);
   const [showAndroidManualGuide, setShowAndroidManualGuide] = useState(false);
@@ -103,9 +104,27 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
-    // 1. Sprawdzenie czy aplikacja już działa w trybie zainstalowanym (standalone PWA)
+    // 1. Sprawdzenie czy aplikacja uruchomiła się z zainstalowanego PWA na telefonie
+    const urlParams = new URLSearchParams(window.location.search);
     const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+    const isPwaLaunch = urlParams.get('source') === 'pwa' || standalone;
     setIsStandalone(standalone);
+
+    // Kiedy aplikacja jest zainstalowana na telefonie i kliknięto ikonkę:
+    // Otwieramy od razu ekran/modal logowania (lub bezpośrednio dashboard, jeśli użytkownik jest już zalogowany).
+    // Flaga w sessionStorage zapobiega zapętleniu, jeśli na ekranie logowania użytkownik kliknie 'X' (zamknij).
+    const initialRedirectDone = sessionStorage.getItem('pwa_initial_redirect_done');
+    if (isPwaLaunch && !initialRedirectDone) {
+      sessionStorage.setItem('pwa_initial_redirect_done', 'true');
+      const tenantId = localStorage.getItem('tenantId');
+      if (tenantId) {
+        navigate('/dashboard/appointments', { replace: true });
+        return;
+      } else {
+        navigate('/login', { replace: true });
+        return;
+      }
+    }
 
     // 2. Wykrycie platformy mobilnej
     const userAgent = navigator.userAgent || '';
