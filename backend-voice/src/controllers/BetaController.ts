@@ -8,7 +8,7 @@ export class BetaController {
   
   public async apply(req: Request, res: Response) {
     try {
-      const { tenantId, salonName, contactPerson, contactPhone, contactEmail, notes } = req.body;
+      const { tenantId, salonName, contactPerson, contactPhone, contactEmail, notes, businessProfile, requestedPlan } = req.body;
 
       if (!contactPhone) {
         return res.status(400).json({ error: 'Numer telefonu kontaktowego jest wymagany.' });
@@ -56,16 +56,24 @@ export class BetaController {
       const formattedPhone = classification.formattedNumber;
       const updatedSalonName = salonName ? salonName.trim() : tenant.name;
 
-      // Aktualizacja statusu Beta w bazie
+      // Ustal profil (Personal vs B2B)
+      const normalizedProfile = businessProfile === 'personal' ? 'personal' : (tenant.businessProfile === 'personal' && !businessProfile ? 'personal' : 'solo');
+      const planLabel = (requestedPlan === 'personal_expert' || normalizedProfile === 'personal')
+        ? 'Pakiet Osobisty Ekspert'
+        : 'Pakiet B2B Premium';
+      const fullNotes = notes ? `[${planLabel}] ${notes.trim()}` : `[${planLabel}]`;
+
+      // Aktualizacja statusu Beta oraz profilu działalności w bazie
       const updatedTenant = await prisma.tenant.update({
         where: { id: tenant.id },
         data: {
           name: updatedSalonName,
           contactEmail: contactEmail.trim(),
+          businessProfile: normalizedProfile,
           betaStatus: 'pending',
           betaContactPerson: contactPerson ? contactPerson.trim() : null,
           betaContactEmail: contactEmail.trim(),
-          betaNotes: notes ? notes.trim() : null,
+          betaNotes: fullNotes,
           betaRequestedAt: new Date()
         }
       });
@@ -77,8 +85,8 @@ export class BetaController {
         if (tokens.length > 0) {
           await PushService.sendNotification(
             tokens,
-            '🔔 Nowy wniosek pilotażowy EVA!',
-            `Firma ${updatedSalonName} (${formattedPhone}) prosi o aktywację pakietu pilotażowego Premium.`,
+            `🔔 Nowy wniosek: ${planLabel}!`,
+            `${updatedSalonName} (${formattedPhone}) prosi o aktywację: ${planLabel}.`,
             'https://beautyvoice-bff.web.app/superadmin',
             formattedPhone
           );
@@ -94,7 +102,7 @@ export class BetaController {
           contactPerson: contactPerson || 'Nie podano',
           contactEmail: contactEmail.trim(),
           contactPhone: formattedPhone,
-          notes: notes ? notes.trim() : undefined
+          notes: fullNotes
         });
       } catch (emailErr) {
         console.error('[BetaController] Błąd wysyłki e-maila do admina:', emailErr);
@@ -105,7 +113,9 @@ export class BetaController {
         message: 'Wniosek został pomyślnie wysłany. Administrator wkrótce skonfiguruje Twój dedykowany numer i aktywuje konto.',
         tenant: {
           id: updatedTenant.id,
+          name: updatedTenant.name,
           phoneNumber: updatedTenant.phoneNumber,
+          businessProfile: updatedTenant.businessProfile,
           betaStatus: updatedTenant.betaStatus,
           betaRequestedAt: updatedTenant.betaRequestedAt
         }

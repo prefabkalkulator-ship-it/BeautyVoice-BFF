@@ -18,7 +18,9 @@ import {
   CheckCircle2,
   ShieldAlert,
   Crown,
-  Briefcase
+  Briefcase,
+  Building2,
+  User
 } from 'lucide-react';
 
 export default function Subscription() {
@@ -29,6 +31,9 @@ export default function Subscription() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Wybór typu asystenta pilotażowego: 'b2b' (Premium B2B) lub 'personal' (Osobisty Ekspert)
+  const [selectedProfileType, setSelectedProfileType] = useState<'b2b' | 'personal'>('personal');
 
   // Pola formularza Beta
   const [salonName, setSalonName] = useState('');
@@ -65,6 +70,11 @@ export default function Subscription() {
           setContactPhone(d.phoneNumber);
           localStorage.setItem('tenantPhone', d.phoneNumber);
         }
+        if (d.businessProfile === 'personal') {
+          setSelectedProfileType('personal');
+        } else if (d.businessProfile) {
+          setSelectedProfileType('b2b');
+        }
 
         if (d.subscription && d.subscription.status && d.subscription.status !== 'none') {
           setSubStatus(d.subscription.status);
@@ -94,6 +104,25 @@ export default function Subscription() {
     };
   }, [isChangePlanModalOpen, isWipeModalOpen]);
 
+  const handleSwitchProfile = async (newProfile: 'solo' | 'personal') => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/tenant', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessProfile: newProfile })
+      });
+      if (res.ok) {
+        setTenant((prev: any) => ({ ...prev, businessProfile: newProfile }));
+        setSelectedProfileType(newProfile === 'personal' ? 'personal' : 'b2b');
+      }
+    } catch (e) {
+      console.error('Błąd zmiany profilu:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleApplyBeta = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contactPhone.trim()) {
@@ -120,7 +149,9 @@ export default function Subscription() {
           contactPerson: contactPerson.trim(),
           contactPhone: contactPhone.trim(),
           contactEmail: contactEmail.trim(),
-          notes: notes.trim()
+          notes: notes.trim(),
+          businessProfile: selectedProfileType === 'personal' ? 'personal' : 'solo',
+          requestedPlan: selectedProfileType === 'personal' ? 'personal_expert' : 'premium'
         })
       });
 
@@ -129,7 +160,11 @@ export default function Subscription() {
         throw new Error(data.error || 'Wystąpił problem podczas wysyłania wniosku.');
       }
 
-      setSuccessMessage('Wniosek został pomyślnie wysłany! Administrator wkrótce skonfiguruje Twój dedykowany numer i aktywuje pakiet pilotażowy Premium.');
+      setSuccessMessage(
+        selectedProfileType === 'personal'
+          ? 'Wniosek został pomyślnie wysłany! Administrator wkrótce skonfiguruje Twój dedykowany numer i aktywuje Pakiet Osobisty Ekspert.'
+          : 'Wniosek został pomyślnie wysłany! Administrator wkrótce skonfiguruje Twój dedykowany numer i aktywuje pakiet pilotażowy B2B Premium.'
+      );
       await fetchStatus();
     } catch (err: any) {
       setError(err.message || 'Wystąpił błąd podczas wysyłania wniosku.');
@@ -696,6 +731,8 @@ export default function Subscription() {
 
   // --- WIDOK 2: Wniosek oczekuje na weryfikację przez SuperAdmina ---
   if (tenant?.betaStatus === 'pending') {
+    const isPersonalPending = tenant?.businessProfile === 'personal';
+
     return (
       <div className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-amber-200 relative overflow-hidden">
@@ -709,13 +746,16 @@ export default function Subscription() {
               <span className="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
                 Weryfikacja w toku
               </span>
-              <h2 className="text-2xl font-serif text-surface-900 mt-1">Twój wniosek pilotażowy jest przetwarzany</h2>
+              <h2 className="text-2xl font-serif text-surface-900 mt-1">
+                {isPersonalPending ? 'Twój wniosek o Asystenta Osobistego jest przetwarzany' : 'Twój wniosek pilotażowy dla firmy jest przetwarzany'}
+              </h2>
             </div>
           </div>
 
           <p className="text-surface-600 leading-relaxed mb-6">
-            Dziękujemy za zgłoszenie do programu pilotażowego Premium asystenta EVA. 
-            Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM.
+            {isPersonalPending 
+              ? 'Dziękujemy za zgłoszenie do pakietu Osobisty Ekspert asystenta EVA. Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM do przekierowań (*21* i *61*).'
+              : 'Dziękujemy za zgłoszenie do programu pilotażowego Premium asystenta EVA. Nasz zespół techniczny aktualnie konfiguruje dla Ciebie dedykowany numer wirtualny GSM.'}
           </p>
 
           {/* Baner motywacyjny: konfiguracja w krokach */}
@@ -729,13 +769,17 @@ export default function Subscription() {
                   💡 Nie trać czasu podczas oczekiwania na numer!
                 </h4>
                 <p className="text-xs text-surface-600 leading-relaxed mb-3">
-                  Możesz już teraz w pełni przygotować asystenta EVA w kilku prostych krokach. Sprawdź pasek <strong>„Kolejność wdrożenia asystenta EVA”</strong> widoczny u góry ekranu i skonfiguruj profil, bazę wiedzy (FAQ) oraz pozostałe ustawienia.
+                  {isPersonalPending ? (
+                    <>Możesz już teraz w pełni przygotować asystenta osobistego w 6 prostych krokach. Sprawdź pasek <strong>„Kolejność wdrożenia asystenta EVA”</strong> widoczny u góry ekranu i skonfiguruj swój profil i BIO, bazę wiedzy (FAQ), kontakty VIP oraz ważne daty.</>
+                  ) : (
+                    <>Możesz już teraz w pełni przygotować asystenta EVA w 5 prostych krokach. Sprawdź pasek <strong>„Kolejność wdrożenia asystenta EVA”</strong> widoczny u góry ekranu i skonfiguruj profil firmy, usługi, godziny pracy oraz bazę wiedzy (FAQ).</>
+                  )}
                 </p>
                 <a 
                   href="/dashboard/settings" 
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-900 hover:bg-surface-800 text-white rounded-xl text-xs font-semibold shadow-sm transition"
                 >
-                  Przejdź do konfiguracji <ArrowRight className="w-3.5 h-3.5" />
+                  {isPersonalPending ? 'Przejdź do konfiguracji asystenta osobistego' : 'Przejdź do konfiguracji firmy'} <ArrowRight className="w-3.5 h-3.5" />
                 </a>
               </div>
             </div>
@@ -743,8 +787,32 @@ export default function Subscription() {
 
           <div className="bg-surface-50 rounded-2xl p-6 border border-surface-200 mb-6 space-y-3 text-sm">
             <h4 className="font-semibold text-surface-900 mb-2">Szczegóły Twojego zgłoszenia:</h4>
+            
+            <div className="flex flex-wrap items-center justify-between border-b border-surface-200/60 pb-2 gap-2">
+              <span className="text-surface-500">Wybrany pakiet pilotażowy:</span>
+              <div className="flex items-center gap-2">
+                <span className={`font-bold px-2.5 py-0.5 rounded-full text-xs flex items-center gap-1 ${
+                  isPersonalPending ? 'bg-indigo-100 text-indigo-900 border border-indigo-200' : 'bg-amber-100 text-amber-900 border border-amber-200'
+                }`}>
+                  {isPersonalPending ? (
+                    <><Crown className="w-3.5 h-3.5 text-indigo-600" /> Pakiet Osobisty Ekspert</>
+                  ) : (
+                    <><Briefcase className="w-3.5 h-3.5 text-amber-600" /> Pakiet B2B Premium</>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchProfile(isPersonalPending ? 'solo' : 'personal')}
+                  disabled={isLoading}
+                  className="text-xs text-amber-700 hover:text-amber-900 underline font-semibold transition cursor-pointer"
+                >
+                  Zmień na {isPersonalPending ? '🏢 Pakiet Firmowy B2B' : '👤 Pakiet Osobisty Ekspert'}
+                </button>
+              </div>
+            </div>
+
             <div className="flex justify-between border-b border-surface-200/60 pb-2">
-              <span className="text-surface-500">Firma / Imię i Nazwisko:</span>
+              <span className="text-surface-500">{isPersonalPending ? 'Imię i Nazwisko:' : 'Firma:'}</span>
               <span className="font-medium text-surface-900">{tenant?.name || salonName}</span>
             </div>
             <div className="flex justify-between border-b border-surface-200/60 pb-2">
@@ -768,7 +836,10 @@ export default function Subscription() {
             <div className="text-xs text-blue-800 leading-relaxed">
               <strong>Co nastąpi dalej?</strong> Po przydzieleniu numeru przez administratora otrzymasz 
               <strong> wiadomość SMS z powiadomieniem</strong> o aktywacji dedykowanego numeru EVA. 
-              Bezpłatny miesięczny pakiet pilotażowy Premium z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty. Do logowania używasz swojego numeru telefonu i kodu PIN ustalonego przy rejestracji.
+              {isPersonalPending 
+                ? ' Bezpłatny miesięczny pakiet Osobisty Ekspert z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty. ' 
+                : ' Bezpłatny miesięczny pakiet pilotażowy Premium z 300 darmowymi minutami aktywuje się automatycznie bez konieczności podawania karty. '}
+              Do logowania używasz swojego numeru telefonu i kodu PIN ustalonego przy rejestracji.
             </div>
           </div>
 
@@ -942,23 +1013,39 @@ export default function Subscription() {
   // --- WIDOK 3: Formularz Zgłoszeniowy do Programu Pilotażowego Beta (3 miesiące gratis) ---
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      {/* Baner Pilotażowy */}
-      <div className="mb-8 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden">
+      {/* Baner Pilotażowy adaptacyjny (Personal vs B2B) */}
+      <div className={`mb-8 ${
+        selectedProfileType === 'personal'
+          ? 'bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800'
+          : 'bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700'
+      } text-white rounded-3xl p-8 shadow-xl relative overflow-hidden transition-all duration-300`}>
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-8 translate-y-8">
           <Gift className="w-64 h-64" />
         </div>
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-amber-200" /> Zamknięty Program Pilotażowy
+            <Sparkles className="w-3.5 h-3.5 text-amber-200" /> 
+            {selectedProfileType === 'personal' ? '👤 Zamknięty Program Pilotażowy Personal AI' : '🏢 Zamknięty Program Pilotażowy B2B'}
           </div>
           <h1 className="text-3xl sm:text-4xl font-serif font-bold text-white mb-3">
-            Odbierz Miesięczny Pakiet Pilotażowy Premium Całkowicie Za Darmo
+            {selectedProfileType === 'personal' 
+              ? 'Odbierz Miesięczny Pakiet Osobisty Ekspert Całkowicie Za Darmo' 
+              : 'Odbierz Miesięczny Pakiet Pilotażowy Premium Całkowicie Za Darmo'}
           </h1>
           <p className="text-amber-100 text-sm sm:text-base leading-relaxed mb-3">
-            Dla pierwszych 5 użytkowników przygotowaliśmy bezpłatny miesięczny pakiet pilotażowy Premium:
-            <strong> 300 darmowych minut</strong>, dedykowany numer wirtualny, dostęp do modułu Marketing AI i pełną konfigurację bazy wiedzy. Bez podawania karty!
+            {selectedProfileType === 'personal' ? (
+              <>
+                Dla pierwszych 5 użytkowników przygotowaliśmy bezpłatny miesięczny pakiet <strong>Osobisty Ekspert</strong>:
+                <strong> 300 darmowych minut</strong>, dedykowany numer wirtualny GSM do przekierowań, ochronę VIP, strefy dostępności i pełną konfigurację bazy wiedzy. Bez podawania karty!
+              </>
+            ) : (
+              <>
+                Dla pierwszych 5 użytkowników przygotowaliśmy bezpłatny miesięczny pakiet <strong>Pilotażowy Premium B2B</strong>:
+                <strong> 300 darmowych minut</strong>, dedykowany numer wirtualny, dostęp do modułu Marketing AI i pełną konfigurację bazy wiedzy. Bez podawania karty!
+              </>
+            )}
           </p>
-          <div className="inline-flex items-center gap-2 bg-amber-900/40 backdrop-blur-sm px-3.5 py-1.5 rounded-xl text-xs text-amber-200 border border-amber-400/30">
+          <div className="inline-flex items-center gap-2 bg-black/20 backdrop-blur-sm px-3.5 py-1.5 rounded-xl text-xs text-amber-200 border border-white/20">
             <span>🎁</span>
             <span>Przetestuj pełnię możliwości EVA, podziel się swoją opinią i odbierz dodatkowe <strong>+100 darmowych minut</strong>!</span>
           </div>
@@ -982,35 +1069,113 @@ export default function Subscription() {
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
         <div className="mb-6">
           <h2 className="text-xl font-serif text-surface-900 mb-1">Formularz zgłoszenia do programu pilotażowego</h2>
-          <p className="text-sm text-surface-500">Wypełnij poniższe dane. Skontaktujemy się i natychmiast przydzielimy dedykowany numer dla Twojego asystenta.</p>
+          <p className="text-sm text-surface-500">
+            Wybierz przeznaczenie asystenta i wypełnij poniższe dane. Skontaktujemy się i natychmiast przydzielimy dedykowany numer wirtualny.
+          </p>
         </div>
 
         <form onSubmit={handleApplyBeta} className="space-y-6">
+          {/* Wybór typu asystenta: Personal vs B2B */}
+          <div>
+            <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2.5">
+              Wybierz przeznaczenie asystenta EVA i bezpłatny pakiet pilotażowy:
+            </label>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {/* Opcja 1: Personal Expert */}
+              <div
+                onClick={() => setSelectedProfileType('personal')}
+                className={`p-5 rounded-2xl border-2 cursor-pointer transition-all relative ${
+                  selectedProfileType === 'personal'
+                    ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/20'
+                    : 'border-surface-200 hover:border-surface-300 bg-white'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                      selectedProfileType === 'personal' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-surface-100 text-surface-600'
+                    }`}>
+                      <Crown className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-surface-900 text-sm">Pakiet Osobisty Ekspert</h4>
+                      <span className="text-[11px] text-indigo-700 font-semibold">Dla osób prywatnych, ekspertów i menedżerów</span>
+                    </div>
+                  </div>
+                  {selectedProfileType === 'personal' && (
+                    <CheckCircle2 className="w-5 h-5 text-indigo-600 shrink-0" />
+                  )}
+                </div>
+                <p className="text-xs text-surface-600 leading-relaxed mt-1.5">
+                  Osobista sekretarka AI: filtruje połączenia, dba o VIP-ów, chroni Twój czas wolny, pilnuje rocznic i organizuje Twój kalendarz.
+                </p>
+                <div className="mt-3 pt-2.5 border-t border-surface-200/60 flex items-center gap-2 text-[11px] text-indigo-900 font-medium">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>300 darmowych minut + strefy VIP i kalendarz</span>
+                </div>
+              </div>
+
+              {/* Opcja 2: B2B Premium */}
+              <div
+                onClick={() => setSelectedProfileType('b2b')}
+                className={`p-5 rounded-2xl border-2 cursor-pointer transition-all relative ${
+                  selectedProfileType === 'b2b'
+                    ? 'border-amber-500 bg-amber-50/50 shadow-sm ring-2 ring-amber-400/20'
+                    : 'border-surface-200 hover:border-surface-300 bg-white'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                      selectedProfileType === 'b2b' ? 'bg-amber-500 text-white shadow-xs' : 'bg-surface-100 text-surface-600'
+                    }`}>
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-surface-900 text-sm">Pakiet B2B Premium</h4>
+                      <span className="text-[11px] text-amber-700 font-semibold">Dla firm, salonów urody i gabinetów</span>
+                    </div>
+                  </div>
+                  {selectedProfileType === 'b2b' && (
+                    <CheckCircle2 className="w-5 h-5 text-amber-600 shrink-0" />
+                  )}
+                </div>
+                <p className="text-xs text-surface-600 leading-relaxed mt-1.5">
+                  Asystentka rejestratorka firmy: odbiera telefony od klientów, umawia wizyty, zarządza personelem, cennikiem i wysyła SMS.
+                </p>
+                <div className="mt-3 pt-2.5 border-t border-surface-200/60 flex items-center gap-2 text-[11px] text-amber-900 font-medium">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>300 darmowych minut + moduł Marketing AI</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid sm:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-                Nazwa firmy albo Imię i Nazwisko *
+                {selectedProfileType === 'personal' ? 'Twoje Imię i Nazwisko *' : 'Nazwa Firmy / Salonu / Gabinetu *'}
               </label>
               <input 
                 type="text" 
                 required
                 value={salonName}
                 onChange={e => setSalonName(e.target.value)}
-                placeholder="np. Jan Kowalski, Twoja Firma, Kancelaria, Gabinet"
+                placeholder={selectedProfileType === 'personal' ? 'np. Jan Kowalski' : 'np. Salon Urody Bella, Kancelaria Prawna'}
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-                Osoba Kontaktowa *
+                {selectedProfileType === 'personal' ? 'Twój zawód / specjalizacja (opcjonalnie)' : 'Osoba Kontaktowa *'}
               </label>
               <input 
                 type="text"
-                required
+                required={selectedProfileType === 'b2b'}
                 value={contactPerson}
                 onChange={e => setContactPerson(e.target.value)}
-                placeholder="np. Anna Kowalska"
+                placeholder={selectedProfileType === 'personal' ? 'np. Menedżer, Programista, Adwokat, Lekarz' : 'np. Anna Kowalska'}
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
               />
             </div>
@@ -1034,14 +1199,14 @@ export default function Subscription() {
 
             <div>
               <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-                Adres E-mail do kontaktu *
+                {selectedProfileType === 'personal' ? 'Twój prywatny adres E-mail *' : 'Adres E-mail firmy do kontaktu *'}
               </label>
               <input 
                 type="email"
                 required
                 value={contactEmail}
                 onChange={e => setContactEmail(e.target.value)}
-                placeholder="kontakt@twojafirma.pl"
+                placeholder={selectedProfileType === 'personal' ? 'twoj.email@poczta.pl' : 'kontakt@twojafirma.pl'}
                 className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
               />
             </div>
@@ -1049,35 +1214,43 @@ export default function Subscription() {
 
           <div>
             <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-2">
-              Krótko o Twojej firmie / oczekiwaniach (opcjonalnie)
+              {selectedProfileType === 'personal' ? 'Krótko o Twoich oczekiwaniach wobec asystenta (opcjonalnie)' : 'Krótko o Twojej firmie / oczekiwaniach (opcjonalnie)'}
             </label>
             <textarea 
               rows={3}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="np. Czym zajmuje się firma, ile osób liczy zespół, w jakich sytuacjach EVA ma odbierać połączenia..."
+              placeholder={selectedProfileType === 'personal' ? 'np. Kim jesteś, jakich połączeń się spodziewasz, jak asystent ma Cię przedstawiać i filtrować rozmowy...' : 'np. Czym zajmuje się firma, ile osób liczy zespół, w jakich sytuacjach EVA ma odbierać połączenia...'}
               className="w-full px-4 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary text-sm transition"
             />
           </div>
 
           {/* Podsumowanie korzyści */}
-          <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-5">
-            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider mb-3">Co wchodzi w Twój bezpłatny pakiet Premium:</h4>
-            <div className="grid sm:grid-cols-4 gap-3 text-xs text-amber-800">
+          <div className={`${
+            selectedProfileType === 'personal' ? 'bg-indigo-50/60 border-indigo-200/80' : 'bg-amber-50/60 border-amber-200/80'
+          } border rounded-2xl p-5`}>
+            <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 ${
+              selectedProfileType === 'personal' ? 'text-indigo-900' : 'text-amber-900'
+            }`}>
+              Co wchodzi w Twój bezpłatny {selectedProfileType === 'personal' ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'}:
+            </h4>
+            <div className={`grid sm:grid-cols-4 gap-3 text-xs ${
+              selectedProfileType === 'personal' ? 'text-indigo-800' : 'text-amber-800'
+            }`}>
               <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <Check className={`w-4 h-4 ${selectedProfileType === 'personal' ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
                 <span>300 darmowych minut</span>
               </div>
               <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <Check className={`w-4 h-4 ${selectedProfileType === 'personal' ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
                 <span>Własny numer wirtualny</span>
               </div>
               <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Marketing AI (SMS/Głos)</span>
+                <Check className={`w-4 h-4 ${selectedProfileType === 'personal' ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
+                <span>{selectedProfileType === 'personal' ? 'Strefy VIP i kalendarz' : 'Marketing AI (SMS/Głos)'}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                <Check className={`w-4 h-4 ${selectedProfileType === 'personal' ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
                 <span>Brak karty płatniczej</span>
               </div>
             </div>
@@ -1085,15 +1258,19 @@ export default function Subscription() {
 
           <div className="pt-4 border-t border-surface-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-surface-500 text-center sm:text-left">
-              Przesłanie formularza aktywuje zgłoszenie do miesięcznego pakietu pilotażowego Premium.
+              Przesłanie formularza aktywuje zgłoszenie do miesięcznego pakietu {selectedProfileType === 'personal' ? 'Osobisty Ekspert' : 'Pilotażowego Premium B2B'}.
             </p>
             <button 
               type="submit"
               disabled={isLoading}
-              className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-2 transition"
+              className={`w-full sm:w-auto px-8 py-3.5 text-white font-bold rounded-xl shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 transition ${
+                selectedProfileType === 'personal'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-indigo-600/20'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20'
+              }`}
             >
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-              Wyślij zgłoszenie do pakietu Premium
+              {selectedProfileType === 'personal' ? 'Wyślij zgłoszenie do pakietu Osobisty Ekspert' : 'Wyślij zgłoszenie do pakietu B2B Premium'}
             </button>
           </div>
         </form>

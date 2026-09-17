@@ -818,6 +818,15 @@ export function SuperAdminDashboard() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="text-xl font-bold text-white">{app.name}</h2>
+                        {app.businessProfile === 'personal' ? (
+                          <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            👤 Osobisty Ekspert
+                          </span>
+                        ) : (
+                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            🏢 B2B Premium
+                          </span>
+                        )}
                         {app.betaStatus === 'pending' ? (
                           <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs px-2.5 py-0.5 rounded-full font-bold">
                             ⏳ OCZEKUJE NA AKTYWACJĘ

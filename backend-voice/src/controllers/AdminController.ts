@@ -439,17 +439,20 @@ export class AdminController {
         }
       });
 
+      const isPersonal = existingTenant.businessProfile === 'personal';
+      const targetPlan = isPersonal ? 'personal_expert' : 'premium';
+
       await prisma.subscription.upsert({
         where: { tenantId: id },
         create: {
           tenantId: id,
-          planName: 'premium', // Udostępniamy od razu pełny pakiet Premium
+          planName: targetPlan,
           status: 'active',
           minutesIncluded: minutes,
           minutesUsed: 0
         },
         update: {
-          planName: 'premium', // Udostępniamy od razu pełny pakiet Premium
+          planName: targetPlan,
           status: 'active',
           minutesIncluded: minutes
         }
@@ -457,11 +460,13 @@ export class AdminController {
 
       // Wysłanie powiadomienia SMS o aktywacji numeru
       const { SMSService } = await import('../services/sms/SMSService');
-      const smsBody = `Twój asystent EVA dla firmy ${tenant.name} jest gotowy! Dedykowany numer: ${cleanNumber}. Zaloguj się do panelu swoim numerem telefonu i ustalonym PIN-em: https://beautyvoice-bff.web.app/dashboard`;
+      const smsBody = isPersonal
+        ? `Twój osobisty asystent EVA jest gotowy! Dedykowany numer: ${cleanNumber}. Zaloguj się do panelu: https://beautyvoice-bff.web.app/dashboard`
+        : `Twój asystent EVA dla firmy ${tenant.name} jest gotowy! Dedykowany numer: ${cleanNumber}. Zaloguj się do panelu swoim numerem telefonu i ustalonym PIN-em: https://beautyvoice-bff.web.app/dashboard`;
       
       const smsSent = await SMSService.sendSMS(tenant.phoneNumber, smsBody);
 
-      console.log(`🎉 [Beta Approval] Aktywowano firmę ${tenant.name}, przypisano numer ${cleanNumber}, PIN: ${finalPin}. SMS wysłany: ${smsSent}`);
+      console.log(`🎉 [Beta Approval] Aktywowano (${targetPlan}) ${tenant.name}, przypisano numer ${cleanNumber}, PIN: ${finalPin}. SMS wysłany: ${smsSent}`);
 
       res.json({
         success: true,
