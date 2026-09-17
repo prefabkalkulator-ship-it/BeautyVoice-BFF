@@ -588,7 +588,10 @@ export class CallOrchestrator {
                      this.outboundAppointmentId = payload.appointmentId;
                    }
                    if (payload.type === 'live_callback_30s') {
-                     contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony cyfrowa asystentka ${this.companyName || this.tenantName || 'naszej firmy'}. W czym mogę Ci dzisiaj pomóc?". Prowadź płynną rozmowę.`;
+                     const assistantBrand = (this.tenantName === 'DEMO' || this.businessProfile === 'demo')
+                       ? 'platformy EVA'
+                       : (this.companyName || this.tenantName || 'naszej firmy');
+                     contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie dokładnie jedno zdanie powitalne: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony wirtualna asystentka ${assistantBrand}. W czym mogę dzisiaj pomóc?". Wypowiedz to powitanie WYŁĄCZNIE po polsku. Kategoryczny zakaz powtarzania po angielsku i zakaz dwujęzycznych powitań! Prowadź płynną rozmowę po polsku.`;
                      await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                    } else {
                      const isMaleVoice = ['Puck', 'Charon'].includes(this.voiceName);
@@ -655,7 +658,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
-              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. W czym mogę pomóc?".`;
+              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. W czym mogę pomóc?". Mów wyłącznie po polsku, bez żadnych wstawek po angielsku.`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
               const isMale = ['Puck', 'Charon'].includes(this.voiceName);
@@ -802,6 +805,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         }
         this.twilioWs.close();
       }, 1000);
+    } else {
+      this.isTurnCanceled = false;
     }
   }
 
@@ -1247,8 +1252,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     const float32Array = AudioPipeline.decodeTwilioMulawTo16kHz(payloadBase64);
     
     // 1. Sprawdzamy lokalny Silero VAD pod kątem wtrącenia użytkownika (Barge-in)
+    let isSpeechDetected = false;
     await this.vadService.processAudio(float32Array, (speechProb) => {
       this.lastActivityTime = Date.now(); // Wykryto ludzką mowę (nie szum w tle!)
+      isSpeechDetected = true;
       if (this.agentSpeaking || this.isTurnStreaming || this.turnAudioQueue.length > 0) {
         console.log(`🗣️ [VAD Barge-in] Wykryto mowę użytkownika (prob: ${speechProb.toFixed(2)}) w trakcie wypowiedzi asystenta!`);
         this.executeBargeInMechanism();
@@ -1260,7 +1267,14 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       this.isTurnCanceled = false;
     }
 
-    // 2. FULL-DUPLEX: Zawsze przesyłamy dźwięk dzwoniącego do Gemini Live API!
+    // 2. OCHRONA PRZED ECHEM AKUSTYCZNYM (Acoustic Echo Suppression / Half-Duplex Gating):
+    // Jeśli asystent właśnie mówi do telefonu, a lokalny VAD nie wykrył mowy użytkownika (jest to jedynie echo głośnika lub szum GSM),
+    // nie przesyłamy tego dźwięku do Gemini Live API, aby zapobiec fałszywym przerwaniom 'interrupted: true' i rwaniu mowy asystenta.
+    if ((this.agentSpeaking || this.isTurnStreaming) && !isSpeechDetected) {
+      return;
+    }
+
+    // 3. FULL-DUPLEX: Przesyłamy dźwięk dzwoniącego do Gemini Live API!
     const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
     this.geminiClient.sendRealtimeAudio(pcmBase64);
   }
