@@ -22,7 +22,7 @@
     ],
     "headers": [
       {
-        "source": "/(EVA_favicon*|manifest.json)",
+        "source": "**",
         "headers": [
           {
             "key": "Cache-Control",
@@ -31,11 +31,11 @@
         ]
       },
       {
-        "source": "/**/index.html",
+        "source": "/assets/**",
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
+            "value": "public, max-age=31536000, immutable"
           }
         ]
       },

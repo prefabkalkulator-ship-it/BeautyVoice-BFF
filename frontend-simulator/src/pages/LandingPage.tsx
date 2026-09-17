@@ -105,10 +105,11 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
-    // 1. Sprawdzenie czy aplikacja uruchomiła się z zainstalowanego PWA na telefonie
     const urlParams = new URLSearchParams(window.location.search);
     const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
-    const isPwaLaunch = urlParams.get('source') === 'pwa' || standalone;
+    // Auto-przekierowanie do logowania/dashboardu dotyczy WYŁĄCZNIE aplikacji uruchomionej z ikonki PWA na pulpicie (standalone)
+    // W przeglądarce mobilnej użytkownik ZAWSZE widzi Landing Page.
+    const isPwaLaunch = standalone;
     setIsStandalone(standalone);
 
     // Kiedy aplikacja jest zainstalowana na telefonie i kliknięto ikonkę:

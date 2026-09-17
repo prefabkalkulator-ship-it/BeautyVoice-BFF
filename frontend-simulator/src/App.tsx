@@ -39,22 +39,25 @@ function ScrollToTop() {
 
 function App() {
   useEffect(() => {
-    const splash = document.getElementById('splash-screen');
-    if (!splash) return;
-
     const startTime = (window as unknown as { __splashStartTime?: number }).__splashStartTime || Date.now();
     const elapsed = Date.now() - startTime;
-    // Wyświetlamy animację przez rzeczywisty czas ładowania, z minimalnym progiem ~900ms,
-    // aby użytkownik na telefonie zobaczył płynną animację 3D słuchawek, bez czekania pełnych 4 sekund.
-    const minDisplayMs = 900;
+    const minDisplayMs = 700;
     const remaining = Math.max(0, minDisplayMs - elapsed);
 
     const timer = setTimeout(() => {
-      splash.style.opacity = '0';
-      splash.style.pointerEvents = 'none';
-      setTimeout(() => {
-        splash.remove();
-      }, 350);
+      const dismiss = (window as unknown as { __dismissSplash?: () => void }).__dismissSplash;
+      if (typeof dismiss === 'function') {
+        dismiss();
+      } else {
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+          splash.style.opacity = '0';
+          splash.style.pointerEvents = 'none';
+          setTimeout(() => {
+            if (splash.parentNode) splash.parentNode.removeChild(splash);
+          }, 350);
+        }
+      }
     }, remaining);
 
     return () => clearTimeout(timer);
