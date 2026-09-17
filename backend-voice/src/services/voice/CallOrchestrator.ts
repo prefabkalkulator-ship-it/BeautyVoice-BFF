@@ -203,13 +203,13 @@ export class CallOrchestrator {
           const durationSeconds = Math.round(durationMs / 1000);
 
           // Sprawdzamy czy w trakcie tej rozmowy zapisano już CallLog (np. przez save_call_message)
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+          const callStartThreshold = this.callStartTime ? new Date(this.callStartTime) : new Date(Date.now() - 60 * 1000);
           let callLog = await prisma.callLog.findFirst({
             where: {
               tenantId: this.tenantId,
               callerPhone: this.callerPhone || 'nieznany',
               durationSeconds: 0,
-              createdAt: { gte: fiveMinutesAgo }
+              createdAt: { gte: callStartThreshold }
             },
             orderBy: { createdAt: 'desc' }
           });
@@ -221,19 +221,16 @@ export class CallOrchestrator {
                 ? (this.ownerName || this.tenantName) 
                 : (this.callerNameFromAi || undefined));
 
-          // Jeśli AI nie przekazało podsumowania przez endCall, wygeneruj z faktów zarejestrowanych w rozmowie
+          // Jeśli AI nie przekazało podsumowania przez endCall, wygeneruj z faktów zarejestrowanych w TEJ konkretnej rozmowie
           if (!resolvedSummary) {
             if (this.callActionJournal.length > 0) {
               resolvedSummary = this.callActionJournal.join('\n');
-            } else {
-              // Sprawdzamy czy w trakcie tej rozmowy utworzono appointment dla tego dzwoniącego
+            } else if (this.bookedAppointments.length > 0) {
+              // Sprawdzamy appointment utworzony wyłącznie w trakcie TEJ rozmowy
               const recentAppt = await prisma.appointment.findFirst({
                 where: {
-                  tenantId: this.tenantId,
-                  customerPhone: this.callerPhone,
-                  createdAt: { gte: fiveMinutesAgo }
+                  id: { in: this.bookedAppointments }
                 },
-                orderBy: { createdAt: 'desc' },
                 include: { service: true }
               });
 
@@ -250,12 +247,16 @@ export class CallOrchestrator {
                 if (!resolvedCallerName && recentAppt.customerName && !recentAppt.customerName.includes('Połączenie')) {
                   resolvedCallerName = recentAppt.customerName;
                 }
-              } else if (durationSeconds >= 15) {
-                const min = Math.ceil(durationSeconds / 60);
-                resolvedSummary = `[ℹ️ Rozmowa informacyjna] Połączenie z dzwoniącym (${min} min). Asystent udzielił informacji o ofercie i zasadach współpracy.`;
               }
+            } else if (durationSeconds < 15) {
+              resolvedSummary = `[Rozłączenie] Rozmówca rozłączył się po odsłuchaniu powitania (brak wypowiedzi).`;
+            } else {
+              const min = Math.ceil(durationSeconds / 60);
+              resolvedSummary = `[ℹ️ Rozmowa informacyjna] Połączenie z dzwoniącym (${min} min). Asystent udzielił informacji o ofercie i zasadach współpracy.`;
             }
           }
+
+          const isAbandoned = durationSeconds < 15 && this.callActionJournal.length === 0 && this.bookedAppointments.length === 0;
 
           if (this.confirmedCallLogId) {
             callLog = await prisma.callLog.update({
@@ -272,7 +273,9 @@ export class CallOrchestrator {
             const isOutboundResult = Boolean(this.isConfirmedOutbound || this.isCancelledOutbound || callLog.status === 'CONFIRMED_PHONE' || callLog.status === 'CANCELLED_PHONE');
             const logStatus = this.isConfirmedOutbound 
               ? 'CONFIRMED_PHONE' 
-              : (this.isCancelledOutbound ? 'CANCELLED_PHONE' : callLog.status);
+              : (this.isCancelledOutbound 
+                  ? 'CANCELLED_PHONE' 
+                  : (isAbandoned ? 'abandoned' : callLog.status));
             const isProcessed = isOutboundResult || callLog.isProcessed;
 
             callLog = await prisma.callLog.update({
@@ -289,7 +292,9 @@ export class CallOrchestrator {
           } else {
             const logStatus = this.isConfirmedOutbound 
               ? 'CONFIRMED_PHONE' 
-              : (this.isCancelledOutbound ? 'CANCELLED_PHONE' : 'completed');
+              : (this.isCancelledOutbound 
+                  ? 'CANCELLED_PHONE' 
+                  : (isAbandoned ? 'abandoned' : 'completed'));
             const isProcessed = Boolean(this.isConfirmedOutbound || this.isCancelledOutbound);
 
             callLog = await prisma.callLog.create({
@@ -307,20 +312,33 @@ export class CallOrchestrator {
             console.log(`📝 [CallOrchestrator] Zapisano nowy CallLog: role=${this.callerRole}, duration=${durationSeconds}s, status=${logStatus}, isProcessed=${isProcessed}, summary="${resolvedSummary || ''}"`);
           }
 
-          // Powiąż od razu utworzone w trakcie rozmowy wydarzenia w kalendarzu z tym CallLog (tylko dla połączeń przychodzących, nie nadpisuj przy outbound)
+          // Powiąż od razu utworzone w trakcie TEJ rozmowy wydarzenia w kalendarzu z tym CallLog (tylko dla połączeń przychodzących, nie nadpisuj przy outbound)
           if (callLog && !this.isConfirmedOutbound && !this.isCancelledOutbound) {
-            await prisma.appointment.updateMany({
-              where: {
-                tenantId: this.tenantId,
-                customerPhone: this.callerPhone,
-                createdAt: { gte: fiveMinutesAgo },
-                callLogId: null
-              },
-              data: {
-                callLogId: callLog.id,
-                callSummary: resolvedSummary || undefined
-              }
-            }).catch(e => console.error('[CallOrchestrator] Błąd wiązania Appointment z CallLog:', e));
+            if (this.bookedAppointments.length > 0) {
+              await prisma.appointment.updateMany({
+                where: {
+                  id: { in: this.bookedAppointments },
+                  callLogId: null
+                },
+                data: {
+                  callLogId: callLog.id,
+                  callSummary: resolvedSummary || undefined
+                }
+              }).catch(e => console.error('[CallOrchestrator] Błąd wiązania Appointment z CallLog:', e));
+            } else if (this.callStartTime) {
+              await prisma.appointment.updateMany({
+                where: {
+                  tenantId: this.tenantId,
+                  customerPhone: this.callerPhone,
+                  createdAt: { gte: new Date(this.callStartTime) },
+                  callLogId: null
+                },
+                data: {
+                  callLogId: callLog.id,
+                  callSummary: resolvedSummary || undefined
+                }
+              }).catch(e => console.error('[CallOrchestrator] Błąd wiązania Appointment z CallLog:', e));
+            }
           }
 
           // Aktualizacja profilu Customer w CRM jeśli rozpoznano poprawne imię rozmówcy
