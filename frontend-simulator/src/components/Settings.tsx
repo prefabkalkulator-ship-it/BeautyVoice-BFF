@@ -82,7 +82,14 @@ export default function Settings() {
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const isPersonalExpert = tenant?.subscription?.planName === 'personal_expert' || tenant?.subscription?.planName?.toLowerCase()?.includes('expert');
+  const isPersonalExpert = 
+    tenant?.subscription?.planName === 'personal_expert' || 
+    tenant?.subscription?.planName?.toLowerCase()?.includes('expert') ||
+    (tenant?.businessProfile === 'personal' && (
+      tenant?.betaNotes?.includes('Osobisty Ekspert') || 
+      tenant?.betaStatus === 'pending' || 
+      tenant?.betaStatus === 'approved'
+    ));
 
   // Nowo dodane pola: ścieżka hybrydowa, zasięg, odmowa SMS, kwalifikacja
   const [bookingExternalUrl, setBookingExternalUrl] = useState('');
@@ -685,7 +692,7 @@ export default function Settings() {
                   type="text" 
                   value={companyName} 
                   onChange={e => setCompanyName(e.target.value)}
-                  placeholder="np. MDM Energy"
+                  placeholder="np. Kancelaria Prawna Nowak, Studio Projektowe, Dr Anna Kowalska"
                   className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary text-sm bg-white"
                 />
                 <p className="text-[11px] text-surface-500 mt-1">Używane, jeśli prowadzisz praktykę lub działalność pod marką.</p>

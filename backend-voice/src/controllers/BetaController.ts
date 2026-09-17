@@ -78,6 +78,28 @@ export class BetaController {
         }
       });
 
+      // Natychmiastowa aktywacja pakietu pilotażowego (Osobisty Ekspert lub Premium B2B) w subskrypcji
+      const targetPlan = (requestedPlan === 'personal_expert' || normalizedProfile === 'personal')
+        ? 'personal_expert'
+        : 'premium';
+      const targetMinutes = 300;
+
+      const updatedSub = await prisma.subscription.upsert({
+        where: { tenantId: tenant.id },
+        update: {
+          planName: targetPlan,
+          status: 'trialing',
+          minutesIncluded: targetMinutes
+        },
+        create: {
+          tenantId: tenant.id,
+          planName: targetPlan,
+          status: 'trialing',
+          minutesIncluded: targetMinutes,
+          minutesUsed: 0
+        }
+      });
+
       // 1. Wysyłka powiadomienia Push do SuperAdmina (PWA)
       try {
         const adminDevices = await prisma.adminDevice.findMany();
@@ -117,7 +139,9 @@ export class BetaController {
           phoneNumber: updatedTenant.phoneNumber,
           businessProfile: updatedTenant.businessProfile,
           betaStatus: updatedTenant.betaStatus,
-          betaRequestedAt: updatedTenant.betaRequestedAt
+          betaNotes: updatedTenant.betaNotes,
+          betaRequestedAt: updatedTenant.betaRequestedAt,
+          subscription: updatedSub
         }
       });
     } catch (err: any) {
@@ -156,6 +180,7 @@ export class BetaController {
         businessProfile: tenant.businessProfile,
         hasPin: !!tenant.pinCode,
         betaStatus: tenant.betaStatus,
+        betaNotes: tenant.betaNotes,
         betaContactPerson: tenant.betaContactPerson,
         betaContactEmail: tenant.betaContactEmail,
         betaRequestedAt: tenant.betaRequestedAt,

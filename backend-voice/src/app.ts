@@ -569,6 +569,31 @@ app.put('/api/tenant', async (req, res) => {
       }
     });
 
+    // Jeśli użytkownik zmienia profil (Personal vs B2B) w trakcie okresu testowego/pilotażu, synchronizuj pakiet
+    if (req.body.businessProfile) {
+      const isPersonal = req.body.businessProfile === 'personal';
+      const targetPlan = isPersonal ? 'personal_expert' : 'premium';
+      
+      const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
+      if (!sub || sub.status === 'trialing' || tenant.betaStatus === 'pending') {
+        await prisma.subscription.upsert({
+          where: { tenantId: tenant.id },
+          update: {
+            planName: targetPlan,
+            status: 'trialing',
+            minutesIncluded: 300
+          },
+          create: {
+            tenantId: tenant.id,
+            planName: targetPlan,
+            status: 'trialing',
+            minutesIncluded: 300,
+            minutesUsed: 0
+          }
+        });
+      }
+    }
+
     // Zawsze uruchamiaj audyt moderacji przy aktualizacji profilu lub wytycznych firmy
     import('./services/ModerationService').then(async mod => {
       mod.moderationService.moderateTenant(tenant.id).catch(console.error);

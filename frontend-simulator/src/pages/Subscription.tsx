@@ -115,6 +115,7 @@ export default function Subscription() {
       if (res.ok) {
         setTenant((prev: any) => ({ ...prev, businessProfile: newProfile }));
         setSelectedProfileType(newProfile === 'personal' ? 'personal' : 'b2b');
+        await fetchStatus();
       }
     } catch (e) {
       console.error('Błąd zmiany profilu:', e);

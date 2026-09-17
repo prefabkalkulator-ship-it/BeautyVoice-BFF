@@ -40,7 +40,7 @@ model Tenant {
   // Tożsamość Właściciela i Firmy
   ownerName           String?        // np. Jan Kowalski / Dymitr Mitrafanau
   ownerGender         String         @default("MALE") // MALE, FEMALE
-  companyName         String?        // np. MDM Energy / Studio Projektowe
+  companyName         String?        // np. Kancelaria Prawna / Studio Projektowe
   businessCategory    String?        // np. Architektura i Budownictwo, Kancelaria, Salon Beauty
   assistantRole       String         @default("executive_gatekeeper") // executive_gatekeeper, sales_consultant, support_complaints, hr_recruiter_pr, company_receptionist, proactive_sales, medical_legal
   defaultFormalityLevel String       @default("formal_pan_pani") // formal_pan_pani, professional_friendly, direct_ty

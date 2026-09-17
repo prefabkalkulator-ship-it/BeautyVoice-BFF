@@ -78,6 +78,9 @@ export default function Faq() {
         if (t) {
           setBusinessProfile(t.businessProfile || 'solo');
           if (t.botName) setBotName(t.botName);
+          if (t.businessProfile === 'personal' && (t.betaNotes?.includes('Osobisty Ekspert') || t.betaStatus === 'pending' || t.subscription?.planName === 'personal_expert')) {
+            setIsPremium(true);
+          }
         }
       })
       .catch(err => console.error('Failed to load tenant in Faq:', err));
@@ -85,7 +88,8 @@ export default function Faq() {
     fetch('/api/subscription')
       .then(res => res.json())
       .then(s => {
-        if (s?.planName?.toLowerCase() === 'premium') {
+        const plan = (s?.planName || '').toLowerCase();
+        if (plan === 'premium' || plan === 'personal_expert' || plan === 'beta_pilot' || plan === 'pilot' || plan.includes('expert')) {
           setIsPremium(true);
         }
       })
@@ -198,7 +202,9 @@ export default function Faq() {
         const reader = new FileReader();
         reader.onload = (evt) => {
           if (evt.target?.result) {
-            setRawText((prev) => prev + (prev ? '\n\n' : '') + evt.target!.result);
+            setRawText(evt.target!.result as string);
+            setFileData(null);
+            setError('');
           }
         };
         reader.readAsText(file);
@@ -207,11 +213,13 @@ export default function Faq() {
         reader.onload = (evt) => {
           if (evt.target?.result) {
             setFileData({ base64: evt.target.result as string, mime: file.type, name: file.name });
+            setRawText('');
+            setError('');
           }
         };
         reader.readAsDataURL(file);
       } else {
-        setError('Rozpoznaję tylko pliki tekstowe, PDF, pliki audio i zdjęcia.');
+        setError('Rozpoznaję pliki tekstowe (.txt), dokumenty PDF, pliki audio i zdjęcia.');
       }
     }
   };
@@ -432,7 +440,22 @@ export default function Faq() {
                 )}
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-3">
+                {(rawText.trim() || fileData) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRawText('');
+                      setFileData(null);
+                      setError('');
+                    }}
+                    className="text-xs text-surface-500 hover:text-red-600 transition flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-red-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                    <span>Wyczyść pole</span>
+                  </button>
+                ) : <div />}
+
                 <button 
                   onClick={handleExtract}
                   disabled={isExtracting || (!rawText.trim() && !fileData)}
