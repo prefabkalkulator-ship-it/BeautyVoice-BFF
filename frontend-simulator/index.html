@@ -14,6 +14,14 @@
     <title>EasyVoiceAssistant</title>
   </head>
   <body>
+    <div id="splash-screen" style="position:fixed;inset:0;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999999;transition:opacity 0.25s ease-out;user-select:none;-webkit-user-select:none;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <img src="/EVA_prewiu.gif" alt="EVA" style="width:220px;height:220px;object-fit:contain;display:block;" />
+        <div style="margin-top:14px;font-family:system-ui,-apple-system,sans-serif;font-size:13px;font-weight:500;color:#94a3b8;letter-spacing:0.04em;">
+          Ładowanie asystenta...
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

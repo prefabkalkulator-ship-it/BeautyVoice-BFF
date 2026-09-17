@@ -267,6 +267,20 @@ export class BookingService {
           }
         },
         {
+          name: 'rescheduleAppointment',
+          description: 'Przenosi istniejące spotkanie/wizytę na inny termin lub godzinę. Użyj tego narzędzia, gdy dzwonisz do klienta potwierdzić spotkanie, a klient informuje, że nie zdąży, prosi o przesunięcie o godzinę lub zmianę terminu, po wcześniejszym sprawdzeniu wolnego terminu narzędziem checkAvailability i uzyskaniu akceptacji klienta.',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              newStartTime: { type: 'STRING', description: 'Nowa data i godzina rozpoczęcia spotkania w formacie ISO z polską strefą czasową np. 2026-09-18T14:00:00+02:00' },
+              customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (opcjonalnie)' },
+              appointmentId: { type: 'STRING', description: 'ID rezerwacji (opcjonalnie)' },
+              reason: { type: 'STRING', description: 'Powód zmiany terminu podany przez klienta (np. spóźnienie, kolizja planów)' }
+            },
+            required: ['newStartTime']
+          }
+        },
+        {
           name: 'endCall',
           description: 'Kończy połączenie i odkłada słuchawkę po pożegnaniu. ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy.',
           parameters: {
@@ -459,6 +473,20 @@ export class BookingService {
             customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (jeśli znany)' },
             appointmentId: { type: 'STRING', description: 'Opcjonalne ID spotkania/rezerwacji' }
           }
+        }
+      },
+      {
+        name: 'rescheduleAppointment',
+        description: 'Przenosi istniejące spotkanie/wizytę na inny termin lub godzinę. Użyj tego narzędzia, gdy dzwonisz do klienta potwierdzić spotkanie, a klient informuje, że nie zdąży, prosi o przesunięcie o godzinę lub zmianę terminu, po wcześniejszym sprawdzeniu wolnego terminu narzędziem checkAvailability i uzyskaniu akceptacji klienta.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            newStartTime: { type: 'STRING', description: 'Nowa data i godzina rozpoczęcia spotkania w formacie ISO z polską strefą czasową np. 2026-09-18T14:00:00+02:00' },
+            customerPhone: { type: 'STRING', description: 'Numer telefonu klienta (opcjonalnie)' },
+            appointmentId: { type: 'STRING', description: 'ID rezerwacji (opcjonalnie)' },
+            reason: { type: 'STRING', description: 'Powód zmiany terminu podany przez klienta (np. spóźnienie, kolizja planów)' }
+          },
+          required: ['newStartTime']
         }
       },
       {
@@ -1146,6 +1174,143 @@ export class BookingService {
       }
       return { success: false, message: "Nie znaleziono rezerwacji do odwołania." };
     } catch(e: any) { return { error: e.message }; }
+  }
+
+  /**
+   * Przenosi istniejące spotkanie/wizytę na inny termin lub godzinę (reschedule)
+   */
+  public async rescheduleAppointment(tenantId: string, customerPhone?: string, newStartTime?: string, appointmentId?: string, reason?: string) {
+    try {
+      if (!newStartTime) {
+        return { success: false, error: "Brak parametru newStartTime. Podaj nową datę i godzinę rozpoczęcia spotkania." };
+      }
+
+      // 1. Jeśli nie przekazano appointmentId, sprawdź czy dla tego numeru było niedawno zlecone zadanie w outboundQueue
+      if (!appointmentId && customerPhone) {
+        const clean = customerPhone.replace(/[\s\-()]/g, '');
+        const recentOutbound = await prisma.outboundQueue.findFirst({
+          where: {
+            tenantId,
+            targetPhone: { contains: clean.slice(-9) },
+            status: { in: ['processing', 'in_progress', 'done', 'pending'] }
+          },
+          orderBy: { scheduledFor: 'desc' }
+        });
+        if (recentOutbound?.payload) {
+          const payload = recentOutbound.payload as any;
+          if (payload.appointmentId && !String(payload.appointmentId).startsWith('adhoc_')) {
+            appointmentId = payload.appointmentId;
+          }
+        }
+      }
+
+      let appointments: any[] = [];
+
+      if (appointmentId) {
+        appointments = await prisma.appointment.findMany({
+          where: { id: appointmentId, tenantId },
+          take: 1
+        });
+      } else if (customerPhone) {
+        const clean = customerPhone.replace(/[\s\-()]/g, '');
+        // Priorytet 1: Wizyty ze statusem 'pending_confirmation'
+        appointments = await prisma.appointment.findMany({
+          where: {
+            tenantId,
+            customerPhone: { contains: clean.slice(-9) },
+            status: 'pending_confirmation',
+            startTime: { gt: new Date() },
+            contactLevel: { not: 'CALL' },
+            customerName: { not: { startsWith: '📞' } }
+          },
+          orderBy: { startTime: 'asc' },
+          take: 1
+        });
+
+        // Priorytet 2: Inne nadchodzące wizyty
+        if (appointments.length === 0) {
+          appointments = await prisma.appointment.findMany({
+            where: {
+              tenantId,
+              customerPhone: { contains: clean.slice(-9) },
+              status: { in: ['confirmed', 'confirmed_by_client', 'pending', 'unconfirmed'] },
+              startTime: { gt: new Date() },
+              contactLevel: { not: 'CALL' },
+              customerName: { not: { startsWith: '📞' } }
+            },
+            orderBy: { startTime: 'asc' },
+            take: 1
+          });
+        }
+      }
+
+      if (appointments.length > 0) {
+        const appt = appointments[0];
+        const newStart = parseWarsawDateTime(newStartTime);
+        const originalDurationMs = (appt.endTime && appt.startTime) 
+          ? (new Date(appt.endTime).getTime() - new Date(appt.startTime).getTime()) 
+          : (30 * 60 * 1000);
+        const newEnd = new Date(newStart.getTime() + (originalDurationMs > 0 ? originalDurationMs : 30 * 60 * 1000));
+
+        const oldDateStr = new Date(appt.startTime).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' });
+        const oldTimeStr = new Date(appt.startTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+        const newDateStr = newStart.toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' });
+        const newTimeStr = newStart.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+
+        await prisma.appointment.update({
+          where: { id: appt.id },
+          data: {
+            startTime: newStart,
+            endTime: newEnd,
+            status: 'confirmed_by_client',
+            isProcessed: true
+          }
+        });
+
+        const createdLog = await prisma.callLog.create({
+          data: {
+            tenantId,
+            callerPhone: appt.customerPhone,
+            callerName: appt.customerName || 'Klient',
+            callerRole: 'CLIENT',
+            durationSeconds: 0,
+            status: 'CONFIRMED_PHONE',
+            summary: `[Przełożenie Telefon] Klient w rozmowie telefonicznej przeniósł spotkanie z ${oldDateStr} ${oldTimeStr} na nowy termin: ${newDateStr} o godz. ${newTimeStr}.${reason ? ` Powód: ${reason}.` : ''}`,
+            isProcessed: true
+          }
+        });
+
+        // Natychmiastowe powiadomienie Push do właściciela
+        try {
+          const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+          if (tenant?.fcmTokens && tenant.fcmTokens.length > 0) {
+            const { PushService } = await import('./PushService');
+            await PushService.sendNotification(
+              tenant.fcmTokens,
+              '📅 Zmiana terminu spotkania',
+              `${appt.customerName || 'Klient'} przeniósł spotkanie na: ${newDateStr} o godz. ${newTimeStr}`,
+              appt.id,
+              appt.customerPhone,
+              tenantId
+            );
+          }
+        } catch (pushErr) {
+          console.error('[BookingService] Błąd wysyłki push przy reschedule:', pushErr);
+        }
+
+        return { 
+          success: true, 
+          message: `Spotkanie zostało pomyślnie przeniesione na ${newDateStr} o godz. ${newTimeStr}.`, 
+          appointmentId: appt.id,
+          newStartTime: newStart.toISOString(),
+          callLogId: createdLog.id 
+        };
+      }
+
+      return { success: false, message: "Nie znaleziono rezerwacji do przełożenia dla tego numeru." };
+    } catch(e: any) { 
+      return { error: e.message }; 
+    }
   }
 
   public async requestHumanContact(tenantId: string, customerPhone: string, reason: string) {

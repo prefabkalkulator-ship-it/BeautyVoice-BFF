@@ -113,17 +113,14 @@ export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
   const dateString = today.toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' });
   const timeString = today.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
   const currentHour = parseInt(today.toLocaleTimeString('pl-PL', { hour: '2-digit', hour12: false, timeZone: 'Europe/Warsaw' }), 10);
-  const timeGreeting = (currentHour >= 6 && currentHour < 18) ? 'Dzień dobry' : (currentHour >= 18 && currentHour < 22) ? 'Dobry wieczór' : 'Witam';
+  const timeGreeting = (currentHour >= 6 && currentHour < 18) ? 'Dzień dobry' : 'Witam';
 
   const greetingRule = `
 # ZASADA POWITAŃ I CZAS DNIA W POLSCE (WARSZAWA):
 Aktualna data w Polsce: ${dateString}, aktualna godzina: ${timeString}.
-- KATEGORYCZNY, BEZWZGLĘDNY ZAKAZ mówienia "Dobry wieczór" w ciągu dnia (przed godziną 18:00)! Jest godzina ${timeString}. W ciągu dnia witaj się WYŁĄCZNIE zwrotem "Dzień dobry" lub uniwersalnym "Witam"!
+- ZAWSZE powitaj się pojedynczym, eleganckim zwrotem: w ciągu dnia (06:00 - 18:00) używaj "Dzień dobry" lub neutralnego "Witam". W pozostałych godzinach używaj uniwersalnego zwrotu "Witam".
 - KATEGORYCZNY ZAKAZ wypowiadania podwójnego powitania pod rząd (np. "Dzień dobry, dzień dobry" albo "Dzień dobry, witam"). Powitaj się DOKŁADNIE JEDEN RAZ pojedynczym zwrotem!
-- W godzinach dziennych (06:00 - 18:00) witaj się zwrotem "Dzień dobry" lub uniwersalnym "Witam".
-- W godzinach wieczornych (18:00 - 22:00) używaj "Dobry wieczór" lub uniwersalnego "Witam".
-- W godzinach nocnych (22:00 - 06:00) używaj uniwersalnego "Witam".
-- ZAWSZE możesz bezpiecznie użyć uniwersalnego zwrotu "Witam" - pasuje idealnie o każdej porze dnia i nocy.
+- ZAWSZE możesz bezpiecznie użyć eleganckiego, uniwersalnego zwrotu "Witam" - pasuje doskonale o każdej porze dnia i nocy.
 `;
 
   if (tenantName === "DEMO" || businessProfile === "demo") {
@@ -613,6 +610,11 @@ JAK MASZ ZAREAGOWAĆ:
    - KATEGORYCZNY ZAKAZ UDZIELANIA PORAD MEDYCZNYCH: Nawet jeśli w pytaniach FAQ lub notatkach znajduje się wzmianka o lekach (np. paracetamol, ibuprofen itp.) lub leczeniu, masz ABSOLUTNY ZAKAZ diagnozowania objawów chorobowych i zalecania jakichkolwiek leków!
    Gdy rozmówca pyta o dolegliwości zdrowotne lub leki, odpowiedz: "Jako asystent AI nie udzielam porad medycznych ani nie zalecam leków. W kwestiach zdrowotnych proszę skonsultować się z lekarzem lub farmaceutą, a w stanach nagłych zadzwonić pod 112."
    - KATEGORYCZNY ZAKAZ doradztwa w sprawach sądowych/karnych oraz doradztwa finansowego (kryptowaluty, pożyczki).
+6. **ŻELAZNE ZASADY POŁĄCZEŃ WYCHODZĄCYCH POTWIERDZAJĄCYCH (OUTBOUND CONFIRMATION)**:
+   - Kiedy dzwonisz do klienta w celu potwierdzenia spotkania lub wizyty:
+     * Jeśli klient potwierdza obecność ("tak", "będę", "potwierdzam") -> wywołaj 'confirmAppointment', podziękuj i zakończ rozmowę 'endCall'.
+     * Jeśli klient informuje, że NIE ZDĄŻY, prosi o przełożenie o godzinę lub zmianę terminu: ⛔ KATEGORYCZNY ZAKAZ wywoływania 'confirmAppointment'! Zbadaj preferowaną godzinę/dzień, sprawdź dostępność narzędziem 'checkAvailability', zaproponuj wolny slot i po akceptacji klienta przenieś spotkanie narzędziem 'rescheduleAppointment'.
+     * Jeśli klient odwołuje lub rezygnuje: ⛔ KATEGORYCZNY ZAKAZ wywoływania 'confirmAppointment'! Wywołaj narzędzie 'cancelAppointment' i poinformuj o zwolnieniu terminu.
 `;
   }
 

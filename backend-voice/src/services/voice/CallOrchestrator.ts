@@ -87,6 +87,7 @@ export class CallOrchestrator {
   private confirmedCallLogId: string | null = null;
   private isConfirmedOutbound: boolean = false;
   private isCancelledOutbound: boolean = false;
+  private isFirstOutboundTurnComplete: boolean = false;
 
   constructor(twilioConnection: WebSocket) {
     this.twilioWs = twilioConnection;
@@ -557,7 +558,7 @@ export class CallOrchestrator {
           setTimeout(async () => {
             let contextText = '';
             const warsawHour = parseInt(new Date().toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
-            const timeGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : (warsawHour >= 18 && warsawHour < 22) ? 'Dobry wieczór' : 'Witam';
+            const timeGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Witam';
 
             if (isPostTransferFallback && this.geminiClient) {
               contextText = `UWAGA: Próba bezpośredniego połączenia z właścicielem nie powiodła się (właściciel nie odebrał w ciągu 30 sekund lub odrzucił połączenie). Rozmówca (${fallbackVipName || 'kontakt VIP'}) powrócił na linię. NATYCHMIAST przemów jako pierwsza i powiedz dosłownie: "Właściciel nie mógł teraz odebrać. Zostaw wiadomość, a przekażę ją natychmiast." Następnie wysłuchaj i zapisz jego wiadomość narzędziem save_call_message. Pod żadnym pozorem NIE próbuj łączyć ponownie!`;
@@ -591,7 +592,14 @@ export class CallOrchestrator {
                          clientGreeting = `Witam Panią ${firstName}`;
                          clientAddress = 'Pani';
                        } else {
-                         clientGreeting = `Witam Pana ${firstName}`;
+                         let accusativeName = firstName;
+                         if (firstName.endsWith('usz')) accusativeName = firstName.slice(0, -3) + 'usza';
+                         else if (firstName.endsWith('ek')) accusativeName = firstName.slice(0, -2) + 'ka';
+                         else if (firstName.endsWith('an')) accusativeName = firstName + 'a';
+                         else if (firstName.endsWith('r')) accusativeName = firstName + 'a';
+                         else if (firstName.endsWith('ł')) accusativeName = firstName + 'a';
+                         else if (!firstName.endsWith('a')) accusativeName = firstName + 'a';
+                         clientGreeting = `Witam Pana ${accusativeName}`;
                          clientAddress = 'Pan';
                        }
                      }
@@ -604,9 +612,31 @@ export class CallOrchestrator {
 
                      const openingSentence = `${clientGreeting}. Jestem ${assistantTitleInstrumental} ${ownerPrefix} ${ownerFirstGenitive}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
 
-                      contextText = `Połączenie wychodzące do klienta (${rawCustomerName || task.targetPhone}). Wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}".`;
-                    }
-                }
+                     contextText = `TO JEST POŁĄCZENIE WYCHODZĄCE do klienta: ${rawCustomerName || task.targetPhone} w celu potwierdzenia ${eventWordAccusative} w dniu ${dateText} ${timeText}.
+NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}".
+
+ŻELAZNE ZASADY DALSZEGO PROWADZENIA ROZMOWY:
+1. WARIANT A (Klient POTWIERDZA obecność: "tak", "będę", "potwierdzam", "pasuje", "do zobaczenia"):
+   - Wywołaj narzędzie 'confirmAppointment'.
+   - Podziękuj serdecznie: "Dziękuję bardzo za potwierdzenie. Jesteśmy umówieni na ${dateText} ${timeText}. Do zobaczenia!"
+   - Zakończ rozmowę wywołując 'endCall'.
+2. WARIANT B (Klient CHCE PRZEŁOŻYĆ TERMIN / ZMIENIĆ GODZINĘ: "nie zdążę", "czy mogę przenieść o godzinę", "czy możemy na 14:00 / na jutro?"):
+   - ⛔ KATEGORYCZNY, BEZWZGLĘDNY ZAKAZ wywoływania narzędzia 'confirmAppointment'! Klient NIE potwierdził obecnego terminu!
+   - Ustal preferowaną nową godzinę lub dzień (np. jeśli spotkanie było o 13:00, a klient prosi o godzinę później -> chodzi o 14:00).
+   - NATYCHMIAST wywołaj narzędzie 'checkAvailability' na ten dzień, aby sprawdzić czy slot jest wolny!
+   - Jeśli slot jest wolny: zapytaj klienta: "O godzinie 14:00 termin jest wolny. Czy przepisać spotkanie na 14:00?"
+   - Gdy klient potwierdzi ("tak", "proszę zapisać"): NATYCHMIAST wywołaj narzędzie 'rescheduleAppointment' z nową datą i godziną newStartTime!
+   - Potwierdź zmianę: "Termin został pomyślnie zmieniony. Dziękuję bardzo i do zobaczenia!" i wywołaj 'endCall'.
+   - Jeśli slot jest zajęty: zaproponuj najbliższy wolny termin z 'checkAvailability'.
+3. WARIANT C (Klient ODWOŁUJE spotkanie / rezygnuje: "muszę odwołać", "nie dam rady", "rezygnuję"):
+   - ⛔ KATEGORYCZNY, BEZWZGLĘDNY ZAKAZ wywoływania narzędzia 'confirmAppointment'!
+   - Wywołaj narzędzie 'cancelAppointment'.
+   - Powiedz uprzejmie: "Rozumiem, odwołałam spotkanie i zwolniłam termin. Dziękuję za informację i do usłyszenia." i wywołaj 'endCall'.
+4. WARIANT D (Klient prosi o kontakt z ${ownerDisplayName} lub pyta o szczegóły):
+   - Odpowiedz na pytania merytoryczne narzędziem 'getFAQ'.
+   - Jeśli klient prosi o oddzwonienie lub przekazanie wiadomości, zapisz to narzędziem 'save_call_message'.`;
+                   }
+               }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
               contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. W czym mogę pomóc?".`;
@@ -732,6 +762,9 @@ export class CallOrchestrator {
     }
     this.isTurnStreaming = false;
     this.agentSpeaking = false;
+    if (this.outboundTaskId) {
+      this.isFirstOutboundTurnComplete = true;
+    }
 
     if (this.shouldHangupAfterTurn) {
       console.log('📞 [EndCall] Zakończenie rozmowy po pożegnaniu. Odłożenie słuchawki za 1.5s.');
@@ -747,8 +780,8 @@ export class CallOrchestrator {
 
   private executeBargeInMechanism() {
     if (this.isTurnCanceled) return;
-    if (this.outboundTaskId && this.callStartTime && (Date.now() - this.callStartTime < 2500)) {
-      console.log('🛡️ [Barge-in] Zignorowano wczesne przerwanie w pierwszych 2.5s połączenia wychodzącego (Outbound opening protection).');
+    if (this.outboundTaskId && !this.isFirstOutboundTurnComplete) {
+      console.log('🛡️ [Barge-in] Zignorowano wczesne przerwanie podczas pierwszego zdania powitalnego w połączeniu wychodzącym (Outbound opening protection).');
       return;
     }
     if (this.isTerminating) {
@@ -1023,6 +1056,25 @@ export class CallOrchestrator {
             this.isCancelledOutbound = true;
             if (res.callLogId) this.confirmedCallLogId = res.callLogId;
             const summary = `[Odwołanie Telefon] Klient odwołał spotkanie/wizytę w rozmowie telefonicznej. Termin został zwolniony.`;
+            this.callSummaryFromAi = summary;
+            this.callActionJournal.push(summary);
+            if (this.outboundTaskId) {
+              await prisma.outboundQueue.update({
+                where: { id: this.outboundTaskId },
+                data: { status: 'done', processedAt: new Date() }
+              }).catch(console.error);
+            }
+          }
+          return res;
+        }
+        case 'rescheduleAppointment': {
+          const targetPhone = args.customerPhone || this.callerPhone;
+          const targetId = this.outboundAppointmentId || args.appointmentId || undefined;
+          const res = await bookingService.rescheduleAppointment(tenantId, targetPhone, args.newStartTime, targetId, args.reason);
+          if (res && (res.success || !res.error)) {
+            this.isConfirmedOutbound = true;
+            if (res.callLogId) this.confirmedCallLogId = res.callLogId;
+            const summary = `[Przełożenie Telefon] Klient przeniósł spotkanie na nowy termin: ${res.newStartTime || args.newStartTime}.${args.reason ? ` Powód: ${args.reason}` : ''}`;
             this.callSummaryFromAi = summary;
             this.callActionJournal.push(summary);
             if (this.outboundTaskId) {

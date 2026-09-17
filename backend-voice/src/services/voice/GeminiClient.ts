@@ -205,17 +205,13 @@ export class GeminiClient {
   sendInitialGreeting(contextText?: string) {
     const now = new Date();
     const warsawHour = parseInt(now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
-    const warsawTime = now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' });
-    const exactGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : (warsawHour >= 18 && warsawHour < 22) ? 'Dobry wieczór' : 'Witam';
-    const forbiddenGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dobry wieczór' : (warsawHour >= 18 && warsawHour < 22) ? 'Dzień dobry' : '';
+    const exactGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Witam';
 
-    const instruction = forbiddenGreeting
-      ? `Aktualna godzina w Warszawie to ${warsawTime}. Dozwolone powitanie to WYŁĄCZNIE "${exactGreeting}". KATEGORYCZNY ZAKAZ używania słów "${forbiddenGreeting}"!`
-      : `Aktualna godzina w Warszawie to ${warsawTime}. Użyj powitania "${exactGreeting}".`;
+    const greetingInstruction = `Użyj eleganckiego powitania "${exactGreeting}". Powitaj się dokładnie jeden raz.`;
 
     const text = contextText 
       ? `Rozmówca połączył się. ${contextText}` 
-      : `Rozmówca połączył się. ${instruction} Przywitaj się zwięźle jednym zwrotem powitalnym.`;
+      : `Rozmówca połączył się. ${greetingInstruction} Przywitaj się zwięźle jednym zwrotem powitalnym.`;
       
     const greetingObj = {
       clientContent: {
