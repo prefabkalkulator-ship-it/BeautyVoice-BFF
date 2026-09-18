@@ -21,7 +21,6 @@ export default function CallbackWidgetPage() {
   const showEmbedInfo = searchParams.get('embed') === 'true';
 
   const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -69,7 +68,6 @@ export default function CallbackWidgetPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phoneNumber: clean,
-          name: name.trim() || undefined,
           tenantId: tenantId || undefined,
           source: 'standalone_widget'
         })
@@ -168,19 +166,6 @@ export default function CallbackWidgetPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-surface-700 uppercase tracking-wider mb-1.5">
-                Twoje imię (opcjonalnie)
-              </label>
-              <input
-                type="text"
-                placeholder="np. Anna"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-surface-50 border border-surface-200 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition"
-              />
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -227,7 +212,7 @@ export default function CallbackWidgetPage() {
 
             <button
               type="button"
-              onClick={() => { setCountdown(null); setPhone(''); setName(''); }}
+              onClick={() => { setCountdown(null); setPhone(''); }}
               className="text-xs text-surface-500 hover:text-surface-800 underline transition pt-2 cursor-pointer"
             >
               Zamów ponowne połączenie
