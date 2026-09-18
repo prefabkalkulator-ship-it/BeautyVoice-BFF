@@ -731,7 +731,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".`;
               } else {
                 // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST)
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "Witam, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".`;
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".`;
               }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // PAKIET BIZNESOWY (Standard / Premium)
@@ -1296,14 +1296,9 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       this.isTurnCanceled = false;
     }
 
-    // 2. OCHRONA PRZED ECHEM AKUSTYCZNYM (Acoustic Echo Suppression / Half-Duplex Gating):
-    // Jeśli asystent właśnie mówi do telefonu, a lokalny VAD nie wykrył mowy użytkownika (jest to jedynie echo głośnika lub szum GSM),
-    // nie przesyłamy tego dźwięku do Gemini Live API, aby zapobiec fałszywym przerwaniom 'interrupted: true' i rwaniu mowy asystenta.
-    if ((this.agentSpeaking || this.isTurnStreaming) && !isSpeechDetected) {
-      return;
-    }
-
-    // 3. FULL-DUPLEX: Przesyłamy dźwięk dzwoniącego do Gemini Live API!
+    // 2. FULL-DUPLEX: Zawsze przesyłamy dźwięk dzwoniącego do Gemini Live API w trybie ciągłym,
+    // co pozwala modelowi Gemini natychmiast wykrywać wejście w słowo (interrupted: true),
+    // podczas gdy lokalny Silero VAD (z progiem 0.50) służy jako lokalny akcelerator szybkiego uciszania Twilio.
     const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
     this.geminiClient.sendRealtimeAudio(pcmBase64);
   }

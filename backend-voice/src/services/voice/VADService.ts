@@ -48,13 +48,13 @@ export class VADService {
         this.vadState = results.stateN; 
         const speechProb = results.output.data[0] as number;
 
-        if (speechProb > 0.80) {
+        if (speechProb > 0.50) {
           this.consecutiveSpeechFrames++;
           // Wymagamy co najmniej 2 kolejnych klatek mowy (~64ms), aby odfiltrować pojedyncze trzaski GSM
           if (this.consecutiveSpeechFrames >= 2) {
             onSpeechDetected(speechProb);
           }
-        } else if (speechProb < 0.35) {
+        } else if (speechProb < 0.25) {
           this.consecutiveSpeechFrames = 0;
         }
       } catch (err) {}
