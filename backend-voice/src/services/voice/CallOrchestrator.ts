@@ -40,6 +40,8 @@ export class CallOrchestrator {
   private hangupTimeout: NodeJS.Timeout | null = null;
   private isTerminating: boolean = false;
   private isTerminatedAudio: boolean = false;
+  private farewellAudioDurationMs: number = 0;
+  private farewellStartTime: number = 0;
   
   private voiceName: string = "Aoede";
   private businessProfile: string = "solo";
@@ -804,7 +806,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     }
 
     if (this.shouldHangupAfterTurn) {
-      console.log('📞 [EndCall] Zakończenie rozmowy po pożegnaniu. Natychmiastowe zablokowanie dalszej mowy Gemini.');
+      console.log('📞 [EndCall] Zakończenie tury pożegnalnej przez Gemini. Natychmiastowe zablokowanie dalszej mowy Gemini.');
       if (this.hangupTimeout) {
         clearTimeout(this.hangupTimeout);
         this.hangupTimeout = null;
@@ -816,13 +818,21 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       } catch (e) {
         console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
       }
+
+      // Obliczamy ile audio pożegnalnego czeka jeszcze na fizyczne odegranie w słuchawce przez Twilio
+      const elapsedPlaybackMs = this.farewellStartTime ? (Date.now() - this.farewellStartTime) : 0;
+      const remainingAudioMs = Math.max(0, this.farewellAudioDurationMs - elapsedPlaybackMs);
+      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + 800ms naturalnej pauzy po pożegnaniu
+      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1500), 10000);
+      console.log(`⏱️ [EndCall] Wygenerowano ${Math.round(this.farewellAudioDurationMs)}ms mowy pożegnalnej. Pozostało ~${Math.round(remainingAudioMs)}ms w buforze Twilio. Odłożenie słuchawki za ${Math.round(finalHangupDelayMs)}ms.`);
+
       this.hangupTimeout = setTimeout(() => {
         if (this.silenceWatchdogInterval) {
           clearInterval(this.silenceWatchdogInterval);
           this.silenceWatchdogInterval = null;
         }
         this.twilioWs.close();
-      }, 1000);
+      }, finalHangupDelayMs);
     } else {
       this.isTurnCanceled = false;
     }
@@ -1223,6 +1233,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         case 'endCall':
           this.isTerminating = true;
           this.shouldHangupAfterTurn = true;
+          this.farewellAudioDurationMs = 0;
+          this.farewellStartTime = 0;
           if (args?.callSummary) {
             this.callSummaryFromAi = args.callSummary;
             console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
@@ -1230,10 +1242,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           if (args?.callerName) {
             this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
-          // Awaryjny watchdog na wypadek, gdyby Gemini nie przysłało turnComplete po pożegnaniu
+          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (15 sekund)
           if (!this.hangupTimeout) {
             this.hangupTimeout = setTimeout(() => {
-              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (timeout po wywołaniu endCall).');
+              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (timeout 15s po wywołaniu endCall).');
               this.isTurnCanceled = true;
               this.isTerminatedAudio = true;
               try {
@@ -1246,12 +1258,11 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 this.silenceWatchdogInterval = null;
               }
               this.twilioWs.close();
-            }, 6000);
+            }, 15000);
           }
           return {
             status: "ok",
-            success: true,
-            message: "Rozmowa zakończona. Jeśli wypowiedziałeś już pożegnanie, zamilknij natychmiast."
+            success: true
           };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
@@ -1308,6 +1319,33 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       this.agentSpeaking = true;
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
+
+      if (this.isTerminating) {
+        if (!this.farewellStartTime) {
+          this.farewellStartTime = Date.now();
+        }
+        this.farewellAudioDurationMs += durationMs;
+
+        // Dynamiczne podtrzymanie watchdoga: dopóki Gemini aktywnie dosyła pakiety mowy pożegnalnej, nie zrywaj połączenia
+        if (this.hangupTimeout) {
+          clearTimeout(this.hangupTimeout);
+          this.hangupTimeout = setTimeout(() => {
+            console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (timeout po zakończeniu strumieniowania audio).');
+            this.isTurnCanceled = true;
+            this.isTerminatedAudio = true;
+            try {
+              this.geminiClient.close();
+            } catch (e) {
+              console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
+            }
+            if (this.silenceWatchdogInterval) {
+              clearInterval(this.silenceWatchdogInterval);
+              this.silenceWatchdogInterval = null;
+            }
+            this.twilioWs.close();
+          }, 8000);
+        }
+      }
 
       if (this.isTurnStreaming) {
         // Faza ciągłego strumieniowania: Twilio ma już poduszkę rozbiegową, wysyłamy od razu!
