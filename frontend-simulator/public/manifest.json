@@ -1,6 +1,6 @@
 {
-  "name": "EasyVoiceAssistant",
-  "short_name": "EasyVoice",
+  "name": "aplikacja asystent Ewa (Easy Voice Assistant)",
+  "short_name": "Asystent Ewa",
   "start_url": "/?source=pwa",
   "display": "standalone",
   "background_color": "#ffffff",
