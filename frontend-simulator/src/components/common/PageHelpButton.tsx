@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle, X, ArrowRight, Lightbulb, CheckCircle2, BookOpen } from 'lucide-react';
+import { HelpCircle, X, ArrowRight, Lightbulb, CheckCircle2, BookOpen, Copy, Check, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface PageHelpButtonProps {
@@ -15,6 +15,13 @@ interface PageHelpButtonProps {
   guideSectionId?: string;
   variant?: 'button' | 'circle_i';
   label?: string;
+  promptBox?: {
+    title: string;
+    description?: string;
+    prompt: string;
+    onApply?: (promptText: string) => void;
+    applyLabel?: string;
+  };
 }
 
 export default function PageHelpButton({
@@ -24,9 +31,11 @@ export default function PageHelpButton({
   nextStepRecommendation,
   guideSectionId,
   variant = 'button',
-  label = 'Instrukcja i pomoc'
+  label = 'Instrukcja i pomoc',
+  promptBox
 }: PageHelpButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -120,6 +129,61 @@ export default function PageHelpButton({
                   </div>
                 ))}
               </div>
+
+              {promptBox && (
+                <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-gold-50/60 border border-amber-200/80 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                      {promptBox.title}
+                    </span>
+                  </div>
+                  {promptBox.description && (
+                    <p className="text-xs text-surface-600 leading-relaxed">
+                      {promptBox.description}
+                    </p>
+                  )}
+                  <div className="p-3 bg-white/90 backdrop-blur-xs rounded-xl border border-amber-200 text-xs text-surface-800 leading-relaxed select-all shadow-2xs font-mono break-words">
+                    {promptBox.prompt}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(promptBox.prompt);
+                        setCopiedPrompt(true);
+                        setTimeout(() => setCopiedPrompt(false), 2000);
+                      }}
+                      className="px-3 py-1.5 bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      {copiedPrompt ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-green-600" />
+                          <span className="text-green-700">Skopiowano prompt!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Kopiuj prompt</span>
+                        </>
+                      )}
+                    </button>
+                    {promptBox.onApply && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          promptBox.onApply!(promptBox.prompt);
+                          setIsOpen(false);
+                        }}
+                        className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{promptBox.applyLabel || 'Wstaw do pola edycji'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {nextStepRecommendation && (
                 <div className="mb-5 p-3.5 sm:p-4 rounded-2xl bg-gold-50 border border-gold-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

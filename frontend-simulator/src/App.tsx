@@ -63,11 +63,13 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  const isSuperAdminHost = typeof window !== 'undefined' && window.location.hostname.includes('admin');
+
   return (
     <BrowserRouter>
       <ScrollToTop />
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={isSuperAdminHost ? <Navigate to="/superadmin" replace /> : <LandingPage />} />
         <Route path="/widget/callback" element={<CallbackWidgetPage />} />
         <Route path="/login" element={<Auth />} />
         <Route path="/register" element={<Auth />} />

@@ -69,7 +69,7 @@ export default function Settings() {
 
   const [businessProfile, setBusinessProfile] = useState('solo');
   const [bookingMode, setBookingMode] = useState('hourly');
-  const [aiVoice, setAiVoice] = useState('Aoede');
+  const [aiVoice, setAiVoice] = useState('Kore');
   const [botName, setBotName] = useState('Ewa');
   const [reviewLink, setReviewLink] = useState('');
   const [reviewLink1, setReviewLink1] = useState('');
@@ -82,14 +82,11 @@ export default function Settings() {
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const subPlan = (tenant?.subscription?.planName || '').toLowerCase();
   const isPersonalExpert = 
-    tenant?.subscription?.planName === 'personal_expert' || 
-    tenant?.subscription?.planName?.toLowerCase()?.includes('expert') ||
-    (tenant?.businessProfile === 'personal' && (
-      tenant?.betaNotes?.includes('Osobisty Ekspert') || 
-      tenant?.betaStatus === 'pending' || 
-      tenant?.betaStatus === 'approved'
-    ));
+    subPlan === 'personal_expert' || 
+    subPlan.includes('expert') ||
+    ((subPlan === 'beta_pilot' || subPlan === 'pilot') && tenant?.betaNotes?.includes('Osobisty Ekspert'));
 
   // Nowo dodane pola: ścieżka hybrydowa, zasięg, odmowa SMS, kwalifikacja
   const [bookingExternalUrl, setBookingExternalUrl] = useState('');
@@ -155,7 +152,7 @@ export default function Settings() {
       if (initialLoad) {
         setBusinessProfile(tData.businessProfile || 'solo');
         setBookingMode(tData.bookingMode || 'hourly');
-        setAiVoice(tData.aiVoice || 'Aoede');
+        setAiVoice(tData.aiVoice || 'Kore');
         setBotName(tData.botName !== undefined && tData.botName !== null ? tData.botName : 'Ewa');
         setToneOfVoice(tData.toneOfVoice || 'profesjonalny i przyjazny');
         setProactiveMode(Boolean(tData.proactiveMode));
@@ -1286,8 +1283,8 @@ export default function Settings() {
           <h4 className="font-medium text-surface-900 mb-3">Wybór głosu Asystenta AI</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
-              { id: 'Aoede', title: 'Głos Żeński 1', desc: 'Spokojny, profesjonalny.' },
-              { id: 'Kore', title: 'Głos Żeński 2', desc: 'Młodszy, energiczny.' },
+              { id: 'Kore', title: 'Głos Żeński 1', desc: 'Klasyczny, pewny siebie, wyrazista dykcja.' },
+              { id: 'Leda', title: 'Głos Żeński 2', desc: 'Młodszy, promienny, energiczny.' },
               { id: 'Puck', title: 'Głos Męski 1', desc: 'Młody, energiczny.' },
               { id: 'Charon', title: 'Głos Męski 2', desc: 'Głęboki, dojrzały, autorytatywny.' }
             ].map(opt => (
@@ -1456,43 +1453,61 @@ export default function Settings() {
                 </label>
               </div>
 
-              {businessProfile === 'personal' && isPersonalExpert && (
-                <div className="mt-3 p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/40 space-y-2.5">
-                  <div className="flex items-start gap-2.5 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      id="morningBriefing"
-                      checked={morningBriefingEnabled} 
-                      onChange={e => setMorningBriefingEnabled(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 text-primary rounded accent-primary shrink-0 cursor-pointer"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <label htmlFor="morningBriefing" className="text-xs sm:text-sm font-bold text-surface-900 cursor-pointer flex items-center gap-2 flex-wrap">
-                        <span>Chcę otrzymywać Poranny Raport Asystenta AI na email</span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-900 uppercase">Pakiet Ekspert</span>
-                      </label>
-                      <p className="text-xs text-surface-600 mt-0.5 leading-relaxed">
-                        Codzienny e-mail z pełnym podsumowaniem zaplanowanych spotkań, notatkami ze spraw i pilnymi kontaktami.
-                      </p>
+              {businessProfile === 'personal' && (
+                isPersonalExpert ? (
+                  <div className="mt-3 p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/40 space-y-2.5">
+                    <div className="flex items-start gap-2.5 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        id="morningBriefing"
+                        checked={morningBriefingEnabled} 
+                        onChange={e => setMorningBriefingEnabled(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 text-primary rounded accent-primary shrink-0 cursor-pointer"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <label htmlFor="morningBriefing" className="text-xs sm:text-sm font-bold text-surface-900 cursor-pointer flex items-center gap-2 flex-wrap">
+                          <span>Chcę otrzymywać Poranny Raport Asystenta AI na email</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-900 uppercase">Pakiet Ekspert</span>
+                        </label>
+                        <p className="text-xs text-surface-600 mt-0.5 leading-relaxed">
+                          Codzienny e-mail z pełnym podsumowaniem zaplanowanych spotkań, notatkami ze spraw i pilnymi kontaktami.
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  {morningBriefingEnabled && (
-                    <div className="pl-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-2 border-t border-amber-200/60">
-                      <label className="text-xs font-medium text-surface-700">Godzina wysyłki raportu na e-mail:</label>
-                      <select 
-                        value={morningBriefingHour} 
-                        onChange={e => setMorningBriefingHour(parseInt(e.target.value, 10))}
-                        className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs outline-none focus:border-primary bg-white w-full sm:w-auto font-medium"
-                      >
-                        <option value={6}>06:00 rano</option>
-                        <option value={7}>07:00 rano</option>
-                        <option value={8}>08:00 rano (domyślnie)</option>
-                        <option value={9}>09:00 rano</option>
-                      </select>
+                    {morningBriefingEnabled && (
+                      <div className="pl-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 pt-2 border-t border-amber-200/60">
+                        <label className="text-xs font-medium text-surface-700">Godzina wysyłki raportu na e-mail:</label>
+                        <select 
+                          value={morningBriefingHour} 
+                          onChange={e => setMorningBriefingHour(parseInt(e.target.value, 10))}
+                          className="rounded-lg border border-surface-200 px-2.5 py-1 text-xs outline-none focus:border-primary bg-white w-full sm:w-auto font-medium"
+                        >
+                          <option value={6}>06:00 rano</option>
+                          <option value={7}>07:00 rano</option>
+                          <option value={8}>08:00 rano (domyślnie)</option>
+                          <option value={9}>09:00 rano</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-3 p-3.5 rounded-xl border border-surface-200 bg-surface-50 space-y-2 relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-purple-600" />
+                        <span className="text-xs sm:text-sm font-semibold text-surface-700">Poranny Raport Asystenta AI na email</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 uppercase">Pakiet Ekspert</span>
+                      </div>
+                      <Link to="/dashboard/subscription" className="text-xs text-purple-700 font-bold hover:underline flex items-center gap-1">
+                        Odblokuj <ArrowRight className="w-3 h-3" />
+                      </Link>
                     </div>
-                  )}
-                </div>
+                    <p className="text-xs text-surface-500">
+                      Codzienny e-mail z pełnym podsumowaniem zaplanowanych spotkań, notatkami ze spraw i pilnymi kontaktami jest dostępny wyłącznie w Pakiecie Osobisty Ekspert.
+                    </p>
+                  </div>
+                )
               )}
             </div>
             {/* Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz / Zewnętrzny Kalendarz WWW) */}

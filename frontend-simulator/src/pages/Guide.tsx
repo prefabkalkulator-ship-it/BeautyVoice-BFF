@@ -973,6 +973,19 @@ export default function Guide() {
               <span><strong>Wiedza Poufna z kodem PIN:</strong> W widoku edycji kafelka Q&A możesz zaznaczyć opcję „Poufne”. Taka informacja jest ukryta przed ogólnym dostępem i asystent odczyta ją wyłącznie po podaniu przez rozmówcę dedykowanego kodu PIN (domyślnie 7777, do zmiany w Ustawieniach).</span>
             </div>
           </div>
+
+          <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-950 space-y-1.5 mt-3">
+            <strong className="text-amber-900 block font-bold">💡 Najlepsza Praktyka – Baza Wiedzy w 1 minutę z AI:</strong>
+            <span>
+              Wystarczy wpisać w oknie czatu „Ucz mnie” jedno zdanie podając swoją specjalizację i adres strony WWW:
+            </span>
+            <div className="p-2 bg-white rounded-lg border border-amber-300 font-mono text-[11px] text-surface-800 break-words">
+              „jestem specjalistą od [twoja specjalizacja, np. doradztwo prawne / fizjoterapia / IT] w firmie [www.mojafirma.pl] zbadaj stronę i napisz treść dla bazy wiedzy na 100 pytań i odpowiedzi dla mojego asystenta głosowego który będzie odbierać za mnie telefon”
+            </div>
+            <span className="text-[11px] text-amber-800 block">
+              Asystent zbada stronę, utworzy kompletny zestaw pytań i odpowiedzi i od razu zapisze go w Twojej bazie wiedzy.
+            </span>
+          </div>
         </div>
       )
     },

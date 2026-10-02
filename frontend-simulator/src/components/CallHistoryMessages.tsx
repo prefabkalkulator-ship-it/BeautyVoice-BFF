@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { 
   PhoneCall, 
   MessageSquare, 
@@ -100,6 +101,26 @@ export default function CallHistoryMessages() {
     }
   };
 
+  const [tenant, setTenant] = useState<any>(null);
+  const [upgradeModal, setUpgradeModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    targetPlanName?: string;
+  }>({ isOpen: false, title: '', description: '' });
+
+  const fetchTenant = async () => {
+    try {
+      const res = await fetch('/api/tenant');
+      if (res.ok) {
+        const data = await res.json();
+        setTenant(data);
+      }
+    } catch (err) {
+      console.error('Błąd pobierania tenanta:', err);
+    }
+  };
+
   const fetchLogs = async () => {
     try {
       const res = await fetch('/api/call-logs');
@@ -116,7 +137,24 @@ export default function CallHistoryMessages() {
 
   useEffect(() => {
     fetchLogs();
+    fetchTenant();
   }, []);
+
+  const planName = (tenant?.subscription?.planName || '').toLowerCase();
+  const isPersonalProfile = tenant?.businessProfile === 'personal' || planName.includes('personal');
+  const isPersonalExpert = 
+    planName === 'personal_expert' || 
+    planName.includes('expert') ||
+    ((planName === 'beta_pilot' || planName === 'pilot') && tenant?.betaNotes?.includes('Osobisty Ekspert'));
+
+  const isB2BPremium = 
+    !isPersonalProfile && 
+    (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
+
+  // Doszkól asystenta & Potwierdź spotkanie: dostępne w Osobisty Ekspert oraz Premium B2B
+  const canUseExpertFeatures = isPersonalProfile ? isPersonalExpert : isB2BPremium;
+  // Odwołaj (SMS) poza rejonem: funkcja ściśle związana z rejonem obsługi w Pakiecie Osobisty Ekspert
+  const canUseRejectionSms = isPersonalExpert;
 
   const handleToggleProcessed = async (id: string, currentProcessed: boolean) => {
     const targetStatus = !currentProcessed;
@@ -490,21 +528,53 @@ export default function CallHistoryMessages() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleOpenTrain(log)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200/60 font-medium rounded-xl text-xs transition cursor-pointer"
-                          title="Dodaj wnioski z tej rozmowy do Bazy Wiedzy FAQ asystenta"
+                          onClick={() => {
+                            if (!canUseExpertFeatures) {
+                              setUpgradeModal({
+                                isOpen: true,
+                                title: 'Moduł: Doszkól asystenta (1-Click FAQ)',
+                                description: 'Błyskawiczne dodawanie nowych wniosków i odpowiedzi do Bazy Wiedzy jednym kliknięciem jest funkcją Pakietu Osobisty Ekspert oraz Premium B2B.',
+                                targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                              });
+                              return;
+                            }
+                            handleOpenTrain(log);
+                          }}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-medium rounded-xl text-xs transition cursor-pointer ${
+                            canUseExpertFeatures
+                              ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200/60'
+                              : 'bg-surface-100 hover:bg-surface-200 text-surface-500 border border-surface-200'
+                          }`}
+                          title={canUseExpertFeatures ? "Dodaj wnioski z tej rozmowy do Bazy Wiedzy FAQ asystenta" : (isPersonalProfile ? "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)" : "Funkcja zablokowana (wymaga Pakietu Premium B2B)")}
                         >
-                          <GraduationCap className="w-3.5 h-3.5 text-purple-700" />
+                          {!canUseExpertFeatures && <Lock className="w-3.5 h-3.5 text-purple-600" />}
+                          <GraduationCap className={`w-3.5 h-3.5 ${canUseExpertFeatures ? 'text-purple-700' : 'text-surface-400'}`} />
                           Doszkól asystenta
                         </button>
                         {log.callerPhone && log.callerPhone !== 'nieznany' && log.rejectionReason !== 'OUT_OF_AREA' && (
                           <button
                             type="button"
-                            onClick={() => handleOpenReject(log)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border border-red-200/60 font-medium rounded-xl text-xs transition cursor-pointer"
-                            title="Wyślij SMS z informacją o odwołaniu / odmowie realizacji"
+                            onClick={() => {
+                              if (!canUseRejectionSms) {
+                                setUpgradeModal({
+                                  isOpen: true,
+                                  title: 'Moduł: Odwołaj (SMS) - Poza Rejonem',
+                                  description: 'Weryfikacja rejonu dojazdów oraz natychmiastowe wysyłanie profesjonalnego SMS-a z odmową poza obszarem działalności są dostępne wyłącznie w Pakiecie Osobisty Ekspert.',
+                                  targetPlanName: 'Pakiet Osobisty Ekspert'
+                                });
+                                return;
+                              }
+                              handleOpenReject(log);
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-medium rounded-xl text-xs transition cursor-pointer ${
+                              canUseRejectionSms
+                                ? 'bg-red-50 hover:bg-red-100 text-red-800 border border-red-200/60'
+                                : 'bg-surface-100 hover:bg-surface-200 text-surface-500 border border-surface-200'
+                            }`}
+                            title={canUseRejectionSms ? "Wyślij SMS z informacją o odwołaniu / odmowie realizacji" : "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)"}
                           >
-                            <Ban className="w-3.5 h-3.5 text-red-600" />
+                            {!canUseRejectionSms && <Lock className="w-3.5 h-3.5 text-red-600" />}
+                            <Ban className={`w-3.5 h-3.5 ${canUseRejectionSms ? 'text-red-600' : 'text-surface-400'}`} />
                             Odwołaj (SMS)
                           </button>
                         )}
@@ -535,6 +605,15 @@ export default function CallHistoryMessages() {
                       <button
                         type="button"
                         onClick={() => {
+                          if (!canUseExpertFeatures) {
+                            setUpgradeModal({
+                              isOpen: true,
+                              title: 'Moduł: Potwierdź spotkanie / wizytę',
+                              description: 'Automatyczne i ręczne potwierdzanie wizyt przez SMS lub dedykowany telefon asystenta AI 24h przed terminem jest funkcją Pakietu Osobisty Ekspert oraz Premium B2B.',
+                              targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                            });
+                            return;
+                          }
                           const apptDate = log.appointmentDate 
                             ? new Date(log.appointmentDate).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }) 
                             : undefined;
@@ -550,10 +629,15 @@ export default function CallHistoryMessages() {
                             time: apptTime
                           });
                         }}
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80 font-bold rounded-xl text-xs transition shadow-2xs w-full md:w-auto text-center cursor-pointer"
-                        title="Wyślij SMS lub uruchom telefon z EVA w celu potwierdzenia spotkania / wizyty"
+                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 font-bold rounded-xl text-xs transition shadow-2xs w-full md:w-auto text-center cursor-pointer ${
+                          canUseExpertFeatures
+                            ? 'bg-gold-50 hover:bg-gold-100 text-gold-900 border border-gold-300/80'
+                            : 'bg-surface-100 hover:bg-surface-200 text-surface-500 border border-surface-200'
+                        }`}
+                        title={canUseExpertFeatures ? "Wyślij SMS lub uruchom telefon z EVA w celu potwierdzenia spotkania / wizyty" : "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)"}
                       >
-                        <Calendar className="w-3.5 h-3.5 text-gold-700" />
+                        {!canUseExpertFeatures && <Lock className="w-3.5 h-3.5 text-gold-700" />}
+                        <Calendar className={`w-3.5 h-3.5 ${canUseExpertFeatures ? 'text-gold-700' : 'text-surface-400'}`} />
                         Potwierdź spotkanie / wizytę
                       </button>
                     </div>
@@ -780,6 +864,61 @@ export default function CallHistoryMessages() {
           </div>
         </div>
       )}
+
+      {/* Modal: Informacja o konieczności uaktualnienia pakietu */}
+      {upgradeModal.isOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-surface-100 overflow-hidden animate-scale-in">
+              <div className="p-6 text-center">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 ${
+                  upgradeModal.targetPlanName?.includes('Premium')
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-purple-100 text-purple-700'
+                }`}>
+                  <Lock className="w-6 h-6" />
+                </div>
+                <span className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border mb-2 inline-block ${
+                  upgradeModal.targetPlanName?.includes('Premium')
+                    ? 'text-amber-800 bg-amber-100 border-amber-200'
+                    : 'text-purple-700 bg-purple-100 border-purple-200'
+                }`}>
+                  {upgradeModal.targetPlanName || 'Wymagany Pakiet Ekspert'}
+                </span>
+                <h3 className="text-base font-bold text-surface-900 mt-2 mb-2">
+                  {upgradeModal.title}
+                </h3>
+                <p className="text-xs text-surface-600 mb-6 leading-relaxed">
+                  {upgradeModal.description}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setUpgradeModal({ isOpen: false, title: '', description: '' })}
+                    className="flex-1 py-2.5 px-4 rounded-xl border border-surface-200 text-surface-700 font-semibold text-xs hover:bg-surface-50 transition cursor-pointer"
+                  >
+                    Zamknij
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUpgradeModal({ isOpen: false, title: '', description: '' });
+                      navigate('/dashboard/subscription');
+                    }}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
+                      upgradeModal.targetPlanName?.includes('Premium')
+                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
+                        : 'bg-purple-700 hover:bg-purple-800'
+                    }`}
+                  >
+                    {upgradeModal.targetPlanName?.includes('Premium') ? 'Przejdź na Premium B2B' : 'Zmień pakiet'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Universal Confirmation Action Modal */}
       <ConfirmationModal

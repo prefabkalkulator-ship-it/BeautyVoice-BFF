@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { bookingService, BookingService } from './BookingService';
 import { getSystemPrompt } from '../prompts/systemPrompt';
+import { AI_MODELS } from '../config/aiModels';
 
 // Inicjalizacja z dummy kluczem, żeby kontener mógł wstawać do podawania strony głównej bez API
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'dummy-key' });
@@ -39,7 +40,7 @@ export class GeminiService {
 
       // Inicjalizacja sesji z odpowiednimi narzędziami, system promptem i historią
       const chat = ai.chats.create({
-        model: 'gemini-3.5-flash',
+        model: AI_MODELS.TEXT_FLASH,
         history: formattedHistory,
         config: {
           systemInstruction: getSystemPrompt({ tenantName, businessProfile, isTextChat: !onToolCall }),

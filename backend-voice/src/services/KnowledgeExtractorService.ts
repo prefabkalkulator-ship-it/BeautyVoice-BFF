@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import * as dotenv from 'dotenv';
+import { AI_MODELS } from '../config/aiModels';
 dotenv.config();
 
 const getAI = () => {
@@ -255,7 +256,7 @@ ${rawText ? `"""\n${rawText}\n"""` : ''}
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: AI_MODELS.TEXT_FLASH,
         contents: parts,
         config: {
           responseMimeType: 'application/json'

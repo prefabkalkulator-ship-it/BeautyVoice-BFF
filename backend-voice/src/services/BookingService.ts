@@ -289,7 +289,7 @@ export class BookingService {
             properties: {
               callSummary: {
                 type: 'STRING',
-                description: 'Szczegółowe podsumowanie z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[📅 Rezerwacja] Spotkanie w sprawie MDM 74 na wtorek 11:00. Dodatkowo pytał o: pompę ciepła i terminy. Nastrój i zachowanie: poddenerwowany, używał wulgaryzmów, po wyjaśnieniach spokojniejszy."'
+                description: 'Szczegółowe podsumowanie z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[📅 Rezerwacja] Spotkanie w sprawie MDM 74 na wtorek 11:00. Dodatkowo pytał o: pompę ciepła i terminy. Nastrój i zachowanie: poddenerwowany, używał wulgaryzmów, po wyjaśnieniach spokojniejszy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
               },
               callerName: {
                 type: 'STRING',
@@ -498,7 +498,7 @@ export class BookingService {
           properties: {
             callSummary: {
               type: 'STRING',
-              description: 'Szczegółowe podsumowanie z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy."'
+              description: 'Szczegółowe podsumowanie z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
             },
             callerName: {
               type: 'STRING',
@@ -867,14 +867,40 @@ export class BookingService {
   }
 
   /**
-   * Pobiera sekcję FAQ z bazy danych (domyślnie tylko wpisy publiczne, niepoufne)
+   * Pobiera sekcję FAQ z bazy danych (domyślnie tylko wpisy publiczne, niepoufne).
+   * Sprawy bieżące ('current') otrzymują najwyższy priorytet na początku listy.
    */
-  public async getFAQ(tenantId: string, includeConfidential: boolean = false): Promise<{ question: string, answer: string }[]> {
+  public async getFAQ(tenantId: string, includeConfidential: boolean = false): Promise<{ question: string, answer: string, category?: string | null }[]> {
     try {
       const faqs = await prisma.faqEntry.findMany({
-        where: includeConfidential ? { tenantId } : { tenantId, isConfidential: false }
+        where: includeConfidential ? { tenantId } : { tenantId, isConfidential: false },
+        orderBy: { id: 'desc' }
       });
-      return faqs.map(f => ({ question: f.question, answer: f.answer }));
+
+      const currentEvents = faqs.filter(f => f.category === 'current');
+      const permanentInfo = faqs.filter(f => f.category !== 'current');
+
+      const result: { question: string, answer: string, category?: string | null }[] = [];
+
+      // 1. Sprawy bieżące (Eventy, promocje, urlopy, komunikaty tymczasowe) – NAJWYŻSZY PRIORYTET
+      currentEvents.forEach(f => {
+        result.push({
+          question: `[⚡ SPRAWA BIEŻĄCA / AKTUALNE WYDARZENIE]: ${f.question}`,
+          answer: f.answer,
+          category: 'current'
+        });
+      });
+
+      // 2. Informacja stała i regulamin bazowy
+      permanentInfo.forEach(f => {
+        result.push({
+          question: f.question,
+          answer: f.answer,
+          category: f.category || 'permanent'
+        });
+      });
+
+      return result;
     } catch (error) {
       console.error('Błąd pobierania FAQ z DB:', error);
       return []; 

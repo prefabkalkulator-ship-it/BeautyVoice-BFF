@@ -42,8 +42,17 @@ export class CallOrchestrator {
   private isTerminatedAudio: boolean = false;
   private farewellAudioDurationMs: number = 0;
   private farewellStartTime: number = 0;
+  private isWaitingForFarewellTurn: boolean = false;
+  private currentTurnAudioDurationMs: number = 0;
+
+  // Call Duration Watchdog & Cost Protection
+  private callDurationWarningSent: boolean = false;
+  private isMaxDurationClosing: boolean = false;
+  private readonly MAX_CALL_DURATION_MS_STANDARD: number = 600000; // 10 minut (DEMO, Gość, VIP)
+  private readonly MAX_CALL_DURATION_MS_OWNER: number = 900000; // 15 minut (Właściciel)
+  private readonly CALL_DURATION_WARNING_MS: number = 480000; // 8 minut
   
-  private voiceName: string = "Aoede";
+  private voiceName: string = "Kore";
   private businessProfile: string = "solo";
   private bookingMode: string = "hourly";
   private tenantName: string = "BeautyVoice";
@@ -95,6 +104,7 @@ export class CallOrchestrator {
   constructor(twilioConnection: WebSocket) {
     this.twilioWs = twilioConnection;
     this.lastActivityTime = Date.now();
+    this.callStartTime = Date.now();
     this.silenceWatchdogInterval = setInterval(() => this.checkSilenceTimeout(), 2000);
     
     this.twilioWs.on('message', async (message: string) => {
@@ -379,7 +389,8 @@ export class CallOrchestrator {
   }
 
   private checkSilenceTimeout() {
-    const silentDuration = Date.now() - this.lastActivityTime;
+    const now = Date.now();
+    const silentDuration = now - this.lastActivityTime;
     if (silentDuration >= this.SILENCE_TIMEOUT_MS) {
       console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy/szumu w tle. Automatyczne odłożenie słuchawki.`);
       if (this.silenceWatchdogInterval) {
@@ -387,13 +398,44 @@ export class CallOrchestrator {
         this.silenceWatchdogInterval = null;
       }
       this.twilioWs.close();
+      return;
+    }
+
+    // Call Duration Watchdog (kontrola kosztów i maksymalnego czasu rozmowy)
+    if (this.callStartTime > 0) {
+      const callDuration = now - this.callStartTime;
+      const isOwner = this.callerRole === 'OWNER';
+      const maxDuration = isOwner ? this.MAX_CALL_DURATION_MS_OWNER : this.MAX_CALL_DURATION_MS_STANDARD;
+      const warningThreshold = isOwner ? 720000 : this.CALL_DURATION_WARNING_MS; // 12 min dla Właściciela, 8 min dla pozostałych
+
+      if (callDuration >= warningThreshold && !this.callDurationWarningSent) {
+        this.callDurationWarningSent = true;
+        console.log(`⏱️ [Call Duration Watchdog] Minęło ${Math.round(callDuration / 1000)}s połączenia. Wstrzykuję ciche ostrzeżenie o limicie.`);
+        if (this.geminiClient && this.geminiClient.isLive()) {
+          this.geminiClient.sendInputText("[SYSTEM NOTIFICATION: Zbliża się limit czasu połączenia (8 minut). Dokończ aktualny wątek, sprawnie podsumuj ustalenia i doprowadź rozmowę do kulturalnego zakończenia.]");
+        }
+      }
+
+      if (callDuration >= maxDuration && !this.isMaxDurationClosing && !this.isTerminating) {
+        this.isMaxDurationClosing = true;
+        console.log(`⏱️ [Call Duration Watchdog] Osiągnięto limit czasu trwania połączenia (${Math.round(callDuration / 1000)}s). Wymuszam zakończenie rozmowy.`);
+        if (this.geminiClient && this.geminiClient.isLive()) {
+          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Osiągnięto maksymalny limit czasu połączenia. Powiedz uprzejmie: 'Zbliża się limit czasu naszego połączenia. Dziękuję za rozmowę, wszystkie dotychczasowe ustalenia zostały zapisane. Do usłyszenia!' i natychmiast wywołaj narzędzie endCall.]");
+        }
+        setTimeout(() => {
+          if (!this.isTerminatedAudio && this.twilioWs.readyState === WebSocket.OPEN) {
+            console.log(`⏱️ [Call Duration Watchdog] Fallback timeout: zamykam połączenie.`);
+            this.twilioWs.close();
+          }
+        }, 12000);
+      }
     }
   }
 
   private async initAsync(tenant: any) {
     try {
       if (tenant) {
-        this.voiceName = tenant.aiVoice || "Aoede";
+        this.voiceName = (tenant.aiVoice === 'Aoede' || !tenant.aiVoice) ? "Kore" : tenant.aiVoice;
         this.businessProfile = tenant.businessProfile || "solo";
         this.bookingMode = tenant.bookingMode || "hourly";
         this.tenantName = tenant.name || "BeautyVoice";
@@ -518,6 +560,18 @@ export class CallOrchestrator {
       ? this.vipContact.formalityLevel
       : this.defaultFormalityLevel;
 
+    const planName = (tenant?.subscription?.planName || '').toLowerCase();
+    const isPersonalExpert = 
+      planName === 'personal_expert' || 
+      planName.includes('expert') ||
+      ((planName === 'beta_pilot' || planName === 'pilot') && tenant?.betaNotes?.includes('Osobisty Ekspert'));
+    const isB2BPremium = 
+      tenant?.businessProfile !== 'personal' && 
+      (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
+
+    const allowLeadQualification = isPersonalExpert || isB2BPremium;
+    const allowServiceArea = isPersonalExpert;
+
     this.geminiClient = new GeminiClient({
       onAudioReceived: (audioBase64) => this.streamGeminiAudioToCaller(audioBase64),
       onToolCall: (toolCall) => this.orchestrateToolCallWithFiller(toolCall),
@@ -554,11 +608,11 @@ export class CallOrchestrator {
       isOwnerPinVerified: this.isOwnerPinVerified,
       confidentialTopics: this.confidentialTopics,
       bookingExternalUrl: tenant?.bookingExternalUrl || undefined,
-      serviceAreaDescription: tenant?.serviceAreaDescription || undefined,
-      qualificationPrompt: tenant?.qualificationPrompt || undefined,
-      leadQuestion1: tenant?.leadQuestion1 || undefined,
-      leadQuestion2: tenant?.leadQuestion2 || undefined,
-      leadQuestion3: tenant?.leadQuestion3 || undefined
+      serviceAreaDescription: allowServiceArea ? (tenant?.serviceAreaDescription || undefined) : undefined,
+      qualificationPrompt: allowLeadQualification ? (tenant?.qualificationPrompt || undefined) : undefined,
+      leadQuestion1: allowLeadQualification ? (tenant?.leadQuestion1 || undefined) : undefined,
+      leadQuestion2: allowLeadQualification ? (tenant?.leadQuestion2 || undefined) : undefined,
+      leadQuestion3: allowLeadQualification ? (tenant?.leadQuestion3 || undefined) : undefined
     });
 
     this.geminiClient.connect();
@@ -595,7 +649,7 @@ export class CallOrchestrator {
           setTimeout(async () => {
             let contextText = '';
             const warsawHour = parseInt(new Date().toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
-            const timeGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Witam';
+            const timeGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Dobry wieczór';
 
             if (isPostTransferFallback && this.geminiClient) {
               contextText = `UWAGA: Próba bezpośredniego połączenia z właścicielem nie powiodła się (właściciel nie odebrał w ciągu 30 sekund lub odrzucił połączenie). Rozmówca (${fallbackVipName || 'kontakt VIP'}) powrócił na linię. NATYCHMIAST przemów jako pierwsza i powiedz dosłownie: "Właściciel nie mógł teraz odebrać. Zostaw wiadomość, a przekażę ją natychmiast." Następnie wysłuchaj i zapisz jego wiadomość narzędziem save_call_message. Pod żadnym pozorem NIE próbuj łączyć ponownie!`;
@@ -611,7 +665,7 @@ export class CallOrchestrator {
                      const assistantBrand = (this.tenantName === 'DEMO' || this.businessProfile === 'demo')
                        ? 'platformy EVA'
                        : (this.companyName || this.tenantName || 'naszej firmy');
-                     contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie dokładnie jedno zdanie powitalne: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony wirtualna asystentka ${assistantBrand}. W czym mogę dzisiaj pomóc?". Wypowiedz to powitanie WYŁĄCZNIE po polsku. Kategoryczny zakaz powtarzania po angielsku i zakaz dwujęzycznych powitań! Prowadź płynną rozmowę po polsku.`;
+                     contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie dokładnie jedno zdanie powitalne: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony wirtualna asystentka ${assistantBrand}. W czym mogę dzisiaj pomóc?". Powitanie wypowiedz po polsku, bez dwujęzyczności. Prowadź płynną rozmowę po polsku (z obsługą języka angielskiego na wyraźną prośbę).`;
                      await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                    } else {
                      const isMaleVoice = ['Puck', 'Charon'].includes(this.voiceName);
@@ -678,7 +732,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
-              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}! Dodzwoniłeś się na linię testową platformy EasyVoiceAssistant, EVA. Twój przyszły asystent głosowy. W czym mogę pomóc?". Mów wyłącznie po polsku, bez żadnych wstawek po angielsku.`;
+              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}, witamy na linii testowej platformy EasyVoiceAssistant, w skrócie EVA. Twój przyszły asystent głosowy. O czym chciałbyś porozmawiać – o tym, jak działam, czy wolisz poznać ceny naszych pakietów?". Mów ze świeżą energią, rześkim, uśmiechniętym głosem i nienaganną, wyraźną dykcją w pewnym, żwawym tempie (kategoryczny zakaz mówienia sennie czy powoli!). Domyślnym językiem rozmowy jest język polski (akcent rozmówcy to nie język obcy!). Kategoryczny zakaz samowolnego przełączania na język obcy przy niewyraźnej mowie lub wschodnim akcencie – na inny język przełącz się wyłącznie na wyraźną prośbę rozmówcy (wtedy całą dalszą rozmowę prowadź czysto w tym wybranym języku).`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
               const isMale = ['Puck', 'Charon'].includes(this.voiceName);
@@ -768,6 +822,11 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
               }
             }
+
+            const languageLock = ` Domyślnym językiem rozmowy jest język polski (akcent rozmówcy to nie język obcy!). Kategoryczny zakaz samowolnego przełączania na język obcy przy niewyraźnej mowie lub akcencie – na inny język przełącz się wyłącznie na wyraźną prośbę rozmówcy (wtedy całą dalszą rozmowę prowadź czysto w tym wybranym języku).`;
+            if (contextText && !contextText.includes('językiem rozmowy jest język polski')) {
+              contextText += languageLock;
+            }
             if (this.geminiClient) this.geminiClient.sendInitialGreeting(contextText);
           }, 800);
           break;
@@ -803,6 +862,23 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     this.agentSpeaking = false;
     if (this.outboundTaskId) {
       this.isFirstOutboundTurnComplete = true;
+    }
+
+    if (!this.isTerminating) {
+      this.currentTurnAudioDurationMs = 0;
+    }
+
+    if (this.isWaitingForFarewellTurn) {
+      if (this.farewellAudioDurationMs > 500) {
+        console.log('📞 [EndCall] Gemini wygenerowało mowę pożegnalną w tej samej turze co toolCall.');
+        this.isWaitingForFarewellTurn = false;
+        this.shouldHangupAfterTurn = true;
+      } else {
+        console.log('⏳ [EndCall] Wywołano endCall bez audio. Oczekuję na osobną turę z mową pożegnalną od Gemini...');
+        this.isWaitingForFarewellTurn = false;
+        this.shouldHangupAfterTurn = true;
+        return;
+      }
     }
 
     if (this.shouldHangupAfterTurn) {
@@ -845,20 +921,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       return;
     }
     if (this.isTerminating) {
-      console.log('🛡️ [Barge-in] Rozmowa w trakcie kończenia (isTerminating=true) – uciszam audio i finalizuję rozłączenie.');
-      this.twilioWs.send(JSON.stringify({
-        event: 'clear',
-        streamSid: this.streamSid
-      }));
-      if (!this.hangupTimeout) {
-        this.hangupTimeout = setTimeout(() => {
-          if (this.silenceWatchdogInterval) {
-            clearInterval(this.silenceWatchdogInterval);
-            this.silenceWatchdogInterval = null;
-          }
-          this.twilioWs.close();
-        }, 500);
-      }
+      console.log('🛡️ [Barge-in] Rozmowa w trakcie kończenia (isTerminating=true) – pozwalam dokończyć mowę pożegnalną bez czyszczenia bufora Twilio.');
       return;
     }
     console.log('🛑 [Barge-in] Wykryto przerwanie! Natychmiastowe zatrzymanie mowy asystenta.');
@@ -1232,9 +1295,20 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         }
         case 'endCall':
           this.isTerminating = true;
-          this.shouldHangupAfterTurn = true;
-          this.farewellAudioDurationMs = 0;
-          this.farewellStartTime = 0;
+          const alreadySpokeFarewell = this.currentTurnAudioDurationMs > 500;
+          if (alreadySpokeFarewell) {
+            console.log(`📞 [EndCall] Audio (${Math.round(this.currentTurnAudioDurationMs)}ms) zostało już wygenerowane w bieżącej turze przed endCall. Uznaję pożegnanie za zakończone i blokuję powtórkę.`);
+            this.shouldHangupAfterTurn = true;
+            this.isWaitingForFarewellTurn = false;
+            this.farewellAudioDurationMs = this.currentTurnAudioDurationMs;
+            this.farewellStartTime = Date.now() - this.currentTurnAudioDurationMs;
+          } else {
+            console.log('⏳ [EndCall] Zainicjowano endCall bez wcześniejszego audio w tej turze. Oczekuję na osobną turę z mową pożegnalną od Gemini.');
+            this.isWaitingForFarewellTurn = true;
+            this.shouldHangupAfterTurn = false;
+            this.farewellAudioDurationMs = 0;
+            this.farewellStartTime = 0;
+          }
           if (args?.callSummary) {
             this.callSummaryFromAi = args.callSummary;
             console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
@@ -1242,10 +1316,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           if (args?.callerName) {
             this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
-          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (15 sekund)
+          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (6 sekund)
           if (!this.hangupTimeout) {
             this.hangupTimeout = setTimeout(() => {
-              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (timeout 15s po wywołaniu endCall).');
+              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout 6s po wywołaniu endCall).');
               this.isTurnCanceled = true;
               this.isTerminatedAudio = true;
               try {
@@ -1258,11 +1332,14 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 this.silenceWatchdogInterval = null;
               }
               this.twilioWs.close();
-            }, 15000);
+            }, 6000);
           }
           return {
             status: "ok",
-            success: true
+            success: true,
+            message: alreadySpokeFarewell
+              ? "Rozmowa zakończona w systemie. Pożegnanie zostało już wypowiedziane, zamilknij natychmiast, nic więcej nie mów."
+              : "Połączenie jest kończone w systemie. Pożegnaj się uprzejmie z rozmówcą dokładnie jednym krótkim, ciepłym zdaniem (np. 'Dziękuję bardzo za rozmowę, do usłyszenia, miłego dnia!'). Po pożegnaniu natychmiast zamilknij."
           };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
@@ -1314,6 +1391,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       this.agentSpeaking = true;
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
+      this.currentTurnAudioDurationMs += durationMs;
 
       if (this.isTerminating) {
         if (!this.farewellStartTime) {

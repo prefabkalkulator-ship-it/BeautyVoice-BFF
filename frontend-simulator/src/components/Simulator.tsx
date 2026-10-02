@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Lock, Crown } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -91,15 +91,19 @@ export default function Simulator() {
     }, 200);
   }, []);
 
+  const planName = (sub?.planName || '').toLowerCase();
+  const isPersonalProfile = businessProfile === 'personal' || planName.includes('personal');
+  const isB2BPremium = !isPersonalProfile && (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
+
   useEffect(() => {
-    if (location.state?.initialPrompt && !subLoading && !isLoading) {
+    if (location.state?.initialPrompt && !subLoading && !isLoading && isB2BPremium) {
       const prompt = location.state.initialPrompt;
       navigate(location.pathname, { replace: true, state: {} });
       setTimeout(() => {
         handleSendDirect(prompt);
       }, 100);
     }
-  }, [location.state, subLoading, isLoading, navigate]);
+  }, [location.state, subLoading, isLoading, isB2BPremium, navigate]);
 
   const updateActionCardArg = (msgId: string, k: string, v: string) => {
     setMessages(prev => prev.map(m => {
@@ -248,6 +252,82 @@ export default function Simulator() {
       setIsLoading(false);
     }
   };
+
+  if (!subLoading && !isB2BPremium && businessProfile !== 'personal') {
+    return (
+      <div className="max-w-4xl mx-auto py-8 px-4 animate-in fade-in duration-500">
+        <div className="bg-white rounded-3xl p-8 md:p-12 border border-surface-200/80 shadow-xl text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 transform translate-x-8 -translate-y-8 w-48 h-48 bg-gradient-to-br from-amber-200/40 to-gold-300/20 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 transform -translate-x-8 translate-y-8 w-48 h-48 bg-gradient-to-tr from-amber-200/40 to-gold-300/20 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <span className="text-xs font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-3.5 py-1.5 rounded-full border border-amber-200 mb-4 inline-block">
+            Dostępne w Pakiecie Premium B2B
+          </span>
+
+          <h2 className="text-2xl md:text-3xl font-serif text-surface-900 font-bold mb-4">
+            Moduł Marketing AI jest zablokowany
+          </h2>
+
+          <p className="text-sm md:text-base text-surface-600 max-w-xl mx-auto mb-8 leading-relaxed">
+            Pakiet Standard B2B obejmuje odbieranie połączeń i kalendarz (100 minut). Narzędzia automatycznego marketingu, kampanie wychodzące SMS/Voice oraz zaawansowane relacje z klientami wchodzą w skład <strong className="text-surface-900 font-semibold">Pakietu Premium B2B</strong>.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl mx-auto mb-8 text-left">
+            <div className="p-4 rounded-2xl bg-surface-50 border border-surface-100">
+              <span className="text-xl mb-1.5 block">🚀</span>
+              <h4 className="font-bold text-xs text-surface-900 mb-1">Oferty Last Minute</h4>
+              <p className="text-[11px] text-surface-600">Błyskawiczne wypełnianie odwołanych wizyt przez zautomatyzowane kampanie do bazy klientów.</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface-50 border border-surface-100">
+              <span className="text-xl mb-1.5 block">♻️</span>
+              <h4 className="font-bold text-xs text-surface-900 mb-1">Wybudzanie 90+</h4>
+              <p className="text-[11px] text-surface-600">Automatyczna reaktywacja uśpionych klientów, którzy nie odwiedzali salonu od 3 miesięcy.</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface-50 border border-surface-100">
+              <span className="text-xl mb-1.5 block">⭐️</span>
+              <h4 className="font-bold text-xs text-surface-900 mb-1">Badania NPS & Oceny</h4>
+              <p className="text-[11px] text-surface-600">Automatyczne zbieranie opinii po wizycie i budowanie bazy recenzji w Google.</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface-50 border border-surface-100">
+              <span className="text-xl mb-1.5 block">🗓</span>
+              <h4 className="font-bold text-xs text-surface-900 mb-1">Potwierdzenia 24h SMS/Tel</h4>
+              <p className="text-[11px] text-surface-600">Wychodzące potwierdzenia przed wizytą eliminujące no-show do zera.</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface-50 border border-surface-100">
+              <span className="text-xl mb-1.5 block">⏱</span>
+              <h4 className="font-bold text-xs text-surface-900 mb-1">300 Minut w Pakiecie</h4>
+              <p className="text-[11px] text-surface-600">Aż 3x większy limit czasu połączeń przychodzących i wychodzących.</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-surface-50 border border-surface-100">
+              <span className="text-xl mb-1.5 block">📞</span>
+              <h4 className="font-bold text-xs text-surface-900 mb-1">Do 5 Połączeń Naraz</h4>
+              <p className="text-[11px] text-surface-600">Wielokanałowa obsługa wielu dzwoniących klientów jednocześnie bez sygnału zajętości.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={() => navigate('/dashboard/appointments')}
+              className="w-full sm:w-auto py-3 px-6 rounded-xl border border-surface-200 text-surface-700 font-semibold text-xs hover:bg-surface-50 transition cursor-pointer"
+            >
+              Wróć do Kalendarza
+            </button>
+            <button
+              onClick={() => navigate('/dashboard/subscription')}
+              className="w-full sm:w-auto py-3 px-8 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Przejdź na Pakiet Premium B2B</span>
+              <Crown className="w-4 h-4 text-amber-200" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 h-[calc(100vh-8rem)] flex flex-col">

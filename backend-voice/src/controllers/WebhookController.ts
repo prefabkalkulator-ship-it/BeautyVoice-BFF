@@ -23,6 +23,14 @@ export class WebhookController {
         return;
       }
 
+      const planName = (tenant.subscription?.planName || '').toLowerCase();
+      const isPersonal = tenant.businessProfile === 'personal' || planName.includes('personal');
+      const isPremium = !isPersonal && (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
+      if (!isPremium) {
+        res.status(403).json({ error: 'Moduł Marketing AI wymaga subskrypcji Pakietu Premium B2B.' });
+        return;
+      }
+
       console.log('🗣️ Otrzymano wiadomość:', message);
 
       let contextHistory = "";

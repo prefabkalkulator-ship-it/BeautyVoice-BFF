@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users, BookOpen, Star, Gift, PhoneCall } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Calendar, ClipboardList, HelpCircle, MessageSquare, Menu, Phone, CreditCard, LogOut, Settings, CalendarDays, Users, BookOpen, Star, Gift, PhoneCall, Lock } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { requestForToken, onMessageListener, subscribeToMessages } from '../firebase';
@@ -55,6 +56,13 @@ export default function DashboardLayout() {
   const [minutesUsed, setMinutesUsed] = useState(0);
   const [minutesIncluded, setMinutesIncluded] = useState(0);
   const [isSuspended, setIsSuspended] = useState(false);
+  const [subData, setSubData] = useState<any>(null);
+  const [upgradeModal, setUpgradeModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    targetPlanName?: string;
+  }>({ isOpen: false, title: '', description: '' });
 
   useEffect(() => {
     requestForToken();
@@ -73,6 +81,7 @@ export default function DashboardLayout() {
     fetch('/api/subscription')
       .then(r => r.json())
       .then(d => {
+        setSubData(d);
         if (d && typeof d.minutesUsed === 'number') {
           setMinutesUsed(d.minutesUsed);
           setMinutesIncluded(d.minutesIncluded || 0);
@@ -80,6 +89,12 @@ export default function DashboardLayout() {
       })
       .catch(() => {});
   }, []);
+
+  const planName = (subData?.planName || '').toLowerCase();
+  const isPersonalProfile = businessProfile === 'personal' || planName.includes('personal');
+  const isB2BPremium = 
+    !isPersonalProfile && 
+    (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
 
   const tabs = businessProfile === 'personal' ? [
     { id: 'appointments', path: '/dashboard/appointments', label: 'Kalendarz & Spotkania', icon: Calendar },
@@ -147,20 +162,43 @@ export default function DashboardLayout() {
             {tabs.map(tab => {
               const Icon = tab.icon;
               const isActive = location.pathname.includes(tab.path);
+              const isSimulatorLocked = tab.id === 'simulator' && !isB2BPremium;
+
               return (
                 <Link
                   key={tab.id}
                   to={tab.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    setIsMobileMenuOpen(false);
+                    if (isSimulatorLocked) {
+                      e.preventDefault();
+                      setUpgradeModal({
+                        isOpen: true,
+                        title: 'Moduł: Marketing AI',
+                        description: 'Moduł Marketing AI (automatyczne wypełnianie okienek Last Minute, reaktywacja bazy 90+, badanie satysfakcji NPS oraz inteligentne kampanie SMS i wychodzące połączenia asystenta) jest dostępny wyłącznie w Pakiecie Premium B2B.',
+                        targetPlanName: 'Pakiet Premium B2B'
+                      });
+                    }
+                  }}
                   className={`
-                    w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+                    w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
                     ${isActive 
                       ? 'bg-surface-900 text-white shadow-md shadow-surface-900/10' 
-                      : 'text-surface-600 hover:bg-surface-100 hover:text-surface-900'}
+                      : isSimulatorLocked
+                        ? 'text-surface-500 hover:bg-amber-50/50 hover:text-amber-900'
+                        : 'text-surface-600 hover:bg-surface-100 hover:text-surface-900'}
                   `}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-gold-300' : 'text-surface-400'}`} />
-                  {tab.label}
+                  <div className="flex items-center gap-3">
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-gold-300' : isSimulatorLocked ? 'text-amber-600/70' : 'text-surface-400'}`} />
+                    <span>{tab.label}</span>
+                  </div>
+                  {isSimulatorLocked && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200/80 px-1.5 py-0.5 rounded-md">
+                      <Lock className="w-3 h-3 text-amber-700" />
+                      PRO
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -207,6 +245,49 @@ export default function DashboardLayout() {
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
+
+      {/* Modal: Informacja o konieczności przejścia na Pakiet Premium B2B */}
+      {upgradeModal.isOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-surface-100 overflow-hidden animate-scale-in">
+              <div className="p-6 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-200 mb-2 inline-block">
+                  {upgradeModal.targetPlanName || 'Wymagany Pakiet Premium B2B'}
+                </span>
+                <h3 className="text-base font-bold text-surface-900 mt-2 mb-2">
+                  {upgradeModal.title}
+                </h3>
+                <p className="text-xs text-surface-600 mb-6 leading-relaxed">
+                  {upgradeModal.description}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setUpgradeModal({ isOpen: false, title: '', description: '' })}
+                    className="flex-1 py-2.5 px-4 rounded-xl border border-surface-200 text-surface-700 font-semibold text-xs hover:bg-surface-50 transition cursor-pointer"
+                  >
+                    Zamknij
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUpgradeModal({ isOpen: false, title: '', description: '' });
+                      navigate('/dashboard/subscription');
+                    }}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    Przejdź na Premium B2B
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -98,9 +98,11 @@ app.post('/api/campaigns/execute', async (req, res) => {
 
     // Pobierz subskrypcje
     const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
-    if (sub?.planName !== 'premium') {
-       // bypass w celach demonstracyjnych/testowych na ten moment zostawiamy otwarty lub ostrzegamy
-       // return res.status(403).json({ error: 'Wymagany plan Premium' });
+    const planName = (sub?.planName || '').toLowerCase();
+    const isPersonal = tenant.businessProfile === 'personal' || planName.includes('personal');
+    const isPremium = !isPersonal && (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
+    if (!isPremium) {
+      return res.status(403).json({ error: 'Moduł Marketing AI wymaga Pakietu Premium B2B' });
     }
 
     if (toolName === 'create_informational_campaign') {
@@ -461,6 +463,16 @@ app.get('/api/tenant', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(404).json({ error: 'Brak' });
     const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
+
+    // Auto-sync legacy betaNotes if subscription is personal
+    if (sub?.planName === 'personal' && tenant.betaNotes?.includes('Osobisty Ekspert')) {
+      tenant.betaNotes = '[Pakiet Osobisty]';
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { betaNotes: '[Pakiet Osobisty]' }
+      }).catch(() => {});
+    }
+
     const fullTenant = { ...tenant, subscription: sub };
     if (tenant.name === 'DEMO') {
       return res.json({ ...fullTenant, proactiveMode: tenant.proactiveMode ?? true });
@@ -569,21 +581,15 @@ app.put('/api/tenant', async (req, res) => {
       }
     });
 
-    // Jeśli użytkownik zmienia profil (Personal vs B2B) w trakcie okresu testowego/pilotażu, synchronizuj pakiet
+    // Jeśli użytkownik nie ma jeszcze żadnej subskrypcji, utwórz początkowy pakiet próbny
     if (req.body.businessProfile) {
       const isPersonal = req.body.businessProfile === 'personal';
       const targetPlan = isPersonal ? 'personal_expert' : 'premium';
       
       const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
-      if (!sub || sub.status === 'trialing' || tenant.betaStatus === 'pending') {
-        await prisma.subscription.upsert({
-          where: { tenantId: tenant.id },
-          update: {
-            planName: targetPlan,
-            status: 'trialing',
-            minutesIncluded: 300
-          },
-          create: {
+      if (!sub) {
+        await prisma.subscription.create({
+          data: {
             tenantId: tenant.id,
             planName: targetPlan,
             status: 'trialing',
@@ -1062,7 +1068,10 @@ app.get('/api/faq', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.json([]);
-    const faqs = await prisma.faqEntry.findMany({ where: { tenantId: tenant.id } });
+    const faqs = await prisma.faqEntry.findMany({ 
+      where: { tenantId: tenant.id },
+      orderBy: { id: 'desc' }
+    });
     res.json(faqs);
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
 });
@@ -1089,6 +1098,7 @@ app.post('/api/faq', async (req, res) => {
         tenantId: tenant.id,
         question: req.body.question,
         answer: req.body.answer,
+        category: req.body.category || 'permanent',
         isConfidential: Boolean(req.body.isConfidential)
       }
     });
@@ -1114,6 +1124,7 @@ app.put('/api/faq/:id', async (req, res) => {
       data: {
         question: req.body.question,
         answer: req.body.answer,
+        category: req.body.category !== undefined ? req.body.category : undefined,
         isConfidential: req.body.isConfidential !== undefined ? Boolean(req.body.isConfidential) : undefined
       }
     });
@@ -1125,6 +1136,39 @@ app.put('/api/faq/:id', async (req, res) => {
 
     res.json(updated);
   } catch (err) { res.status(500).json({ error: 'Błąd edycji' }); }
+});
+
+// Endpoint masowego usuwania całego bloku FAQ ('current' lub 'permanent')
+app.delete('/api/faq/block/:category', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(400).json({ error: 'No tenant' });
+    const { category } = req.params;
+
+    let deleteFilter: any = { tenantId: tenant.id };
+    if (category === 'permanent') {
+      deleteFilter = {
+        tenantId: tenant.id,
+        OR: [{ category: 'permanent' }, { category: null }]
+      };
+    } else {
+      deleteFilter = {
+        tenantId: tenant.id,
+        category: category
+      };
+    }
+
+    const result = await prisma.faqEntry.deleteMany({ where: deleteFilter });
+
+    import('./services/ModerationService').then(mod => {
+      mod.moderationService.moderateTenant(tenant.id).catch(console.error);
+    }).catch(console.error);
+
+    res.json({ success: true, count: result.count });
+  } catch (err) {
+    console.error('[FAQ API] Błąd usuwania bloku FAQ:', err);
+    res.status(500).json({ error: 'Błąd usuwania bloku FAQ' });
+  }
 });
 
 app.delete('/api/faq/:id', async (req, res) => {
@@ -1297,6 +1341,7 @@ app.post('/api/knowledge/save', async (req, res) => {
         tenantId,
         question: f.question,
         answer: f.answer,
+        category: f.category || req.body.targetCategory || 'permanent',
         isConfidential: Boolean(f.isConfidential)
       }));
       transactions.push(prisma.faqEntry.createMany({ data: faqData }));
@@ -1593,21 +1638,29 @@ app.post('/api/subscription/change-plan', async (req, res) => {
       }
     });
 
+    const tenantUpdateData: any = {};
     if (isTargetPersonal && tenant.businessProfile !== 'personal') {
-      await prisma.tenant.update({
-        where: { id: tenant.id },
-        data: {
-          businessProfile: 'personal',
-          name: tenant.ownerName || tenant.name
-        }
-      });
+      tenantUpdateData.businessProfile = 'personal';
+      tenantUpdateData.name = tenant.ownerName || tenant.name;
     } else if (!isTargetPersonal && tenant.businessProfile === 'personal') {
+      tenantUpdateData.businessProfile = 'solo';
+      tenantUpdateData.name = tenant.companyName || tenant.name;
+    }
+
+    if (newPlanName === 'personal') {
+      tenantUpdateData.betaNotes = '[Pakiet Osobisty]';
+    } else if (newPlanName === 'personal_expert') {
+      tenantUpdateData.betaNotes = '[Pakiet Osobisty Ekspert]';
+    } else if (newPlanName === 'standard') {
+      tenantUpdateData.betaNotes = '[Pakiet Standard B2B]';
+    } else if (newPlanName === 'premium') {
+      tenantUpdateData.betaNotes = '[Pakiet Premium B2B]';
+    }
+
+    if (Object.keys(tenantUpdateData).length > 0) {
       await prisma.tenant.update({
         where: { id: tenant.id },
-        data: {
-          businessProfile: 'solo',
-          name: tenant.companyName || tenant.name
-        }
+        data: tenantUpdateData
       });
     }
 

@@ -1,12 +1,33 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useState } from 'react';
-import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus, Gift, CheckCircle, Tag, User, Phone, Clock, Star } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import {  Calendar, ChevronLeft, ChevronRight, Edit2, X, Save , Plus, Gift, CheckCircle, Tag, User, Phone, Clock, Star, Lock } from 'lucide-react';
 import ConfirmationModal from './common/ConfirmationModal';
 
-export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading }: any) {
+export default function AppointmentsDaily({ appointments, services, staffList, loadData, loading, tenant }: any) {
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [upgradeModal, setUpgradeModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    targetPlanName?: string;
+  }>({ isOpen: false, title: '', description: '' });
+
+  const planName = (tenant?.subscription?.planName || '').toLowerCase();
+  const isPersonalProfile = tenant?.businessProfile === 'personal' || planName.includes('personal');
+  const isPersonalExpert = 
+    planName === 'personal_expert' || 
+    planName.includes('expert') ||
+    ((planName === 'beta_pilot' || planName === 'pilot') && tenant?.betaNotes?.includes('Osobisty Ekspert'));
+
+  const isB2BPremium = 
+    !isPersonalProfile && 
+    (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
+
+  const canUseConfirmation = isPersonalProfile ? isPersonalExpert : isB2BPremium;
+
   const [confirmationModalData, setConfirmationModalData] = useState<{
     isOpen: boolean;
     phone?: string;
@@ -280,21 +301,111 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
                 <div className="flex flex-wrap gap-2">
                   {!isEditing ? (
                     <>
-                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Uruchom kampanię Last Minute na datę " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🚀 Oferta Last Minute</button>
-                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Stwórz kampanię informacyjną z tagiem #uśpieni celującą w termin " + formData.startDate } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">♻️ Wybudź klientów</button>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          if (!canUseConfirmation) {
+                            setUpgradeModal({
+                              isOpen: true,
+                              title: 'Moduł: Oferta Last Minute (Marketing AI)',
+                              description: 'Błyskawiczne wypełnianie zwolnionych terminów za pomocą automatycznych kampanii SMS / Voice AI jest dostępne w Pakiecie Premium B2B.',
+                              targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                            });
+                            return;
+                          }
+                          navigate('/dashboard/simulator', { state: { initialPrompt: "Uruchom kampanię Last Minute na datę " + formData.startDate } });
+                        }} 
+                        className={`text-xs font-medium px-3 py-2 border rounded-full transition-all text-left flex items-center gap-1.5 cursor-pointer ${
+                          canUseConfirmation
+                            ? 'bg-white border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700'
+                            : 'bg-surface-100 border-surface-200 text-surface-400 hover:bg-surface-200'
+                        }`}
+                        title={canUseConfirmation ? "Oferta Last Minute" : (isPersonalProfile ? "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)" : "Funkcja zablokowana (wymaga Pakietu Premium B2B)")}
+                      >
+                        {!canUseConfirmation && <Lock className="w-3 h-3 text-gold-700" />}
+                        🚀 Oferta Last Minute
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          if (!canUseConfirmation) {
+                            setUpgradeModal({
+                              isOpen: true,
+                              title: 'Moduł: Reaktywacja Klientów 90+ (Marketing AI)',
+                              description: 'Automatyczne wybudzanie uśpionych klientów oraz kampanie lojalnościowe są dostępne w Pakiecie Premium B2B.',
+                              targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                            });
+                            return;
+                          }
+                          navigate('/dashboard/simulator', { state: { initialPrompt: "Stwórz kampanię informacyjną z tagiem #uśpieni celującą w termin " + formData.startDate } });
+                        }} 
+                        className={`text-xs font-medium px-3 py-2 border rounded-full transition-all text-left flex items-center gap-1.5 cursor-pointer ${
+                          canUseConfirmation
+                            ? 'bg-white border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700'
+                            : 'bg-surface-100 border-surface-200 text-surface-400 hover:bg-surface-200'
+                        }`}
+                        title={canUseConfirmation ? "Wybudź klientów" : (isPersonalProfile ? "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)" : "Funkcja zablokowana (wymaga Pakietu Premium B2B)")}
+                      >
+                        {!canUseConfirmation && <Lock className="w-3 h-3 text-gold-700" />}
+                        ♻️ Wybudź klientów
+                      </button>
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => {
-                        setConfirmationModalData({
-                          isOpen: true,
-                          phone: formData.customerPhone,
-                          customerName: formData.customerName,
-                          appointmentId: selectedAppt?.id,
-                          date: formData.startDate
-                        });
-                      }} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">🗓 Potwierdź spotkanie (SMS/Tel)</button>
-                      <button type="button" onClick={() => navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } })} className="text-xs font-medium px-3 py-2 bg-white border border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700 rounded-full transition-all text-left">⭐️ Badanie zadowolenia klienta</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!canUseConfirmation) {
+                            setUpgradeModal({
+                              isOpen: true,
+                              title: 'Moduł: Potwierdź spotkanie (SMS/Tel)',
+                              description: 'Potwierdzanie wizyt przez SMS lub dedykowany telefon asystenta AI jest funkcją Pakietu Osobisty Ekspert oraz Premium B2B.',
+                              targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                            });
+                            return;
+                          }
+                          setConfirmationModalData({
+                            isOpen: true,
+                            phone: formData.customerPhone,
+                            customerName: formData.customerName,
+                            appointmentId: selectedAppt?.id,
+                            date: formData.startDate
+                          });
+                        }}
+                        className={`text-xs font-medium px-3 py-2 border rounded-full transition-all text-left flex items-center gap-1.5 cursor-pointer ${
+                          canUseConfirmation
+                            ? 'bg-white border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700'
+                            : 'bg-surface-100 border-surface-200 text-surface-400 hover:bg-surface-200'
+                        }`}
+                        title={canUseConfirmation ? "Potwierdź spotkanie" : (isPersonalProfile ? "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)" : "Funkcja zablokowana (wymaga Pakietu Premium B2B)")}
+                      >
+                        {!canUseConfirmation ? <Lock className="w-3 h-3 text-gold-700" /> : '🗓'}
+                        Potwierdź spotkanie (SMS/Tel)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!canUseConfirmation) {
+                            setUpgradeModal({
+                              isOpen: true,
+                              title: 'Moduł: Badanie zadowolenia klienta (NPS)',
+                              description: 'Badanie satysfakcji klienta (ankieta NPS) jest funkcją Pakietu Osobisty Ekspert oraz Premium B2B.',
+                              targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                            });
+                            return;
+                          }
+                          navigate('/dashboard/simulator', { state: { initialPrompt: "Wyślij ankietę NPS do klienta " + formData.customerPhone } });
+                        }}
+                        className={`text-xs font-medium px-3 py-2 border rounded-full transition-all text-left flex items-center gap-1.5 cursor-pointer ${
+                          canUseConfirmation
+                            ? 'bg-white border-surface-200 text-surface-700 hover:bg-gold-50 hover:border-gold-300 hover:text-gold-700'
+                            : 'bg-surface-100 border-surface-200 text-surface-400 hover:bg-surface-200'
+                        }`}
+                        title={canUseConfirmation ? "Badanie zadowolenia klienta" : (isPersonalProfile ? "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)" : "Funkcja zablokowana (wymaga Pakietu Premium B2B)")}
+                      >
+                        {!canUseConfirmation ? <Lock className="w-3 h-3 text-gold-700" /> : '⭐️'}
+                        Badanie zadowolenia klienta
+                      </button>
                     </>
                   )}
                 </div>
@@ -395,6 +506,62 @@ export default function AppointmentsDaily({ appointments, services, staffList, l
           </div>
         </div>
       )}
+
+      {/* Modal: Informacja o konieczności uaktualnienia pakietu */}
+      {upgradeModal.isOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-surface-100 overflow-hidden animate-scale-in">
+              <div className="p-6 text-center">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 ${
+                  upgradeModal.targetPlanName?.includes('Premium')
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-purple-100 text-purple-700'
+                }`}>
+                  <Lock className="w-6 h-6" />
+                </div>
+                <span className={`text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border mb-2 inline-block ${
+                  upgradeModal.targetPlanName?.includes('Premium')
+                    ? 'text-amber-800 bg-amber-100 border-amber-200'
+                    : 'text-purple-700 bg-purple-100 border-purple-200'
+                }`}>
+                  {upgradeModal.targetPlanName || 'Wymagany Pakiet Ekspert'}
+                </span>
+                <h3 className="text-base font-bold text-surface-900 mt-2 mb-2">
+                  {upgradeModal.title}
+                </h3>
+                <p className="text-xs text-surface-600 mb-6 leading-relaxed">
+                  {upgradeModal.description}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setUpgradeModal({ isOpen: false, title: '', description: '' })}
+                    className="flex-1 py-2.5 px-4 rounded-xl border border-surface-200 text-surface-700 font-semibold text-xs hover:bg-surface-50 transition cursor-pointer"
+                  >
+                    Zamknij
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUpgradeModal({ isOpen: false, title: '', description: '' });
+                      setIsModalOpen(false);
+                      navigate('/dashboard/subscription');
+                    }}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
+                      upgradeModal.targetPlanName?.includes('Premium')
+                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700'
+                        : 'bg-purple-700 hover:bg-purple-800'
+                    }`}
+                  >
+                    {upgradeModal.targetPlanName?.includes('Premium') ? 'Przejdź na Premium B2B' : 'Zmień pakiet'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Universal Confirmation Action Modal */}
       <ConfirmationModal

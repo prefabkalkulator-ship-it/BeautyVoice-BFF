@@ -217,13 +217,13 @@ export default function LandingPage() {
           <div className="text-center max-w-3xl mx-auto space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gold-50 border border-gold-100 text-gold-700 text-xs sm:text-sm font-medium">
               <Star className="w-4 h-4 text-gold-500" />
-              <span>Twoja firma i gabinet otwarte 24/7</span>
+              <span>Asystent Głosowy Ewa • Osobisty i dla Firm 24/7</span>
             </div>
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-serif text-surface-900 tracking-tight leading-[1.15]">
-              Twój wirtualny pracownik <span className="text-gold-500 italic block mt-1 sm:mt-2">odbiera telefony za Ciebie</span>
+              Asystent Głosowy Ewa <span className="text-gold-500 italic block mt-1 sm:mt-2">odbiera telefony za Ciebie</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-base sm:text-lg text-surface-600 leading-relaxed max-w-2xl mx-auto">
-              Zatrudnij EVA – wirtualną asystentkę, która umawia wizyty, odpowiada na pytania i zarządza Twoim kalendarzem oraz sprawami osobistymi 24/7.
+              Inteligentny asystent osobisty oraz wirtualna centrala AI dla profesjonalistów i firm. Umawia wizyty, odpowiada na pytania merytoryczne i zarządza Twoim kalendarzem oraz sprawami 24/7.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 pt-4 sm:pt-6">

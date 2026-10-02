@@ -18,7 +18,7 @@ model Tenant {
   assignedPhoneNumber String?        @unique // Wirtualny numer SIP dla tego salonu
   businessProfile     String         @default("solo")
   bookingMode         String         @default("hourly")
-  aiVoice             String         @default("Aoede")
+  aiVoice             String         @default("Kore")
   botName             String         @default("Ewa")
   toneOfVoice         String         @default("profesjonalny i przyjazny")
   pinCode             String?

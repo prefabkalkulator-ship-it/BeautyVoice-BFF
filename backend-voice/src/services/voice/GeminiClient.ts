@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import { getSystemPrompt } from '../../prompts/systemPrompt';
 import { BookingService } from '../BookingService';
 import { prisma } from '../../prisma';
+import { AI_MODELS } from '../../config/aiModels';
 
 export interface GeminiClientCallbacks {
   onAudioReceived: (audioBase64: string) => void;
@@ -86,7 +87,7 @@ export class GeminiClient {
 
     const setupMessage = {
       setup: {
-        model: "models/gemini-3.1-flash-live-preview",
+        model: AI_MODELS.VOICE_LIVE,
         systemInstruction: {
           parts: [{ text: getSystemPrompt({
               tenantName: this.callbacks.tenantName || "BeautyVoice",
@@ -143,7 +144,7 @@ export class GeminiClient {
       }
     };
 
-    console.log("[Gemini] Wysyłanie setupMessage dla:", aiVoice);
+    console.log("[Gemini] Wysyłanie setupMessage dla:", aiVoice, "Model:", AI_MODELS.VOICE_LIVE);
     this.ws?.send(JSON.stringify(setupMessage));
 
     if (this.pendingGreetingObj) {
@@ -205,7 +206,7 @@ export class GeminiClient {
   sendInitialGreeting(contextText?: string) {
     const now = new Date();
     const warsawHour = parseInt(now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
-    const exactGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Witam';
+    const exactGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Dobry wieczór';
 
     const greetingInstruction = `Użyj eleganckiego powitania "${exactGreeting}". Powitaj się dokładnie jeden raz.`;
 
@@ -239,6 +240,19 @@ export class GeminiClient {
       clientContent: {
         turns: [{ role: 'user', parts: [{ text: `[SYSTEM CONTEXT UPDATE] ${text}` }] }],
         turnComplete: false
+      }
+    });
+  }
+
+  isLive(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  sendSystemPromptTurn(text: string) {
+    this.send({
+      clientContent: {
+        turns: [{ role: 'user', parts: [{ text }] }],
+        turnComplete: true
       }
     });
   }

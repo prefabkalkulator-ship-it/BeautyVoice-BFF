@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { prisma } from '../prisma';
 import { PushService } from './PushService';
+import { AI_MODELS } from '../config/aiModels';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'dummy' });
 
@@ -83,7 +84,7 @@ ${faqText || 'Brak wpisów FAQ'}
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: AI_MODELS.MODERATION,
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: 'application/json',

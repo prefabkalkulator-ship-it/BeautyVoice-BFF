@@ -1,11 +1,12 @@
 import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState, useRef } from 'react';
-import { HelpCircle, ChevronDown, ChevronUp, Pencil, Sparkles, Loader2, X, ShieldAlert, Mic, Square, Plus, Database, Trash2, Check, AlertCircle, Lock, Search } from 'lucide-react';
+import { HelpCircle, ChevronDown, ChevronUp, Pencil, Sparkles, Loader2, X, ShieldAlert, Mic, Square, Plus, Database, Trash2, Check, AlertCircle, Lock, Search, Copy } from 'lucide-react';
 
 interface FaqItem {
   id: string;
   question: string;
   answer: string;
+  category?: string | null;
   isConfidential?: boolean;
 }
 
@@ -21,13 +22,26 @@ export default function Faq() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuestion, setEditQuestion] = useState('');
   const [editAnswer, setEditAnswer] = useState('');
+  const [editCategory, setEditCategory] = useState<'permanent' | 'current'>('permanent');
   const [editIsConfidential, setEditIsConfidential] = useState(false);
 
-  // Nawigacja i wyszukiwanie w Bazie Wiedzy
+  // Podział na bloki i filtrowanie
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'all' | 'current' | 'permanent'>('all');
+  const [teachCategory, setTeachCategory] = useState<'permanent' | 'current'>('permanent');
+  const [clearingBlock, setClearingBlock] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'confidential'>('all');
 
+  const currentCount = faqs.filter(f => f.category === 'current').length;
+  const permanentCount = faqs.filter(f => f.category !== 'current').length;
+
   const filteredFaqs = faqs.filter(faq => {
+    if (activeCategoryTab === 'current' && faq.category !== 'current') {
+      return false;
+    }
+    if (activeCategoryTab === 'permanent' && faq.category === 'current') {
+      return false;
+    }
     if (filterType === 'confidential' && !faq.isConfidential) {
       return false;
     }
@@ -57,6 +71,35 @@ export default function Faq() {
   const [botName, setBotName] = useState('EVA');
   const [isPremium, setIsPremium] = useState(false);
 
+  // Dane tenanta i rekomendowany prompt AI
+  const [profession, setProfession] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [copiedPromptBanner, setCopiedPromptBanner] = useState(false);
+  const [showBestPracticesBanner, setShowBestPracticesBanner] = useState(true);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const recommendedPrompt = businessProfile === 'personal'
+    ? `jestem specjalistą od ${profession || '[Twoja specjalizacja, np. doradztwo prawne / fizjoterapia / IT]'} w firmie ${websiteUrl || companyName || '[www.mojafirma.pl]'} zbadaj stronę i napisz treść dla bazy wiedzy na 100 pytań i odpowiedzi dla mojego asystenta głosowego który będzie odbierać za mnie telefon`
+    : `prowadzę firmę ${companyName || '[Twoja firma/branża]'} pod adresem ${websiteUrl || '[www.mojafirma.pl]'} zbadaj stronę i napisz treść dla bazy wiedzy na 100 pytań i odpowiedzi dla mojej wirtualnej recepcjonistki która będzie odbierać telefony od klientów`;
+
+  const handleApplyPrompt = (promptText: string) => {
+    setRawText(promptText);
+    setError('');
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  const handleCopyBannerPrompt = () => {
+    navigator.clipboard.writeText(recommendedPrompt);
+    setCopiedPromptBanner(true);
+    setTimeout(() => setCopiedPromptBanner(false), 2000);
+  };
+
   const fetchFaqs = () => {
     fetch('/api/faq')
       .then(res => res.json())
@@ -78,9 +121,9 @@ export default function Faq() {
         if (t) {
           setBusinessProfile(t.businessProfile || 'solo');
           if (t.botName) setBotName(t.botName);
-          if (t.businessProfile === 'personal' && (t.betaNotes?.includes('Osobisty Ekspert') || t.betaStatus === 'pending' || t.subscription?.planName === 'personal_expert')) {
-            setIsPremium(true);
-          }
+          if (t.profession) setProfession(t.profession);
+          if (t.companyName) setCompanyName(t.companyName);
+          if (t.bookingExternalUrl) setWebsiteUrl(t.bookingExternalUrl);
         }
       })
       .catch(err => console.error('Failed to load tenant in Faq:', err));
@@ -89,9 +132,12 @@ export default function Faq() {
       .then(res => res.json())
       .then(s => {
         const plan = (s?.planName || '').toLowerCase();
-        if (plan === 'premium' || plan === 'personal_expert' || plan === 'beta_pilot' || plan === 'pilot' || plan.includes('expert')) {
-          setIsPremium(true);
-        }
+        const isPrem = 
+          plan === 'premium' || 
+          plan === 'personal_expert' || 
+          plan.includes('expert') ||
+          ((plan === 'beta_pilot' || plan === 'pilot') && s?.betaNotes?.includes('Osobisty Ekspert'));
+        setIsPremium(isPrem);
       })
       .catch(err => console.error('Failed to load subscription in Faq:', err));
   }, []);
@@ -229,6 +275,7 @@ export default function Faq() {
     setEditingId(faq.id);
     setEditQuestion(faq.question);
     setEditAnswer(faq.answer);
+    setEditCategory(faq.category === 'current' ? 'current' : 'permanent');
     setEditIsConfidential(Boolean(faq.isConfidential));
     setExpandedId(faq.id);
   };
@@ -244,15 +291,64 @@ export default function Faq() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: editQuestion, answer: editAnswer, isConfidential: editIsConfidential })
+        body: JSON.stringify({ 
+          question: editQuestion, 
+          answer: editAnswer, 
+          category: editCategory,
+          isConfidential: editIsConfidential 
+        })
       });
       if (res.ok) {
         const savedData = await res.json();
-        setFaqs(prev => prev.map(f => f.id === editingId ? savedData : f));
+        setFaqs(prev => prev.map(f => f.id === editingId ? { ...savedData, category: editCategory } : f));
         setEditingId(null);
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleAddNewFaq = (category: 'permanent' | 'current' = 'permanent') => {
+    if (!isPremium && faqs.length >= FAQ_LIMIT) return;
+    setSearchQuery('');
+    setFilterType('all');
+    setActiveCategoryTab(category);
+    const newFaq: FaqItem = { 
+      id: `new-${Date.now()}`, 
+      question: '', 
+      answer: '', 
+      category: category,
+      isConfidential: false 
+    };
+    setFaqs([newFaq, ...faqs]);
+    setEditingId(newFaq.id);
+    setEditQuestion('');
+    setEditAnswer('');
+    setEditCategory(category);
+    setEditIsConfidential(false);
+    setExpandedId(newFaq.id);
+  };
+
+  const clearBlock = async (category: 'current' | 'permanent') => {
+    const isCurrent = category === 'current';
+    const label = isCurrent ? 'Sprawy bieżące (Eventy)' : 'Informację stałą';
+    const count = isCurrent ? currentCount : permanentCount;
+    if (count === 0) return;
+    
+    if (!window.confirm(`Czy na pewno chcesz usunąć CAŁY blok "${label}" (${count} wpisów)?\n\nTa operacja bezpowrotnie usunie wszystkie pytania i odpowiedzi z tej sekcji. Zazwyczaj robi się to po zakończeniu eventu lub promocji.`)) {
+      return;
+    }
+
+    setClearingBlock(category);
+    try {
+      const res = await fetch(`/api/faq/block/${category}`, { method: 'DELETE' });
+      if (res.ok) {
+        setFaqs(prev => isCurrent ? prev.filter(f => f.category !== 'current') : prev.filter(f => f.category === 'current'));
+      }
+    } catch (err) {
+      console.error('Błąd czyszczenia bloku:', err);
+    } finally {
+      setClearingBlock(null);
     }
   };
 
@@ -295,18 +391,27 @@ export default function Faq() {
               tips={
                 businessProfile === 'personal'
                   ? [
+                      "Dobre praktyki AI: Wystarczy, że w oknie wpiszesz polecenie ze swoją stroną WWW (np. „jestem specjalistą od ... w firmie www.mojafirma.pl zbadaj stronę i napisz treść dla bazy wiedzy na 100 pytań i odpowiedzi dla mojego asystenta głosowego...”), a asystent automatycznie utworzy kompletną bazę pytań i odpowiedzi.",
                       "Wprowadzaj wiedzę merytoryczną: zakres prowadzonych spraw, wymagane dokumenty, zasady wyceny konsultacji, godziny kontaktu czy procedury awaryjne.",
                       "Wiedza Poufna (PIN): Zaznacz 'Poufne' przy dowolnym pytaniu, aby zabezpieczyć odpowiedź kodem PIN (domyślnie 7777, do zmiany w Ustawieniach). Asystent nigdy nie poda jej przypadkowemu rozmówcy.",
                       "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zestaw konkretnych pytań i odpowiedzi.",
                       "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć, edytować lub ręcznie dodać dowolną odpowiedź."
                     ]
                   : [
+                      "Dobre praktyki AI: Wystarczy, że w oknie wpiszesz polecenie ze swoją stroną WWW (np. „prowadzę firmę ... pod adresem www.mojafirma.pl zbadaj stronę i napisz treść dla bazy wiedzy na 100 pytań i odpowiedzi...”), a asystent automatycznie zbada ofertę i przygotuje bazę wiedzy.",
                       "Wklejaj zasady firmy: metody płatności, politykę spóźnień, parking, dojazd czy warunki realizacji usług.",
                       "Wiedza Poufna (PIN): Zaznacz 'Poufne' przy pytaniu, aby zabezpieczyć wrażliwe informacje kodem PIN (domyślnie 7777).",
                       "Użyj zakładki 'Ucz mnie', aby wgrać plik PDF/tekstowy lub podyktować zasady głosem – AI automatycznie utworzy zwięzłe pytania i odpowiedzi.",
                       "W zakładce 'Baza Wyuczona' możesz w każdej chwili przejrzeć i ręcznie poprawić dowolną odpowiedź."
                     ]
               }
+              promptBox={{
+                title: "Dobre praktyki – Szybki prompt do bazy wiedzy",
+                description: "Możesz wpisać poniższe polecenie wprost do okna w zakładce „Ucz mnie”. Asystent sam przeanalizuje stronę WWW i utworzy 100 pytań i odpowiedzi:",
+                prompt: recommendedPrompt,
+                onApply: (text) => handleApplyPrompt(text),
+                applyLabel: "Wstaw prompt do pola czatu"
+              }}
               guideSectionId={businessProfile === 'personal' ? 'personal-confidential-knowledge' : 'faq-training'}
               nextStepRecommendation={
                 businessProfile === 'personal'
@@ -342,6 +447,7 @@ export default function Faq() {
           </div>
           <div className="flex items-center gap-1 bg-surface-100 p-1 rounded-xl">
             <button 
+              onClick={() => setViewMode('teach')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${viewMode === 'teach' ? 'bg-white shadow-sm text-surface-900' : 'text-surface-500 hover:text-surface-700'}`}
             >
               <Sparkles className="w-4 h-4" />
@@ -376,6 +482,81 @@ export default function Faq() {
             </div>
           </div>
 
+          {/* Dobre praktyki przy budowaniu bazy wiedzy asystenta */}
+          <div className="mb-6 rounded-2xl border border-amber-300/80 bg-gradient-to-br from-amber-50/90 via-gold-50/50 to-orange-50/30 p-4 sm:p-5 shadow-xs transition-all">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-800 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-surface-900 flex items-center gap-2">
+                    Dobre praktyki przy budowaniu bazy wiedzy asystenta
+                    <span className="hidden sm:inline-flex text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-200/60 text-amber-900">
+                      Rekomendacja AI
+                    </span>
+                  </h4>
+                  <p className="text-xs text-surface-600 mt-0.5">
+                    Nie musisz ręcznie wpisywać dziesiątek pytań! Wystarczy, że napiszesz w poniższym oknie:
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBestPracticesBanner(!showBestPracticesBanner)}
+                className="text-surface-400 hover:text-surface-700 p-1 rounded-lg transition-colors shrink-0 text-xs font-medium flex items-center gap-1 cursor-pointer"
+                title={showBestPracticesBanner ? "Zwiń podpowiedź" : "Rozwiń podpowiedź"}
+              >
+                {showBestPracticesBanner ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {showBestPracticesBanner && (
+              <div className="mt-3.5 space-y-3 animate-in fade-in duration-200">
+                <div className="relative group/box">
+                  <div className="p-3.5 bg-white/95 backdrop-blur-xs rounded-xl border border-amber-200/90 text-xs text-surface-800 leading-relaxed font-mono select-all shadow-2xs break-words">
+                    {recommendedPrompt}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPrompt(recommendedPrompt)}
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs hover:shadow-xs cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Wstaw ten prompt do okna poniżej</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyBannerPrompt}
+                      className="px-3 py-1.5 bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      {copiedPromptBanner ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-green-600" />
+                          <span className="text-green-700">Skopiowano do schowka!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-amber-700" />
+                          <span>Kopiuj prompt</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] text-surface-500 italic">
+                    Wstaw prompt, wpisz swoją domenę/specjalizację i kliknij <strong>„Wygeneruj wiedzę”</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && (
             <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl text-sm border border-red-100 flex items-start gap-2">
               <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
@@ -397,8 +578,41 @@ export default function Faq() {
 
           {!extractedData ? (
             <div className="space-y-6">
+              {/* Wybór bloku docelowego dla wygenerowanej wiedzy */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-surface-50/90 rounded-2xl border border-surface-200/80">
+                <span className="text-xs font-semibold text-surface-700 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-gold-600" />
+                  Gdzie zapisać tę wiedzę?
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTeachCategory('permanent')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      teachCategory === 'permanent'
+                        ? 'bg-surface-900 text-white shadow-2xs'
+                        : 'bg-white text-surface-600 border border-surface-200 hover:bg-surface-100'
+                    }`}
+                  >
+                    📌 Informacja stała
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTeachCategory('current')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      teachCategory === 'current'
+                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                        : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                    }`}
+                  >
+                    ⚡ Sprawy bieżące (Event / Promocja)
+                  </button>
+                </div>
+              </div>
+
               <div className="relative group">
                 <textarea 
+                  ref={textareaRef}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
                   onDragOver={(e) => e.preventDefault()}
@@ -527,7 +741,8 @@ export default function Faq() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           services: extractedData.services,
-                          faq: extractedData.faq,
+                          faq: extractedData.faq?.map((f: any) => ({ ...f, category: teachCategory })),
+                          targetCategory: teachCategory,
                           tenantId
                         })
                       });
@@ -566,37 +781,134 @@ export default function Faq() {
             </div>
           )}
 
-          <div className="glass-card p-6 rounded-3xl mb-6 bg-gradient-to-r from-surface-900 to-surface-800 text-white flex justify-between items-center shadow-lg">
+          <div className="glass-card p-6 rounded-3xl mb-6 bg-gradient-to-r from-surface-900 to-surface-800 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-lg">
              <div>
                <h3 className="text-xl font-serif">Wyuczona Baza Wiedzy</h3>
-               <p className="text-surface-300 text-sm mt-1">Zarządzaj odpowiedziami, które pamiętam na pamięć.</p>
+               <p className="text-surface-300 text-sm mt-1">Zarządzaj informacjami stałymi oraz bieżącymi eventami.</p>
              </div>
-             <button 
-                disabled={!isPremium && faqs.length >= FAQ_LIMIT}
-                onClick={() => {
-                   if (!isPremium && faqs.length >= FAQ_LIMIT) return;
-                   setSearchQuery('');
-                   setFilterType('all');
-                   const newFaq: FaqItem = { id: `new-${Date.now()}`, question: '', answer: '', isConfidential: false };
-                   setFaqs([newFaq, ...faqs]);
-                   setEditingId(newFaq.id);
-                   setEditQuestion(newFaq.question);
-                   setEditAnswer(newFaq.answer);
-                   setEditIsConfidential(false);
-                   setExpandedId(newFaq.id);
-                }}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm ${
-                  !isPremium && faqs.length >= FAQ_LIMIT
-                    ? 'bg-surface-700 text-surface-400 cursor-not-allowed opacity-60'
-                    : 'bg-white text-surface-900 hover:bg-surface-100 cursor-pointer'
-                }`}
-                title={!isPremium && faqs.length >= FAQ_LIMIT ? `Osiągnięto limit ${FAQ_LIMIT} wpisów` : undefined}
-             >
-               Ręcznie dodaj wpis
-             </button>
+             <div className="flex flex-wrap items-center gap-2.5">
+               <button 
+                  disabled={!isPremium && faqs.length >= FAQ_LIMIT}
+                  onClick={() => handleAddNewFaq('current')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                    !isPremium && faqs.length >= FAQ_LIMIT
+                      ? 'bg-amber-900/40 text-amber-300 cursor-not-allowed opacity-60'
+                      : 'bg-amber-500 hover:bg-amber-400 text-white hover:shadow-md'
+                  }`}
+                  title="Dodaj wpis o bieżącym evencie, promocji lub urlopie"
+               >
+                 <Sparkles className="w-4 h-4" />
+                 + Dodaj sprawę bieżącą
+               </button>
+               <button 
+                  disabled={!isPremium && faqs.length >= FAQ_LIMIT}
+                  onClick={() => handleAddNewFaq('permanent')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                    !isPremium && faqs.length >= FAQ_LIMIT
+                      ? 'bg-surface-700 text-surface-400 cursor-not-allowed opacity-60'
+                      : 'bg-white text-surface-900 hover:bg-surface-100'
+                  }`}
+               >
+                 <Plus className="w-4 h-4" />
+                 + Dodaj informację stałą
+               </button>
+             </div>
           </div>
 
-          {/* Pasek nawigacji i wyszukiwania (lupa) */}
+          {/* Przełącznik bloków: Wszystkie / Sprawy bieżące / Informacja stała */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-1 bg-surface-100 p-1 rounded-2xl border border-surface-200/60 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setActiveCategoryTab('all')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  activeCategoryTab === 'all' 
+                    ? 'bg-surface-900 text-white shadow-xs' 
+                    : 'text-surface-600 hover:text-surface-900 hover:bg-surface-200/50'
+                }`}
+              >
+                Wszystkie ({faqs.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCategoryTab('current')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  activeCategoryTab === 'current' 
+                    ? 'bg-amber-600 text-white shadow-xs font-bold' 
+                    : 'text-amber-800 hover:bg-amber-100/60'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>⚡ Sprawy bieżące ({currentCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCategoryTab('permanent')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  activeCategoryTab === 'permanent' 
+                    ? 'bg-surface-900 text-white shadow-xs' 
+                    : 'text-surface-600 hover:text-surface-900 hover:bg-surface-200/50'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>📌 Informacja stała ({permanentCount})</span>
+              </button>
+            </div>
+
+            {/* Przycisk czyszczenia całego bloku */}
+            {activeCategoryTab === 'current' && currentCount > 0 && (
+              <button
+                type="button"
+                onClick={() => clearBlock('current')}
+                disabled={clearingBlock === 'current'}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-semibold transition shadow-2xs cursor-pointer disabled:opacity-50"
+                title="Usuń wszystkie wpisy ze Spraw bieżących po zakończeniu eventu"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                <span>{clearingBlock === 'current' ? 'Usuwam cały blok...' : 'Wyczyść cały blok Spraw bieżących'}</span>
+              </button>
+            )}
+
+            {activeCategoryTab === 'permanent' && permanentCount > 0 && (
+              <button
+                type="button"
+                onClick={() => clearBlock('permanent')}
+                disabled={clearingBlock === 'permanent'}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-semibold transition shadow-2xs cursor-pointer disabled:opacity-50"
+                title="Usuń wszystkie wpisy z Informacji stałej"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                <span>{clearingBlock === 'permanent' ? 'Usuwam...' : 'Wyczyść blok Informacji stałej'}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Baner informacyjny aktywnego bloku */}
+          {activeCategoryTab === 'current' && (
+            <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200/80 mb-4 flex items-start gap-3 shadow-2xs">
+              <Sparkles className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900">
+                <p className="font-bold">Blok: Sprawy bieżące i Eventy (Priorytet rozmowy AI)</p>
+                <p className="text-amber-800 mt-0.5">
+                  Tutaj wprowadzaj tymczasowe komunikaty o promocjach, dniach otwartych, urlopach, remontach ulicy czy specjalnych wydarzeniach. Asystent odpytuje te informacje w pierwszej kolejności. Po zakończeniu akcji możesz usunąć cały ten blok jednym kliknięciem.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeCategoryTab === 'permanent' && (
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 mb-4 flex items-start gap-3 shadow-2xs">
+              <Database className="w-5 h-5 text-slate-700 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-800">
+                <p className="font-bold">Blok: Informacja stała</p>
+                <p className="text-slate-600 mt-0.5">
+                  Stała baza wiedzy asystenta: regularne godziny pracy, cenniki bazowe, zasady rezerwacji, parking, dojazd i standardowe procedury firmy.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Pasek wyszukiwania (lupa) */}
           <div className="glass-card p-3 sm:p-4 rounded-2xl mb-6 border border-surface-200/70 shadow-xs flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-surface-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -681,6 +993,15 @@ export default function Faq() {
                       <div className="bg-gold-50 p-2 rounded-lg text-gold-600 border border-gold-100 shrink-0">
                         <HelpCircle className="w-5 h-5" />
                       </div>
+                      {faq.category === 'current' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-800 border border-amber-500/30">
+                          ⚡ Sprawa bieżąca
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-surface-100 text-surface-600 border border-surface-200">
+                          📌 Informacja stała
+                        </span>
+                      )}
                       {faq.isConfidential && !isEditing && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100/90 text-amber-900 border border-amber-300/80 shadow-2xs">
                           <Lock className="w-3.5 h-3.5 text-amber-700" />
@@ -734,6 +1055,32 @@ export default function Faq() {
                               placeholder="Wpisz odpowiedź..."
                               className="w-full bg-surface-50 border border-surface-200 rounded-lg p-3 text-surface-800 focus:outline-none focus:ring-2 focus:ring-gold-500/50 resize-none"
                             />
+                            {/* Wybór bloku bazy wiedzy */}
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              <span className="text-xs font-semibold text-surface-600 mr-1">Blok bazy:</span>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditCategory('permanent'); }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                                  editCategory === 'permanent'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-300 shadow-2xs'
+                                    : 'bg-surface-50 text-surface-600 border-surface-200 hover:bg-surface-100'
+                                }`}
+                              >
+                                📌 Informacja stała
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditCategory('current'); }}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                                  editCategory === 'current'
+                                    ? 'bg-amber-100 text-amber-900 border-amber-400 shadow-2xs'
+                                    : 'bg-surface-50 text-surface-600 border-surface-200 hover:bg-surface-100'
+                                }`}
+                              >
+                                ⚡ Sprawa bieżąca (Event / Promocja)
+                              </button>
+                            </div>
                             <div className="pt-2 border-t border-surface-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <label className="inline-flex items-center gap-2 text-xs font-bold text-surface-800 cursor-pointer select-none bg-amber-50/80 border border-amber-200 px-3 py-2 rounded-xl">
