@@ -2,7 +2,7 @@ import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight } from 'lucide-react';
+import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight, Calendar } from 'lucide-react';
 
 const defaultSchedule = {
   "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
@@ -121,6 +121,13 @@ export default function Settings() {
     days: JSON.parse(JSON.stringify(DEFAULT_PERSONAL_DAYS)),
     prioritySlots: [] as { day: number; time: string }[],
     nightProtection: true,
+    bookingHandlingMode: 'auto' as 'auto' | 'inquiry_only',
+    durationMode: 'single' as 'single' | 'dual',
+    singleDurationMinutes: 60,
+    dualShortLabel: 'Krótkie omówienie / Oględziny',
+    dualShortMinutes: 60,
+    dualLongLabel: 'Dłuższa realizacja / Prace',
+    dualLongMinutes: 480,
     focusBlocks: [] as Array<{ 
       id: string; 
       name: string; 
@@ -188,6 +195,13 @@ export default function Settings() {
           setPersonalSchedule(prev => ({ 
             ...prev, 
             ...tData.personalSchedule,
+            bookingHandlingMode: tData.personalSchedule.bookingHandlingMode || 'auto',
+            durationMode: tData.personalSchedule.durationMode || 'single',
+            singleDurationMinutes: tData.personalSchedule.singleDurationMinutes ?? 60,
+            dualShortLabel: tData.personalSchedule.dualShortLabel || 'Krótkie omówienie / Oględziny',
+            dualShortMinutes: tData.personalSchedule.dualShortMinutes ?? 60,
+            dualLongLabel: tData.personalSchedule.dualLongLabel || 'Dłuższa realizacja / Prace',
+            dualLongMinutes: tData.personalSchedule.dualLongMinutes ?? 480,
             days: {
               ...DEFAULT_PERSONAL_DAYS,
               ...(tData.personalSchedule.days || {})
@@ -662,7 +676,7 @@ export default function Settings() {
                     <span className="font-bold text-amber-950">Tura 1:</span> „Witam, jestem asystentem wirtualnym {ownerGender === 'FEMALE' ? 'pani' : 'pana'} {getOwnerGenitive(ownerName, ownerGender)}, z kim mam przyjemność?”
                   </div>
                   <div className="leading-relaxed pl-1 sm:pl-2">
-                    <span className="font-bold text-amber-950">Tura 2:</span> „{ownerGender === 'FEMALE' ? 'Pani' : 'Pan'} {getOwnerNominative(ownerName, ownerGender)} nie może w tej chwili odebrać, ale posiadam wiedzę o {ownerGender === 'FEMALE' ? 'jej' : 'jego'} działalności – chętnie odpowiem na pytania merytoryczne. Mogę też przekazać wiadomość albo umówić kontakt osobisty, w czym mogę pomóc?”
+                    <span className="font-bold text-amber-950">Tura 2:</span> „{ownerGender === 'FEMALE' ? 'Pani' : 'Pan'} {getOwnerNominative(ownerName, ownerGender)} nie może w tej chwili odebrać, ale posiadam wiedzę o {ownerGender === 'FEMALE' ? 'jej' : 'jego'} działalności – chętnie odpowiem na pytania merytoryczne. Mogę też {personalSchedule.bookingHandlingMode === 'inquiry_only' ? 'zapisać zapytanie o termin lub przekazać wiadomość' : 'przekazać wiadomość albo umówić kontakt osobisty'}, w czym mogę pomóc?”
                   </div>
                 </div>
               </div>
@@ -878,6 +892,262 @@ export default function Settings() {
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Tryb Obsługi Spotkań (Auto vs Tryb Sekretarski) */}
+              <div className="md:col-span-2 p-3.5 sm:p-5 rounded-2xl border border-surface-200 bg-white space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between gap-2 border-b border-surface-100 pb-3 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-amber-500/10 text-amber-700">
+                      <Calendar className="w-5 h-5 shrink-0" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif font-bold text-surface-900 text-sm sm:text-base">Tryb Obsługi Spotkań i Terminów</h4>
+                      <p className="text-xs text-surface-500">Zdecyduj, czy asystent ma bezpośrednio rezerwować terminy w Twoim kalendarzu, czy przyjmować wyłącznie zapytania.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3 pt-1">
+                  {/* Opcja 1: Automatyczne umawianie */}
+                  <div
+                    onClick={() => setPersonalSchedule(prev => ({ ...prev, bookingHandlingMode: 'auto' }))}
+                    className={`p-3.5 sm:p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                      personalSchedule.bookingHandlingMode !== 'inquiry_only'
+                        ? 'border-gold-500 bg-gold-50/20 shadow-xs ring-1 ring-gold-400/40'
+                        : 'border-surface-200 bg-white hover:border-surface-300'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">📅</span>
+                          <span className="font-bold text-xs sm:text-sm text-surface-900">Automatyczne umawianie</span>
+                        </div>
+                        {personalSchedule.bookingHandlingMode !== 'inquiry_only' && (
+                          <span className="w-5 h-5 rounded-full bg-gold-500 text-white flex items-center justify-center text-xs">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-surface-600 leading-relaxed">
+                        Asystent sprawdza wolne okienka w Twoim grafiku i <strong>bezpośrednio zapisuje spotkanie</strong> w kalendarzu.
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-surface-100 text-[11px] text-surface-400 font-medium">
+                      Rekomendowane dla konsultacji, stałych grafików i natychmiastowej rezerwacji.
+                    </div>
+                  </div>
+
+                  {/* Opcja 2: Tryb Sekretarski (Tylko zapytania) */}
+                  <div
+                    onClick={() => setPersonalSchedule(prev => ({ ...prev, bookingHandlingMode: 'inquiry_only' }))}
+                    className={`p-3.5 sm:p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                      personalSchedule.bookingHandlingMode === 'inquiry_only'
+                        ? 'border-indigo-600 bg-indigo-50/25 shadow-xs ring-1 ring-indigo-400/40'
+                        : 'border-surface-200 bg-white hover:border-surface-300'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">📝</span>
+                          <span className="font-bold text-xs sm:text-sm text-surface-900">Tryb Sekretarski (Tylko zapytania)</span>
+                        </div>
+                        {personalSchedule.bookingHandlingMode === 'inquiry_only' && (
+                          <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-surface-600 leading-relaxed">
+                        Asystent <strong>nie rezerwuje terminu w kalendarzu</strong>. Notuje preferowane dni, godziny oraz zakres sprawy/działania, a następnie powiadamia Cię pushem, abyś oddzwonił z potwierdzeniem.
+                      </p>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-surface-100 text-[11px] text-surface-400 font-medium">
+                      Rekomendowane dla fachowców, wykonawców i osób samodzielnie planujących logistykę prac.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Czas Trwania Spotkań i Zleceń */}
+              <div className="md:col-span-2 p-3.5 sm:p-5 rounded-2xl border border-surface-200 bg-white space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between gap-2 border-b border-surface-100 pb-3 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-purple-500/10 text-purple-700">
+                      <Clock className="w-5 h-5 shrink-0" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif font-bold text-surface-900 text-sm sm:text-base">Długość Spotkań i Czas Realizacji Zleceń</h4>
+                      <p className="text-xs text-surface-500">Określ, ile czasu asystent rezerwuje na spotkanie lub zlecenie w Twoim grafiku.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Wariant Prosty (Standardowy) - w obu pakietach */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider">
+                      Domyślny czas trwania spotkania
+                    </label>
+                    {personalSchedule.durationMode === 'dual' && isPersonalExpert && (
+                      <span className="text-[11px] text-purple-700 font-medium bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                        Aktywny tryb dwuprofilowy poniżej
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <select
+                        value={personalSchedule.singleDurationMinutes ?? 60}
+                        onChange={e => setPersonalSchedule(prev => ({ ...prev, singleDurationMinutes: parseInt(e.target.value, 10) }))}
+                        disabled={personalSchedule.durationMode === 'dual' && isPersonalExpert}
+                        className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-primary text-xs sm:text-sm bg-white font-medium disabled:opacity-60 disabled:bg-surface-50"
+                      >
+                        <option value={15}>15 minut (Krótka konsultacja)</option>
+                        <option value={30}>30 minut (Rozmowa wstępna)</option>
+                        <option value={45}>45 minut</option>
+                        <option value={60}>1 godzina (Standardowe spotkanie)</option>
+                        <option value={90}>1,5 godziny (90 minut)</option>
+                        <option value={120}>2 godziny (Dłuższe spotkanie / wizyta)</option>
+                        <option value={240}>4 godziny (Pół dnia roboczego)</option>
+                        <option value={480}>8 godzin (Cały dzień roboczy – prace / zlecenie)</option>
+                      </select>
+                      <p className="text-[11px] text-surface-500 mt-1">
+                        {personalSchedule.singleDurationMinutes >= 420
+                          ? 'Asystent rezerwuje cały dzień roboczy – weryfikuje, czy cały dzień od rozpoczęcia do zakończenia pracy jest wolny.'
+                          : 'Standardowy blok czasowy rezerwowany w grafiku podczas umawiania terminu.'}
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-surface-50 rounded-xl border border-surface-200/80 text-xs text-surface-600 flex items-center">
+                      <span>
+                        💡 <strong>Wskazówka:</strong> W połączeniu z logistycznym buforem odstępu (np. +15 min na dojazd), asystent zagwarantuje odpowiedni czas między kolejnymi sprawami.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Wariant Zaawansowany Dwuprofilowy (Ekspert) */}
+                <div className="mt-4 pt-4 border-t border-surface-100 relative rounded-xl border border-purple-200/80 bg-purple-50/30 p-3.5 sm:p-4 space-y-3 overflow-hidden">
+                  {!isPersonalExpert && (
+                    <div className="absolute inset-0 bg-white/85 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-4 text-center">
+                      <div className="p-2 bg-purple-100 text-purple-700 rounded-xl mb-2 shadow-2xs">
+                        <Lock className="w-5 h-5" />
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2.5 py-0.5 rounded-full border border-purple-200 mb-1">
+                        Pakiet Osobisty Ekspert
+                      </span>
+                      <h5 className="text-xs sm:text-sm font-bold text-surface-900 mb-1">
+                        Zaawansowane Rozróżnienie Typów Spotkań (Dwuprofilowe)
+                      </h5>
+                      <p className="text-[11px] text-surface-600 max-w-sm mb-2.5 leading-relaxed">
+                        Umożliwia asystentowi pytanie klienta o rodzaj sprawy (np. krótkie omówienie/oględziny 1h vs dłuższa realizacja/prace na cały dzień 8h) i rezerwację odpowiedniego czasu.
+                      </p>
+                      <Link
+                        to="/dashboard/subscription"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg shadow-sm transition"
+                      >
+                        Ulepsz do Pakietu Ekspert <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⚡</span>
+                      <div>
+                        <span className="text-xs font-bold text-surface-900 uppercase tracking-wider">
+                          Dwa profile zleceń (np. Krótkie omówienie vs Cały dzień roboczy)
+                        </span>
+                        <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-900 uppercase">
+                          Pakiet Ekspert
+                        </span>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        disabled={!isPersonalExpert}
+                        checked={personalSchedule.durationMode === 'dual'}
+                        onChange={e => setPersonalSchedule(prev => ({ ...prev, durationMode: e.target.checked ? 'dual' : 'single' }))}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-surface-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                      <span className="ml-2 text-xs font-medium text-surface-700">
+                        {personalSchedule.durationMode === 'dual' ? 'Włączone' : 'Wyłączone'}
+                      </span>
+                    </label>
+                  </div>
+
+                  <p className="text-[11px] text-surface-500">
+                    Gdy opcja jest włączona, asystent podczas rozmowy zapyta dzwoniącego, czy chodzi o krótsze spotkanie/omówienie, czy o pełną realizację, i zarezerwuje odpowiedni blok czasowy.
+                  </p>
+
+                  {personalSchedule.durationMode === 'dual' && isPersonalExpert && (
+                    <div className="grid sm:grid-cols-2 gap-3 pt-2">
+                      {/* Profil 1: Krótkie */}
+                      <div className="p-3 bg-white rounded-xl border border-purple-200 space-y-2">
+                        <label className="block text-xs font-bold text-purple-900">
+                          Profil 1: Krótsze spotkanie / omówienie
+                        </label>
+                        <input
+                          type="text"
+                          value={personalSchedule.dualShortLabel || 'Krótkie omówienie / Oględziny'}
+                          onChange={e => setPersonalSchedule(prev => ({ ...prev, dualShortLabel: e.target.value }))}
+                          placeholder="np. Krótkie omówienie / Oględziny / Konsultacja"
+                          className="w-full rounded-lg border border-surface-200 p-2 text-xs outline-none focus:border-purple-500"
+                        />
+                        <div>
+                          <label className="block text-[11px] text-surface-500 mb-1">Czas trwania:</label>
+                          <select
+                            value={personalSchedule.dualShortMinutes ?? 60}
+                            onChange={e => setPersonalSchedule(prev => ({ ...prev, dualShortMinutes: parseInt(e.target.value, 10) }))}
+                            className="w-full rounded-lg border border-surface-200 p-2 text-xs outline-none focus:border-purple-500 bg-white"
+                          >
+                            <option value={15}>15 minut</option>
+                            <option value={30}>30 minut</option>
+                            <option value={45}>45 minut</option>
+                            <option value={60}>1 godzina (60 min)</option>
+                            <option value={90}>1,5 godziny (90 min)</option>
+                            <option value={120}>2 godziny (120 min)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Profil 2: Dłuższe / Cały dzień */}
+                      <div className="p-3 bg-white rounded-xl border border-purple-200 space-y-2">
+                        <label className="block text-xs font-bold text-purple-900">
+                          Profil 2: Dłuższa realizacja / prace
+                        </label>
+                        <input
+                          type="text"
+                          value={personalSchedule.dualLongLabel || 'Dłuższa realizacja / Prace'}
+                          onChange={e => setPersonalSchedule(prev => ({ ...prev, dualLongLabel: e.target.value }))}
+                          placeholder="np. Dłuższa realizacja / Prace / Cały dzień"
+                          className="w-full rounded-lg border border-surface-200 p-2 text-xs outline-none focus:border-purple-500"
+                        />
+                        <div>
+                          <label className="block text-[11px] text-surface-500 mb-1">Czas trwania:</label>
+                          <select
+                            value={personalSchedule.dualLongMinutes ?? 480}
+                            onChange={e => setPersonalSchedule(prev => ({ ...prev, dualLongMinutes: parseInt(e.target.value, 10) }))}
+                            className="w-full rounded-lg border border-surface-200 p-2 text-xs outline-none focus:border-purple-500 bg-white"
+                          >
+                            <option value={120}>2 godziny</option>
+                            <option value={180}>3 godziny</option>
+                            <option value={240}>4 godziny (Pół dnia roboczego)</option>
+                            <option value={360}>6 godzin</option>
+                            <option value={480}>8 godzin (Cały dzień roboczy)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

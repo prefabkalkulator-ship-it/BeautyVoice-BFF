@@ -46,6 +46,7 @@ export interface GeminiClientCallbacks {
   leadQuestion1?: string;
   leadQuestion2?: string;
   leadQuestion3?: string;
+  isPersonalExpert?: boolean;
 }
 
 export class GeminiClient {
@@ -125,11 +126,12 @@ export class GeminiClient {
               qualificationPrompt: this.callbacks.qualificationPrompt,
               leadQuestion1: this.callbacks.leadQuestion1,
               leadQuestion2: this.callbacks.leadQuestion2,
-              leadQuestion3: this.callbacks.leadQuestion3
+              leadQuestion3: this.callbacks.leadQuestion3,
+              isPersonalExpert: this.callbacks.isPersonalExpert
             }) }]
         },
         tools: [{
-          functionDeclarations: BookingService.getToolDefinitions(bookingMode, true, callerRole, businessProfile)
+          functionDeclarations: BookingService.getToolDefinitions(bookingMode, true, callerRole, businessProfile, this.callbacks.personalSchedule)
         }],
         generationConfig: {
           responseModalities: ["AUDIO"],

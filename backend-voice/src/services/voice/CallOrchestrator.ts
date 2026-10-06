@@ -612,7 +612,8 @@ export class CallOrchestrator {
       qualificationPrompt: allowLeadQualification ? (tenant?.qualificationPrompt || undefined) : undefined,
       leadQuestion1: allowLeadQualification ? (tenant?.leadQuestion1 || undefined) : undefined,
       leadQuestion2: allowLeadQualification ? (tenant?.leadQuestion2 || undefined) : undefined,
-      leadQuestion3: allowLeadQualification ? (tenant?.leadQuestion3 || undefined) : undefined
+      leadQuestion3: allowLeadQualification ? (tenant?.leadQuestion3 || undefined) : undefined,
+      isPersonalExpert: isPersonalExpert
     });
 
     this.geminiClient.connect();

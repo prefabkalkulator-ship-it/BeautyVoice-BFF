@@ -93,9 +93,11 @@ export class BookingService {
     bookingMode: string = "hourly",
     isVoiceBot: boolean = false,
     callerRole: string = "GUEST",
-    businessProfile: string = "solo"
+    businessProfile: string = "solo",
+    personalSchedule?: any
   ) {
     if (businessProfile === 'personal') {
+      const isAutoBooking = (personalSchedule as any)?.bookingHandlingMode !== 'inquiry_only';
       if (callerRole === 'OWNER') {
         return [
           {
@@ -172,34 +174,36 @@ export class BookingService {
             required: ['pin']
           }
         },
-        {
-          name: 'checkAvailability',
-          description: 'Sprawdza wolne okna w kalendarzu na dany dzień z uwzględnieniem bufora czasowego i dyskrecji.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              date: { type: 'STRING', description: 'Data w formacie YYYY-MM-DD' },
-              durationMinutes: { type: 'INTEGER', description: 'Czas trwania spotkania w minutach (domyślnie 30)' },
-              serviceName: { type: 'STRING', description: 'Temat lub cel spotkania (opcjonalnie)' }
-            },
-            required: ['date']
+        ...(isAutoBooking ? [
+          {
+            name: 'checkAvailability',
+            description: 'Sprawdza wolne okna w kalendarzu na dany dzień z uwzględnieniem bufora czasowego i dyskrecji.',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                date: { type: 'STRING', description: 'Data w formacie YYYY-MM-DD' },
+                durationMinutes: { type: 'INTEGER', description: 'Czas trwania spotkania w minutach (domyślnie 60)' },
+                serviceName: { type: 'STRING', description: 'Temat lub cel spotkania (opcjonalnie)' }
+              },
+              required: ['date']
+            }
+          },
+          {
+            name: 'bookAppointment',
+            description: 'Rezerwuje termin spotkania w kalendarzu. Wywołaj WYŁĄCZNIE po uzyskaniu jednoznacznej zgody rozmówcy na konkretny termin! KATEGORYCZNY ZAKAZ wywoływania przy samym pytaniu o dostępność.',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                customerName: { type: 'STRING', description: 'Imię i nazwisko dzwoniącego' },
+                customerPhone: { type: 'STRING', description: 'Numer telefonu dzwoniącego' },
+                startTime: { type: 'STRING', description: 'Data i godzina rozpoczęcia w ISO z polską strefą czasową np. 2026-09-15T08:00:00+02:00' },
+                durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach' },
+                serviceName: { type: 'STRING', description: 'Temat spotkania lub konsultacji' }
+              },
+              required: ['customerName', 'customerPhone', 'startTime', 'durationMinutes']
+            }
           }
-        },
-        {
-          name: 'bookAppointment',
-          description: 'Rezerwuje termin spotkania w kalendarzu. Wywołaj WYŁĄCZNIE po uzyskaniu jednoznacznej zgody rozmówcy na konkretny termin! KATEGORYCZNY ZAKAZ wywoływania przy samym pytaniu o dostępność.',
-          parameters: {
-            type: 'OBJECT',
-            properties: {
-              customerName: { type: 'STRING', description: 'Imię i nazwisko dzwoniącego' },
-              customerPhone: { type: 'STRING', description: 'Numer telefonu dzwoniącego' },
-              startTime: { type: 'STRING', description: 'Data i godzina rozpoczęcia w ISO z polską strefą czasową np. 2026-09-15T08:00:00+02:00' },
-              durationMinutes: { type: 'INTEGER', description: 'Czas trwania w minutach' },
-              serviceName: { type: 'STRING', description: 'Temat spotkania lub konsultacji' }
-            },
-            required: ['customerName', 'customerPhone', 'startTime', 'durationMinutes']
-          }
-        },
+        ] : []),
         {
           name: 'save_call_message',
           description: 'Zapisuje wiadomość od dzwoniącego, generuje skrót i wysyła natychmiastowe powiadomienie Push do właściciela.',
