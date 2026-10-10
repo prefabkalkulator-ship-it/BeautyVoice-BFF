@@ -870,12 +870,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     }
 
     if (this.isWaitingForFarewellTurn) {
-      if (this.farewellAudioDurationMs > 500) {
-        console.log('📞 [EndCall] Gemini wygenerowało mowę pożegnalną w tej samej turze co toolCall.');
+      if (this.farewellAudioDurationMs > 300) {
+        console.log(`📞 [EndCall] Gemini wygenerowało mowę pożegnalną (${Math.round(this.farewellAudioDurationMs)}ms).`);
         this.isWaitingForFarewellTurn = false;
         this.shouldHangupAfterTurn = true;
       } else {
-        console.log('⏳ [EndCall] Wywołano endCall bez audio. Oczekuję na osobną turę z mową pożegnalną od Gemini...');
+        console.log('⏳ [EndCall] Wywołano endCall. Oczekuję na turę z mową pożegnalną od Gemini po przekazaniu odpowiedzi narzędzia...');
         this.isWaitingForFarewellTurn = false;
         this.shouldHangupAfterTurn = true;
         return;
@@ -1296,20 +1296,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         }
         case 'endCall':
           this.isTerminating = true;
-          const alreadySpokeFarewell = this.currentTurnAudioDurationMs > 500;
-          if (alreadySpokeFarewell) {
-            console.log(`📞 [EndCall] Audio (${Math.round(this.currentTurnAudioDurationMs)}ms) zostało już wygenerowane w bieżącej turze przed endCall. Uznaję pożegnanie za zakończone i blokuję powtórkę.`);
-            this.shouldHangupAfterTurn = true;
-            this.isWaitingForFarewellTurn = false;
-            this.farewellAudioDurationMs = this.currentTurnAudioDurationMs;
-            this.farewellStartTime = Date.now() - this.currentTurnAudioDurationMs;
-          } else {
-            console.log('⏳ [EndCall] Zainicjowano endCall bez wcześniejszego audio w tej turze. Oczekuję na osobną turę z mową pożegnalną od Gemini.');
-            this.isWaitingForFarewellTurn = true;
-            this.shouldHangupAfterTurn = false;
-            this.farewellAudioDurationMs = 0;
-            this.farewellStartTime = 0;
-          }
+          this.isWaitingForFarewellTurn = true;
+          this.shouldHangupAfterTurn = false;
+          this.farewellAudioDurationMs = 0;
+          this.farewellStartTime = 0;
+          console.log('⏳ [EndCall] Wywołano endCall. Oczekuję na osobną turę z mową pożegnalną od Gemini po przekazaniu odpowiedzi narzędzia.');
+
           if (args?.callSummary) {
             this.callSummaryFromAi = args.callSummary;
             console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
@@ -1317,10 +1309,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           if (args?.callerName) {
             this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
-          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (6 sekund)
+          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (8 sekund)
           if (!this.hangupTimeout) {
             this.hangupTimeout = setTimeout(() => {
-              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout 6s po wywołaniu endCall).');
+              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout 8s po wywołaniu endCall).');
               this.isTurnCanceled = true;
               this.isTerminatedAudio = true;
               try {
@@ -1333,14 +1325,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 this.silenceWatchdogInterval = null;
               }
               this.twilioWs.close();
-            }, 6000);
+            }, 8000);
           }
           return {
             status: "ok",
             success: true,
-            message: alreadySpokeFarewell
-              ? "Rozmowa zakończona w systemie. Pożegnanie zostało już wypowiedziane, zamilknij natychmiast, nic więcej nie mów."
-              : "Połączenie jest kończone w systemie. Pożegnaj się uprzejmie z rozmówcą dokładnie jednym krótkim, ciepłym zdaniem (np. 'Dziękuję bardzo za rozmowę, do usłyszenia, miłego dnia!'). Po pożegnaniu natychmiast zamilknij."
+            message: "Połączenie jest kończone w systemie. Pożegnaj się teraz uprzejmie z rozmówcą dokładnie jednym krótkim, ciepłym zdaniem (np. 'Dziękuję bardzo za rozmowę, do usłyszenia, życzę miłego dnia!'). Po wypowiedzeniu pożegnania zamilknij."
           };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
