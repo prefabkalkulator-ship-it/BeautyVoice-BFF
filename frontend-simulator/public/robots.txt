@@ -11,4 +11,4 @@ Allow: /*.png$
 Allow: /*.svg$
 
 Sitemap: https://ewa.veritas-app.com/sitemap.xml
-Sitemap: https://asystent-ewa.web.app/sitemap.xml
+Sitemap: https://asystent-ewa.web.app/sitemap-webapp.xml
