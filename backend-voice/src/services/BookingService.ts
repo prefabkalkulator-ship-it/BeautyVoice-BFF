@@ -287,7 +287,7 @@ export class BookingService {
         },
         {
           name: 'endCall',
-          description: 'Kończy połączenie i odkłada słuchawkę po pożegnaniu. ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy.',
+          description: 'Kończy połączenie i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub bezpośrednio po zapisaniu wiadomości/rezerwacji! Wolno wywołać to narzędzie WYŁĄCZNIE wtedy, gdy rozmówca wprost i jednoznacznie potwierdzi zakończenie rozmowy lub sam się pożegna (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie"). ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy.',
           parameters: {
             type: 'OBJECT',
             properties: {
@@ -496,7 +496,7 @@ export class BookingService {
       },
       {
         name: 'endCall',
-        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. Użyj tego narzędzia, gdy klient pożegna się, sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta.',
+        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub po zapisaniu rezerwacji/wiadomości! Użyj tego narzędzia WYŁĄCZNIE wtedy, gdy klient pożegna się (np. "to wszystko, dziękuję", "do widzenia"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -2165,7 +2165,10 @@ export class BookingService {
         }
       }
 
-      return { success: true, message: "Wiadomość została zapisana, przekazana właścicielowi w powiadomieniu oraz wpisana do kalendarza jako telefon do wykonania." };
+      return { 
+        success: true, 
+        message: "Wiadomość została pomyślnie zapisana i przekazana właścicielowi w powiadomieniu Push. Poinformuj rozmówcę o przyjęciu wiadomości i zapytaj uprzejmie: 'Czy mogę jeszcze w czymś pomóc, czy to już wszystko?'. KATEGORYCZNY ZAKAZ wywoływania 'endCall' w tej turze – zamilknij i poczekaj na odpowiedź rozmówcy!" 
+      };
     } catch (err: any) {
       console.error('[BookingService] Błąd w saveCallMessage:', err);
       return { error: err.message || "Błąd zapisu wiadomości." };

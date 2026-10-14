@@ -44,6 +44,8 @@ export class CallOrchestrator {
   private farewellStartTime: number = 0;
   private isWaitingForFarewellTurn: boolean = false;
   private currentTurnAudioDurationMs: number = 0;
+  private isAwaitingUserAfterAction: boolean = false;
+  private lastActionTimestamp: number = 0;
 
   // Call Duration Watchdog & Cost Protection
   private callDurationWarningSent: boolean = false;
@@ -845,6 +847,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
   }
 
   private handleGeminiInterrupted() {
+    if (this.isAwaitingUserAfterAction) {
+      console.log('🗣️ [CallOrchestrator] Rozmówca wszedł w słowo (interrupted). Zwalniam blokadę endCall.');
+      this.isAwaitingUserAfterAction = false;
+    }
     if (this.isTerminating) {
       console.log('🛡️ [CallOrchestrator] Zignorowano sygnał interrupted po zainicjowaniu endCall (isTerminating=true).');
       return;
@@ -1155,6 +1161,9 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             if (bookRes.appointment?.id) {
               this.bookedAppointments.push(bookRes.appointment.id);
             }
+            this.isAwaitingUserAfterAction = true;
+            this.lastActionTimestamp = Date.now();
+            console.log('📌 [CallOrchestrator] Zarezerwowano termin (bookAppointment). Włączam blokadę przedwczesnego endCall do momentu odpowiedzi rozmówcy.');
           }
           return bookRes;
         }
@@ -1183,6 +1192,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           const res = await bookingService.cancelAppointment(tenantId, targetPhone, targetId);
           if (res && (res.success || !res.error)) {
             this.isCancelledOutbound = true;
+            this.isAwaitingUserAfterAction = true;
+            this.lastActionTimestamp = Date.now();
             if (res.callLogId) this.confirmedCallLogId = res.callLogId;
             const summary = `[Odwołanie Telefon] Klient odwołał spotkanie/wizytę w rozmowie telefonicznej. Termin został zwolniony.`;
             this.callSummaryFromAi = summary;
@@ -1202,6 +1213,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           const res = await bookingService.rescheduleAppointment(tenantId, targetPhone, args.newStartTime, targetId, args.reason);
           if (res && (res.success || !res.error)) {
             this.isConfirmedOutbound = true;
+            this.isAwaitingUserAfterAction = true;
+            this.lastActionTimestamp = Date.now();
             if (res.callLogId) this.confirmedCallLogId = res.callLogId;
             const summary = `[Przełożenie Telefon] Klient przeniósł spotkanie na nowy termin: ${res.newStartTime || args.newStartTime}.${args.reason ? ` Powód: ${args.reason}` : ''}`;
             this.callSummaryFromAi = summary;
@@ -1238,6 +1251,9 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           const msgSummary = `[📝 Wiadomość] ${args.callerName || 'Rozmówca'}: ${args.rawMessage}`;
           this.callSummaryFromAi = msgSummary;
           this.callActionJournal.push(msgSummary);
+          this.isAwaitingUserAfterAction = true;
+          this.lastActionTimestamp = Date.now();
+          console.log('📌 [CallOrchestrator] Zapisano wiadomość (save_call_message). Włączam blokadę przedwczesnego endCall do momentu odpowiedzi rozmówcy.');
           return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, args.rawMessage, args.urgency, args.callbackRequested);
         }
         case 'block_calendar_time':
@@ -1295,12 +1311,29 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           }
         }
         case 'endCall':
+          if (this.isAwaitingUserAfterAction) {
+            console.warn('⛔ [EndCall BLOCKED] Gemini próbowało przedwcześnie wywołać endCall bezpośrednio po akcji biznesowej bez czekania na odpowiedź rozmówcy!');
+            return {
+              error: "ZABRONIONE PRZEDWCZESNE ZAKOŃCZENIE: Zadałeś pytanie 'Czy mogę jeszcze w czymś pomóc, czy to już wszystko?'. Rozmówca jeszcze NIE odpowiedział i nie pożegnał się! KATEGORYCZNY ZAKAZ kończenia rozmowy. Zamilknij i poczekaj na odpowiedź rozmówcy."
+            };
+          }
+
           this.isTerminating = true;
-          this.isWaitingForFarewellTurn = true;
-          this.shouldHangupAfterTurn = false;
-          this.farewellAudioDurationMs = 0;
-          this.farewellStartTime = 0;
-          console.log('⏳ [EndCall] Wywołano endCall. Oczekuję na osobną turę z mową pożegnalną od Gemini po przekazaniu odpowiedzi narzędzia.');
+          const hasTurnAudio = this.currentTurnAudioDurationMs > 300;
+
+          if (hasTurnAudio) {
+            console.log(`📞 [EndCall] Gemini wygenerowało naturalne pożegnanie (${Math.round(this.currentTurnAudioDurationMs)}ms) w tej samej turze przed/w trakcie endCall.`);
+            this.shouldHangupAfterTurn = true;
+            this.isWaitingForFarewellTurn = false;
+            this.farewellAudioDurationMs = this.currentTurnAudioDurationMs;
+            this.farewellStartTime = Date.now() - this.currentTurnAudioDurationMs;
+          } else {
+            console.log('⏳ [EndCall] endCall wywołano bez wcześniejszego audio w tej turze. Oczekuję na osobną turę z mową pożegnalną od Gemini.');
+            this.isWaitingForFarewellTurn = true;
+            this.shouldHangupAfterTurn = false;
+            this.farewellAudioDurationMs = 0;
+            this.farewellStartTime = 0;
+          }
 
           if (args?.callSummary) {
             this.callSummaryFromAi = args.callSummary;
@@ -1309,10 +1342,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           if (args?.callerName) {
             this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
-          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (8 sekund)
+          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (5 sekund)
           if (!this.hangupTimeout) {
             this.hangupTimeout = setTimeout(() => {
-              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout 8s po wywołaniu endCall).');
+              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout 5s po wywołaniu endCall).');
               this.isTurnCanceled = true;
               this.isTerminatedAudio = true;
               try {
@@ -1325,12 +1358,14 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 this.silenceWatchdogInterval = null;
               }
               this.twilioWs.close();
-            }, 8000);
+            }, 5000);
           }
           return {
             status: "ok",
             success: true,
-            message: "Połączenie jest kończone w systemie. Pożegnaj się teraz uprzejmie z rozmówcą dokładnie jednym krótkim, ciepłym zdaniem (np. 'Dziękuję bardzo za rozmowę, do usłyszenia, życzę miłego dnia!'). Po wypowiedzeniu pożegnania zamilknij."
+            message: hasTurnAudio
+              ? "Rozmowa zakończona w systemie. Pożegnanie zostało już wypowiedziane, zamilknij natychmiast, nic więcej nie mów."
+              : "Połączenie jest kończone w systemie. Pożegnaj się teraz uprzejmie z rozmówcą dokładnie jednym krótkim, ciepłym zdaniem (np. 'Dziękuję bardzo za rozmowę, do usłyszenia, życzę miłego dnia!'). Po wypowiedzeniu pożegnania zamilknij."
           };
         default:
           return { error: `Narzędzie ${functionCall.name} nie istnieje.` };
@@ -1353,6 +1388,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     await this.vadService.processAudio(float32Array, (speechProb) => {
       this.lastActivityTime = Date.now(); // Wykryto ludzką mowę (nie szum w tle!)
       isSpeechDetected = true;
+      if (this.isAwaitingUserAfterAction) {
+        console.log(`🗣️ [VAD] Wykryto mowę rozmówcy po akcji asystenta (prob: ${speechProb.toFixed(2)}). Zwalniam blokadę endCall.`);
+        this.isAwaitingUserAfterAction = false;
+      }
       if (this.agentSpeaking || this.isTurnStreaming || this.turnAudioQueue.length > 0) {
         console.log(`🗣️ [VAD Barge-in] Wykryto mowę użytkownika (prob: ${speechProb.toFixed(2)}) w trakcie wypowiedzi asystenta!`);
         this.executeBargeInMechanism();
