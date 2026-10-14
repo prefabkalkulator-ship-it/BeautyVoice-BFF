@@ -224,7 +224,7 @@ export class BookingService {
         },
         {
           name: 'getFAQ',
-          description: 'Pobiera odpowiedzi na pytania dotyczące działalności właściciela (baza wiedzy).',
+          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną.',
           parameters: { type: 'OBJECT', properties: {} }
         },
         {
@@ -434,7 +434,7 @@ export class BookingService {
       },
       {
         name: 'getFAQ',
-        description: 'Pobiera listę najczęściej zadawanych pytań (FAQ).',
+        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady.',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
@@ -887,24 +887,28 @@ export class BookingService {
       const result: { question: string, answer: string, category?: string | null }[] = [];
 
       // 0. Godziny pracy / otwarcia i informacje o firmie z profilu najemcy
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { personalSchedule: true, openingHours: true, name: true, ownerName: true, companyName: true, bioSummary: true }
-      });
-      const hoursText = formatTenantWorkingHours(tenant?.personalSchedule, tenant?.openingHours);
-      if (hoursText) {
-        result.push({
-          question: "W jakich godzinach Państwo pracują? / Jakie są godziny pracy lub otwarcia biura / firmy?",
-          answer: hoursText,
-          category: 'permanent'
+      try {
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { personalSchedule: true, name: true, ownerName: true, companyName: true, bioSummary: true }
         });
-      }
-      if (tenant?.bioSummary && tenant.bioSummary.trim()) {
-        result.push({
-          question: "Informacje o firmie / profil działalności / oferta",
-          answer: tenant.bioSummary.trim(),
-          category: 'permanent'
-        });
+        const hoursText = formatTenantWorkingHours(tenant?.personalSchedule);
+        if (hoursText) {
+          result.push({
+            question: "W jakich godzinach Państwo pracują? / Jakie są godziny pracy lub otwarcia biura / firmy?",
+            answer: hoursText,
+            category: 'permanent'
+          });
+        }
+        if (tenant?.bioSummary && tenant.bioSummary.trim()) {
+          result.push({
+            question: "Informacje o firmie / profil działalności / oferta",
+            answer: tenant.bioSummary.trim(),
+            category: 'permanent'
+          });
+        }
+      } catch (tenantErr) {
+        console.error('Błąd pobierania danych profilu najemcy w getFAQ:', tenantErr);
       }
 
       // 1. Sprawy bieżące (Eventy, promocje, urlopy, komunikaty tymczasowe) – NAJWYŻSZY PRIORYTET
@@ -924,6 +928,8 @@ export class BookingService {
           category: f.category || 'permanent'
         });
       });
+
+      console.log(`[BookingService] getFAQ: zwrócono ${result.length} wpisów (w tym z bazy FAQ: ${faqs.length}) dla tenanta ${tenantId}`);
 
       return result;
     } catch (error) {

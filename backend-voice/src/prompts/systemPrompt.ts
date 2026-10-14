@@ -37,7 +37,6 @@ export interface SystemPromptOptions {
   leadQuestion2?: string;
   leadQuestion3?: string;
   isPersonalExpert?: boolean;
-  openingHours?: any;
 }
 
 export function getPolishGenitive(name: string, gender: string = 'MALE'): string {
@@ -226,7 +225,7 @@ export function normalizePolishNameToNominative(fullName?: string): string {
   return normalizedParts.join(' ');
 }
 
-export function formatTenantWorkingHours(personalSchedule?: any, openingHours?: any): string | null {
+export function formatTenantWorkingHours(personalSchedule?: any): string | null {
   // 1. Profil personalny (personalSchedule.days: { '0': { workEnabled, workStart, workEnd }, ... })
   if (personalSchedule?.days && typeof personalSchedule.days === 'object') {
     const days = personalSchedule.days;
@@ -280,34 +279,6 @@ export function formatTenantWorkingHours(personalSchedule?: any, openingHours?: 
     }
   }
 
-  // 2. Profil salonowy / firmowy (openingHours: { monday: { start, end, isOpen }, ... })
-  if (openingHours && typeof openingHours === 'object') {
-    const dayMap: Record<string, string> = {
-      monday: 'poniedziałek',
-      tuesday: 'wtorek',
-      wednesday: 'środa',
-      thursday: 'czwartek',
-      friday: 'piątek',
-      saturday: 'sobota',
-      sunday: 'niedziela'
-    };
-    const workParts: string[] = [];
-    const closedParts: string[] = [];
-    for (const [enDay, plDay] of Object.entries(dayMap)) {
-      const val = (openingHours as any)[enDay];
-      if (val && (val.isOpen || val.enabled)) {
-        workParts.push(`${plDay}: ${val.start || '09:00'}–${val.end || '17:00'}`);
-      } else if (val) {
-        closedParts.push(plDay);
-      }
-    }
-    if (workParts.length > 0) {
-      let desc = `Godziny otwarcia: ${workParts.join(', ')}.`;
-      if (closedParts.length > 0) desc += ` Dni nieczynne: ${closedParts.join(', ')}.`;
-      return desc;
-    }
-  }
-
   return null;
 }
 
@@ -349,8 +320,7 @@ export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
     leadQuestion1 = "",
     leadQuestion2 = "",
     leadQuestion3 = "",
-    isPersonalExpert = false,
-    openingHours = null
+    isPersonalExpert = false
   } = options;
 
   const historySection = contextHistory ? `\n\n[HISTORIA KONTAKTU]\n${contextHistory}\n` : "";
@@ -640,7 +610,7 @@ ${complianceSafetyDirective}`;
     ? `\n# TRYB PROAKTYWNY (Aktywna Rekomendacja):\nJesteś w trybie proaktywnym. Zamiast kończyć wypowiedź powtarzalnym i biernym "W czym jeszcze mogę pomóc?", aktywnie przewiduj potrzeby rozmówcy. Na podstawie kontekstu rozmowy, bazy wiedzy, cennika lub grafiku zaproponuj 1-2 powiązane pytania lub usługi, np.: "Czy chcesz dowiedzieć się również o X?" albo "Mogę Ci również sprawdzić termin na Y - czy jesteś zainteresowany/zainteresowana?". Prowadź rozmowę do przodu, ale w nienachalny i naturalny sposób.\n`
     : "";
 
-  const workingHoursText = formatTenantWorkingHours(personalSchedule, openingHours);
+  const workingHoursText = formatTenantWorkingHours(personalSchedule);
   const workingHoursDirective = workingHoursText ? `
 # 🕒 GODZINY PRACY I DOSTĘPNOŚCI:
 Oficjalne godziny pracy / otwarcia i kontaktu z firmą:
@@ -878,7 +848,8 @@ ${historySection}
    - Jeśli kontakt VIP chce dłuższego spotkania (osobistego lub online): NAJPIERW wywołaj 'checkAvailability', wybierz wolny termin z listy i dopiero wtedy wywołaj 'bookAppointment' z contactLevel='MEETING', durationMinutes=${isDualDuration ? dualShortMinutes : singleDurationMinutes}.` : `- Jeśli kontakt VIP pyta o spotkanie lub rozmowę: powiedz uprzejmie, że ${ownerTitleNominative} ${ownerFirst} osobiście koordynuje swój kalendarz, zanotuj dogodne dla VIP-a terminy i wywołaj 'save_call_message' z urgency='HIGH', callbackRequested: true.`}
    - Jeśli sprawa dotyczy tylko prośby o działanie (np. podpisanie aneksu, odesłanie pliku): wywołaj narzędzie 'save_call_message' z urgency='HIGH'.
 3. **Wiedza o sprawach i ofercie (Narzędzie: getFAQ)**:
-   - Chętnie odpowiadaj na wszelkie pytania dotyczące projektów, oferty i ustaleń.
+   - Jeśli kontakt VIP pyta o ofertę, cennik, modele (np. domki letniskowe, narzędziowe, wiaty, konstrukcje), czas trwania montażu, parametry techniczne, procedury lub informacje merytoryczne, NATYCHMIAST wywołaj narzędzie 'getFAQ'.
+   - Udziel wyczerpującej, profesjonalnej odpowiedzi na podstawie bazy wiedzy. NIGDY nie zgaduj ani nie proponuj od razu pozostawienia wiadomości bez uprzedniego sprawdzenia odpowiedzi w 'getFAQ'!
 4. **Ochrona nocna (godziny nocne)**:
    Jeśli rozmowa toczy się w nocy, powiedz życzliwie: "${ownerTitleNominative} ${ownerFirst} już odpoczywa. Czy to pilna sprawa, w której mam natychmiast wysłać mu alert na telefon?". Jeśli tak, wywołaj 'save_call_message' z urgency='CRITICAL'.
 5. **Przełączanie aktywnego połączenia na żywo (Narzędzie: transferCallToOwner)**:
