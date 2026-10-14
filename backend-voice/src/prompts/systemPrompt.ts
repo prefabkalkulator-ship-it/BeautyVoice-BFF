@@ -225,6 +225,102 @@ export function normalizePolishNameToNominative(fullName?: string): string {
   return normalizedParts.join(' ');
 }
 
+export function getPolishVocative(fullName?: string, gender: 'MALE' | 'FEMALE' | 'UNKNOWN' = 'UNKNOWN'): string {
+  if (!fullName || typeof fullName !== 'string') return '';
+  const clean = fullName.replace(/[\(\)\[\]\{\}\<\>\"\'📞]/g, '').trim();
+  if (!clean) return '';
+  const firstName = clean.split(/\s+/)[0];
+  const lower = firstName.toLowerCase().replace(/[^a-ząćęłńóśźż]/g, '');
+
+  if (gender === 'FEMALE' || (gender === 'UNKNOWN' && detectPolishGender(clean) === 'FEMALE')) {
+    return `Pani ${firstName}`;
+  }
+
+  // Słownik poprawnych form wołacza dla najpopularniejszych imion męskich w Polsce
+  const specialMaleVocatives: Record<string, string> = {
+    'piotr': 'Piotrze',
+    'paweł': 'Pawle',
+    'michał': 'Michale',
+    'rafał': 'Rafale',
+    'jan': 'Janie',
+    'adam': 'Adamie',
+    'tomasz': 'Tomaszu',
+    'krzysztof': 'Krzysztofie',
+    'marek': 'Marku',
+    'łukasz': 'Łukaszu',
+    'marcin': 'Marcinie',
+    'kamil': 'Kamilu',
+    'jakub': 'Jakubie',
+    'kuba': 'Kubo',
+    'robert': 'Robercie',
+    'artur': 'Arturze',
+    'bartosz': 'Bartoszu',
+    'wojciech': 'Wojciechu',
+    'grzegorz': 'Grzegorzu',
+    'andrzej': 'Andrzeju',
+    'stanisław': 'Stanisławie',
+    'maciej': 'Macieju',
+    'aleksander': 'Aleksandrze',
+    'filip': 'Filipie',
+    'dawid': 'Dawidzie',
+    'kacper': 'Kacprze',
+    'szymon': 'Szymonie',
+    'patryk': 'Patryku',
+    'damian': 'Damianie',
+    'sebastian': 'Sebastianie',
+    'krystian': 'Krystianie',
+    'daniel': 'Danielu',
+    'dominik': 'Dominiku',
+    'przemysław': 'Przemysławie',
+    'jarosław': 'Jarosławie',
+    'radosław': 'Radosławie',
+    'mirosław': 'Mirosławie',
+    'zbigniew': 'Zbigniewie',
+    'bogdan': 'Bogdanie',
+    'leszek': 'Leszku',
+    'karol': 'Karolu',
+    'cezary': 'Cezary',
+    'igor': 'Igorze',
+    'hubert': 'Hubercie',
+    'norbert': 'Norbercie',
+    'borys': 'Borysie',
+    'witold': 'Witoldzie',
+    'kazimierz': 'Kazimierzu',
+    'henryk': 'Henryku',
+    'edward': 'Edwardzie',
+    'antoni': 'Antoni',
+    'ignacy': 'Ignacy',
+    'jerzy': 'Jerzy',
+    'mateusz': 'Mateuszu',
+    'tadeusz': 'Tadeuszu',
+    'dariusz': 'Dariuszu',
+    'mariusz': 'Mariuszu',
+    'arkadiusz': 'Arkadiuszu',
+    'jacek': 'Jacku',
+    'bartek': 'Bartku',
+    'wojtek': 'Wojtku',
+    'tomek': 'Tomku'
+  };
+
+  if (specialMaleVocatives[lower]) {
+    return `Panie ${specialMaleVocatives[lower]}`;
+  }
+
+  // Morfologiczne reguły bezpiecznego fallbacku
+  if (lower.endsWith('sław')) return `Panie ${firstName}ie`;
+  if (lower.endsWith('ał')) return `Panie ${firstName.slice(0, -1)}le`; // np. Ziemowitał -> Ziemowitale
+  if (lower.endsWith('eł')) return `Panie ${firstName.slice(0, -2)}le`; // Paweł -> Pawle
+  if (lower.endsWith('iek')) return `Panie ${firstName.slice(0, -3)}śku`; // Krzysiek -> Krzyśku
+  if (lower.endsWith('ek')) return `Panie ${firstName.slice(0, -2)}ku`; // Mirek -> Mirku
+  if (lower.endsWith('tr')) return `Panie ${firstName.slice(0, -2)}trze`;
+  if (lower.endsWith('sz') || lower.endsWith('rz') || lower.endsWith('cz') || lower.endsWith('ch')) return `Panie ${firstName}u`;
+  if (lower.endsWith('j')) return `Panie ${firstName}u`;
+  if (lower.endsWith('a')) return `Panie ${firstName.slice(0, -1)}o`; // Kuba -> Kubo, Kosma -> Kosmo
+  if (lower.endsWith('k')) return `Panie ${firstName}u`;
+
+  return `Panie ${firstName}`;
+}
+
 export function formatTenantWorkingHours(personalSchedule?: any): string | null {
   // 1. Profil personalny (personalSchedule.days: { '0': { workEnabled, workStart, workEnd }, ... })
   if (personalSchedule?.days && typeof personalSchedule.days === 'object') {

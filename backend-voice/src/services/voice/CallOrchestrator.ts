@@ -7,7 +7,7 @@ import { prisma } from '../../prisma';
 import { PushService } from '../PushService';
 
 import { BookingService } from '../BookingService';
-import { getPolishGenitive, detectPolishGender, normalizePolishNameToNominative } from '../../prompts/systemPrompt';
+import { getPolishGenitive, detectPolishGender, normalizePolishNameToNominative, getPolishVocative } from '../../prompts/systemPrompt';
 import { PersonalAssistantWorker } from '../../jobs/PersonalAssistantWorker';
 
 const bookingService = new BookingService();
@@ -90,6 +90,7 @@ export class CallOrchestrator {
   private ownerRequirePin: boolean = false;
   private isOwnerPinVerified: boolean = false;
   private ownerPinAttempts: number = 0;
+  private isOwnerLocked: boolean = false;
   private confidentialTopics: string[] = [];
   private isConfidentialUnlocked: boolean = false;
   private confidentialPinAttempts: number = 0;
@@ -468,8 +469,11 @@ export class CallOrchestrator {
         // Router identyfikacji dzwoniącego (Owner vs VIP vs Guest)
         const normCaller = this.callerPhone.replace(/[\s\-\+]/g, '');
         const normOwner = (tenant.phoneNumber || '').replace(/[\s\-\+]/g, '');
+        const callerLast9 = normCaller.length >= 9 ? normCaller.slice(-9) : normCaller;
+        const ownerLast9 = normOwner.length >= 9 ? normOwner.slice(-9) : normOwner;
+        const isOwnerMatch = Boolean(normCaller && normOwner && callerLast9.length === 9 && callerLast9 === ownerLast9);
 
-        if (normCaller && normOwner && (normCaller === normOwner || normCaller.endsWith(normOwner) || normOwner.endsWith(normCaller))) {
+        if (isOwnerMatch) {
           this.callerRole = 'OWNER';
           if (this.ownerRequirePin && tenant.pinCode) {
             this.isOwnerPinVerified = false;
@@ -773,24 +777,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 }
               } else if (this.isReturningCaller && this.returningCallerName && !this.returningCallerName.toLowerCase().includes('nieznan')) {
                 // POWRACAJĄCY ROZMÓWCA ZE ZNANĄ TOŻSAMOŚCIĄ (Krótkie powitanie po imieniu)
-                const firstName = this.returningCallerName.split(' ')[0];
-                let vocative = '';
-                if (this.returningCallerGender === 'FEMALE') {
-                  vocative = `Pani ${firstName}`;
-                } else {
-                  if (firstName.endsWith('ek')) vocative = `Panie ${firstName.slice(0, -2)}ku`;
-                  else if (firstName.endsWith('j')) vocative = `Panie ${firstName}u`;
-                  else if (firstName.endsWith('sz')) vocative = `Panie ${firstName}u`;
-                  else if (firstName.endsWith('ch')) vocative = `Panie ${firstName}u`;
-                  else if (firstName.endsWith('tr')) vocative = `Panie ${firstName.slice(0, -2)}trze`;
-                  else if (firstName.endsWith('ał') || firstName.endsWith('eł')) vocative = `Panie ${firstName.slice(0, -1)}e`;
-                  else if (firstName.endsWith('n')) vocative = `Panie ${firstName}ie`;
-                  else if (firstName.endsWith('k')) vocative = `Panie ${firstName}u`;
-                  else if (firstName.endsWith('b')) vocative = `Panie ${firstName}ie`;
-                  else if (firstName.endsWith('r')) vocative = `Panie ${firstName}ze`;
-                  else if (firstName.endsWith('ł')) vocative = `Panie ${firstName.slice(0, -1)}u`;
-                  else vocative = `Panie ${firstName}`;
-                }
+                const vocative = getPolishVocative(this.returningCallerName, this.returningCallerGender);
 
                 contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".`;
               } else {
@@ -995,6 +982,15 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         case 'getFAQ':
           return await bookingService.getFAQ(tenantId, this.isConfidentialUnlocked);
         case 'verify_owner_pin': {
+          if (this.isOwnerLocked) {
+            return {
+              success: false,
+              authorized: false,
+              locked: true,
+              attemptsRemaining: 0,
+              error: "Dostęp do funkcji zarządczych zablokowany z powodu zbyt wielu błędnych prób wprowadzenia kodu PIN."
+            };
+          }
           const result = await bookingService.verifyOwnerPin(tenantId, args.pin);
           if (result.success) {
             this.isOwnerPinVerified = true;
@@ -1008,12 +1004,13 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             this.ownerPinAttempts = (this.ownerPinAttempts || 0) + 1;
             console.warn(`❌ [CallOrchestrator] Błędny PIN Właściciela (${this.ownerPinAttempts}/3)`);
             if (this.ownerPinAttempts >= 3) {
-              this.callerRole = 'GUEST';
+              this.isOwnerLocked = true;
               return {
                 success: false,
                 authorized: false,
                 locked: true,
-                attemptsRemaining: 0
+                attemptsRemaining: 0,
+                error: "Przekroczono limit prób PIN. Dostęp do funkcji zarządczych zablokowany na czas tej rozmowy."
               };
             }
             return {
@@ -1248,13 +1245,13 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         case 'send_booking_sms_link':
           return await bookingService.sendBookingSmsLink(tenantId, this.callerPhone);
         case 'get_owner_activity_summary':
-          if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
-            return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
+          if (this.callerRole !== 'OWNER' || (this.ownerRequirePin && !this.isOwnerPinVerified) || this.isOwnerLocked) {
+            return { error: "Wymagana poprawna autoryzacja kodem PIN Właściciela. Dostęp do podsumowania aktywności jest zablokowany." };
           }
           return await bookingService.getOwnerActivitySummary(tenantId, args.timeRange);
         case 'send_summary_email':
-          if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
-            return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
+          if (this.callerRole !== 'OWNER' || (this.ownerRequirePin && !this.isOwnerPinVerified) || this.isOwnerLocked) {
+            return { error: "Wymagana poprawna autoryzacja kodem PIN Właściciela. Wysyłka raportu e-mail jest zablokowana." };
           }
           return await bookingService.sendSummaryEmail(tenantId, args.subject, args.contentMarkdown, args.timeRange);
         case 'save_call_message': {
@@ -1268,8 +1265,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, args.rawMessage, args.urgency, args.callbackRequested);
         }
         case 'block_calendar_time':
-          if (this.callerRole === 'OWNER' && this.ownerRequirePin && !this.isOwnerPinVerified) {
-            return { error: "Wymagana autoryzacja kodem PIN Właściciela. Poproś rozmówcę o podanie kodu PIN i użyj verify_owner_pin." };
+          if (this.callerRole !== 'OWNER' || (this.ownerRequirePin && !this.isOwnerPinVerified) || this.isOwnerLocked) {
+            return { error: "Wymagana poprawna autoryzacja kodem PIN Właściciela. Blokowanie czasu w kalendarzu jest zablokowane." };
           }
           return await bookingService.blockCalendarTime(tenantId, args.startTime, args.durationMinutes, args.title);
         case 'transferCallToOwner': {
