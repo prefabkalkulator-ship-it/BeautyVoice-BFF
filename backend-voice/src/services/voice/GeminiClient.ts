@@ -9,6 +9,7 @@ export interface GeminiClientCallbacks {
   onToolCall: (toolCall: any) => void;
   onInterrupted?: () => void;
   onTurnComplete?: () => void;
+  onVoiceActivity?: () => void;
   voiceName: string;
   businessProfile: string;
   bookingMode: string;
@@ -172,6 +173,10 @@ export class GeminiClient {
       if (response.serverContent?.interrupted) {
         console.log('⚡ [Gemini] Model zgłasza interrupted: true (Barge-in)!');
         this.callbacks.onInterrupted?.();
+      }
+
+      if (response.voiceActivity) {
+        this.callbacks.onVoiceActivity?.();
       }
 
       if (response.serverContent?.modelTurn) {

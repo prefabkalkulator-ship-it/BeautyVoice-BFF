@@ -579,6 +579,13 @@ export class CallOrchestrator {
       onToolCall: (toolCall) => this.orchestrateToolCallWithFiller(toolCall),
       onInterrupted: () => this.handleGeminiInterrupted(),
       onTurnComplete: () => this.handleGeminiTurnComplete(),
+      onVoiceActivity: () => {
+        this.lastActivityTime = Date.now();
+        if (this.isAwaitingUserAfterAction) {
+          console.log('🗣️ [VoiceActivity] Wykryto aktywność głosu rozmówcy z Gemini Live API. Zwalniam blokadę endCall.');
+          this.isAwaitingUserAfterAction = false;
+        }
+      },
       voiceName: this.voiceName,
       businessProfile: this.businessProfile,
       bookingMode: this.bookingMode,
@@ -861,6 +868,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
   private handleGeminiTurnComplete() {
     this.lastActivityTime = Date.now();
+    if (this.isAwaitingUserAfterAction) {
+      console.log('✅ [CallOrchestrator] Tura z pytaniem potwierdzającym asystenta została zakończona. Zwalniam blokadę endCall – oczekuję na odpowiedź rozmówcy.');
+      this.isAwaitingUserAfterAction = false;
+    }
     // Jeśli tura była krótsza niż 200ms (np. pojedyncze "Tak"), uwalniamy bufor
     if (!this.isTurnStreaming && this.turnAudioQueue.length > 0 && !this.isTurnCanceled) {
       this.flushTurnBufferToTwilio();
@@ -1311,12 +1322,22 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           }
         }
         case 'endCall':
-          if (this.isAwaitingUserAfterAction) {
-            console.warn('⛔ [EndCall BLOCKED] Gemini próbowało przedwcześnie wywołać endCall bezpośrednio po akcji biznesowej bez czekania na odpowiedź rozmówcy!');
+          // Blokada przedwczesnego zakończenia rozmowy:
+          // Aktywna tylko w trakcie tej samej tury lub natychmiast po wykonaniu akcji (< 5s),
+          // jeśli asystent nie zdążył jeszcze zadać pytania "Czy mogę jeszcze w czymś pomóc?".
+          const isRecentlyAfterAction = this.isAwaitingUserAfterAction && 
+            this.lastActionTimestamp && 
+            (Date.now() - this.lastActionTimestamp < 5000);
+
+          if (isRecentlyAfterAction) {
+            console.warn('⚠️ [EndCall BLOCKED] Gemini próbowało wywołać endCall natychmiast po akcji biznesowej (<5s) bez czekania na odpowiedź. Nakazuję zapytać rozmówcę.');
             return {
-              error: "ZABRONIONE PRZEDWCZESNE ZAKOŃCZENIE: Zadałeś pytanie 'Czy mogę jeszcze w czymś pomóc, czy to już wszystko?'. Rozmówca jeszcze NIE odpowiedział i nie pożegnał się! KATEGORYCZNY ZAKAZ kończenia rozmowy. Zamilknij i poczekaj na odpowiedź rozmówcy."
+              status: "waiting_for_user",
+              actionTaken: false,
+              message: "Akcja została zarejestrowana, ale połączenie trwa. Zapytaj teraz rozmówcę: 'Czy mogę jeszcze w czymś pomóc, czy to już wszystko?' i poczekaj na jego odpowiedź."
             };
           }
+          this.isAwaitingUserAfterAction = false;
 
           this.isTerminating = true;
           const hasTurnAudio = this.currentTurnAudioDurationMs > 300;
