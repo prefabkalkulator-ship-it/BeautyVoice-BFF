@@ -48,6 +48,7 @@ export interface GeminiClientCallbacks {
   leadQuestion2?: string;
   leadQuestion3?: string;
   isPersonalExpert?: boolean;
+  openingHours?: any;
 }
 
 export class GeminiClient {
@@ -128,7 +129,8 @@ export class GeminiClient {
               leadQuestion1: this.callbacks.leadQuestion1,
               leadQuestion2: this.callbacks.leadQuestion2,
               leadQuestion3: this.callbacks.leadQuestion3,
-              isPersonalExpert: this.callbacks.isPersonalExpert
+              isPersonalExpert: this.callbacks.isPersonalExpert,
+              openingHours: this.callbacks.openingHours
             }) }]
         },
         tools: [{

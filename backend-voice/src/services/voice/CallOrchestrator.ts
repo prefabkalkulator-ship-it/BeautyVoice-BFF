@@ -608,6 +608,7 @@ export class CallOrchestrator {
       assistantRole: this.assistantRole,
       formalityLevel: effectiveFormality,
       personalSchedule: tenant?.personalSchedule,
+      openingHours: tenant?.openingHours,
       callerPhone: this.callerPhone,
       proactiveMode: tenant?.proactiveMode ?? isDemoLine,
       isReturningCaller: this.isReturningCaller,

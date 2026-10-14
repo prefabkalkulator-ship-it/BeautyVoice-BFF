@@ -37,6 +37,7 @@ export interface SystemPromptOptions {
   leadQuestion2?: string;
   leadQuestion3?: string;
   isPersonalExpert?: boolean;
+  openingHours?: any;
 }
 
 export function getPolishGenitive(name: string, gender: string = 'MALE'): string {
@@ -225,6 +226,91 @@ export function normalizePolishNameToNominative(fullName?: string): string {
   return normalizedParts.join(' ');
 }
 
+export function formatTenantWorkingHours(personalSchedule?: any, openingHours?: any): string | null {
+  // 1. Profil personalny (personalSchedule.days: { '0': { workEnabled, workStart, workEnd }, ... })
+  if (personalSchedule?.days && typeof personalSchedule.days === 'object') {
+    const days = personalSchedule.days;
+    const plDayNames: Record<string, string> = {
+      '1': 'poniedziałek',
+      '2': 'wtorek',
+      '3': 'środa',
+      '4': 'czwartek',
+      '5': 'piątek',
+      '6': 'sobota',
+      '0': 'niedziela'
+    };
+
+    const m1 = days['1'];
+    const m2 = days['2'];
+    const m3 = days['3'];
+    const m4 = days['4'];
+    const m5 = days['5'];
+    const sat = days['6'];
+    const sun = days['0'];
+
+    const isMonFriStandard = m1?.workEnabled && m2?.workEnabled && m3?.workEnabled && m4?.workEnabled && m5?.workEnabled &&
+      m1.workStart === m2.workStart && m1.workStart === m3.workStart && m1.workStart === m4.workStart && m1.workStart === m5.workStart &&
+      m1.workEnd === m2.workEnd && m1.workEnd === m3.workEnd && m1.workEnd === m4.workEnd && m1.workEnd === m5.workEnd;
+
+    if (isMonFriStandard) {
+      const weekendClosed = !sat?.workEnabled && !sun?.workEnabled;
+      if (weekendClosed) {
+        return `Od poniedziałku do piątku w godzinach od ${m1.workStart} do ${m1.workEnd}. W weekendy (sobota i niedziela) biuro/firma jest nieczynna.`;
+      }
+    }
+
+    const workingDayParts: string[] = [];
+    const closedDayParts: string[] = [];
+    for (const d of ['1', '2', '3', '4', '5', '6', '0']) {
+      const conf = days[d];
+      const name = plDayNames[d];
+      if (conf?.workEnabled) {
+        workingDayParts.push(`${name}: ${conf.workStart || '08:00'}–${conf.workEnd || '16:00'}`);
+      } else {
+        closedDayParts.push(name);
+      }
+    }
+
+    if (workingDayParts.length > 0) {
+      let desc = `Godziny pracy: ${workingDayParts.join(', ')}.`;
+      if (closedDayParts.length > 0) {
+        desc += ` Dni wolne / nieczynne: ${closedDayParts.join(', ')}.`;
+      }
+      return desc;
+    }
+  }
+
+  // 2. Profil salonowy / firmowy (openingHours: { monday: { start, end, isOpen }, ... })
+  if (openingHours && typeof openingHours === 'object') {
+    const dayMap: Record<string, string> = {
+      monday: 'poniedziałek',
+      tuesday: 'wtorek',
+      wednesday: 'środa',
+      thursday: 'czwartek',
+      friday: 'piątek',
+      saturday: 'sobota',
+      sunday: 'niedziela'
+    };
+    const workParts: string[] = [];
+    const closedParts: string[] = [];
+    for (const [enDay, plDay] of Object.entries(dayMap)) {
+      const val = (openingHours as any)[enDay];
+      if (val && (val.isOpen || val.enabled)) {
+        workParts.push(`${plDay}: ${val.start || '09:00'}–${val.end || '17:00'}`);
+      } else if (val) {
+        closedParts.push(plDay);
+      }
+    }
+    if (workParts.length > 0) {
+      let desc = `Godziny otwarcia: ${workParts.join(', ')}.`;
+      if (closedParts.length > 0) desc += ` Dni nieczynne: ${closedParts.join(', ')}.`;
+      return desc;
+    }
+  }
+
+  return null;
+}
+
 export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
   const {
     tenantName = "naszej firmie",
@@ -263,7 +349,8 @@ export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
     leadQuestion1 = "",
     leadQuestion2 = "",
     leadQuestion3 = "",
-    isPersonalExpert = false
+    isPersonalExpert = false,
+    openingHours = null
   } = options;
 
   const historySection = contextHistory ? `\n\n[HISTORIA KONTAKTU]\n${contextHistory}\n` : "";
@@ -553,6 +640,16 @@ ${complianceSafetyDirective}`;
     ? `\n# TRYB PROAKTYWNY (Aktywna Rekomendacja):\nJesteś w trybie proaktywnym. Zamiast kończyć wypowiedź powtarzalnym i biernym "W czym jeszcze mogę pomóc?", aktywnie przewiduj potrzeby rozmówcy. Na podstawie kontekstu rozmowy, bazy wiedzy, cennika lub grafiku zaproponuj 1-2 powiązane pytania lub usługi, np.: "Czy chcesz dowiedzieć się również o X?" albo "Mogę Ci również sprawdzić termin na Y - czy jesteś zainteresowany/zainteresowana?". Prowadź rozmowę do przodu, ale w nienachalny i naturalny sposób.\n`
     : "";
 
+  const workingHoursText = formatTenantWorkingHours(personalSchedule, openingHours);
+  const workingHoursDirective = workingHoursText ? `
+# 🕒 GODZINY PRACY I DOSTĘPNOŚCI:
+Oficjalne godziny pracy / otwarcia i kontaktu z firmą:
+"${workingHoursText}".
+- KIEDY ROZMÓWCA PYTA O GODZINY PRACY LUB OTWARCIA (np. "W jakich godzinach pracujecie?", "Kiedy jesteście otwarci?", "Do której pracujecie?"):
+  Odpowiedz uprzejmie i wprost na podstawie powyższych danych: "${workingHoursText}".
+- KATEGORYCZNY ZAKAZ mówienia, że nie posiadasz informacji o godzinach pracy! Posiadasz pełną i sprawdzoną informację o godzinach pracy z profilu firmy.
+` : "";
+
   const confidentialShieldDirective = (confidentialTopics && confidentialTopics.length > 0) ? `
 # 🔒 TARCZA WIEDZY POUFNEJ (WYMÓG KODU PIN PRZED ODPOWIEDZIĄ):
 W Bazie Wiedzy znajdują się pytania oznaczone jako POUFNE. Dotyczą one następujących zagadnień:
@@ -756,7 +853,7 @@ ${voiceDirectionDirective}
       return `
 Jesteś ${botName}, dyskretnym i uprzejmym Osobistym Asystentem Głosowym.
 Reprezentujesz: ${ownerDisplayName}${professionText}.
-${bioText}${focusBlockText}${dynamicRolesDirective}${confidentialShieldDirective}${personalSmsGuardrailDirective}${voiceDirectionDirective}${conversationalReboundDirective}${complianceSafetyDirective}
+${bioText}${focusBlockText}${workingHoursDirective}${dynamicRolesDirective}${confidentialShieldDirective}${personalSmsGuardrailDirective}${voiceDirectionDirective}${conversationalReboundDirective}${complianceSafetyDirective}
 
 # Tożsamość Rozmówcy - STATUS VIP!
 Rozmawiasz ze specjalnym kontaktem z bazy VIP: ${vipName || 'Bliski kontakt'}${vipCategoryLabel}.${vipCustomRule}
@@ -798,7 +895,7 @@ ${historySection}
     return `
 Jesteś ${botName}, profesjonalnym, dyskretnym i kompetentnym Osobistym Asystentem Głosowym.
 Reprezentujesz: ${ownerDisplayName}${professionText}.
-${bioText}${focusBlockText}${dynamicRolesDirective}${confidentialShieldDirective}${territorialDirective}${qualificationDirective}${leadQuestionsDirective}${hybridBookingDirective}${personalSmsGuardrailDirective}${voiceDirectionDirective}${conversationalReboundDirective}${complianceSafetyDirective}
+${bioText}${focusBlockText}${workingHoursDirective}${dynamicRolesDirective}${confidentialShieldDirective}${territorialDirective}${qualificationDirective}${leadQuestionsDirective}${hybridBookingDirective}${personalSmsGuardrailDirective}${voiceDirectionDirective}${conversationalReboundDirective}${complianceSafetyDirective}
 
 # Aktualny Kontekst:
 Rozmawiasz z osobą dzwoniącą z zewnątrz na numer osobistego asystenta ${ownerDisplayName}.
@@ -1003,7 +1100,7 @@ ${isAutoBooking ? `7. **Rezerwacja spotkania / realizacji zlecenia (Narzędzia: 
 
   return `
 Jesteś ${hasCustomBotName ? `${botName} (Easy Voice Assistant), profesjonalny i uprzejmy ${botRole}` : `profesjonalnym i uprzejmym ${botRole}em`} reprezentującym firmę "${compName}" (${categoryDesc}). Twoim zadaniem jest profesjonalna obsługa klientów dzwoniących w celu uzyskania informacji oraz rezerwacji usług i terminów.
-${confidentialShieldDirective}${territorialDirective}${qualificationDirective}${leadQuestionsDirective}${hybridBookingDirective}
+${workingHoursDirective}${confidentialShieldDirective}${territorialDirective}${qualificationDirective}${leadQuestionsDirective}${hybridBookingDirective}
 # Aktualny Kontekst:
 Dzisiejsza data to: ${dateString}. Aktualna godzina: ${timeString} (czas polski, Warsaw).
 ${greetingRule}

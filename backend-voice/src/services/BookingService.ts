@@ -1,6 +1,6 @@
 import { SMSService } from './sms/SMSService';
 import { prisma } from '../prisma';
-import { normalizePolishNameToNominative } from '../prompts/systemPrompt';
+import { normalizePolishNameToNominative, formatTenantWorkingHours } from '../prompts/systemPrompt';
 
 export interface ServiceItem {
   id: string;
@@ -885,6 +885,27 @@ export class BookingService {
       const permanentInfo = faqs.filter(f => f.category !== 'current');
 
       const result: { question: string, answer: string, category?: string | null }[] = [];
+
+      // 0. Godziny pracy / otwarcia i informacje o firmie z profilu najemcy
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { personalSchedule: true, openingHours: true, name: true, ownerName: true, companyName: true, bioSummary: true }
+      });
+      const hoursText = formatTenantWorkingHours(tenant?.personalSchedule, tenant?.openingHours);
+      if (hoursText) {
+        result.push({
+          question: "W jakich godzinach Państwo pracują? / Jakie są godziny pracy lub otwarcia biura / firmy?",
+          answer: hoursText,
+          category: 'permanent'
+        });
+      }
+      if (tenant?.bioSummary && tenant.bioSummary.trim()) {
+        result.push({
+          question: "Informacje o firmie / profil działalności / oferta",
+          answer: tenant.bioSummary.trim(),
+          category: 'permanent'
+        });
+      }
 
       // 1. Sprawy bieżące (Eventy, promocje, urlopy, komunikaty tymczasowe) – NAJWYŻSZY PRIORYTET
       currentEvents.forEach(f => {
@@ -2167,7 +2188,7 @@ export class BookingService {
 
       return { 
         success: true, 
-        message: "Wiadomość została pomyślnie zapisana i przekazana właścicielowi w powiadomieniu Push. Poinformuj rozmówcę o przyjęciu wiadomości i zapytaj uprzejmie: 'Czy mogę jeszcze w czymś pomóc, czy to już wszystko?'. KATEGORYCZNY ZAKAZ wywoływania 'endCall' w tej turze – zamilknij i poczekaj na odpowiedź rozmówcy!" 
+        message: "Wiadomość została pomyślnie zapisana w systemie i przekazana. Powiedz uprzejmie rozmówcy: 'Zanotowałam wiadomość. Czy mogę jeszcze w czymś pomóc, czy to już wszystko?' i poczekaj na odpowiedź." 
       };
     } catch (err: any) {
       console.error('[BookingService] Błąd w saveCallMessage:', err);
