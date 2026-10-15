@@ -515,12 +515,15 @@ export function SuperAdminDashboard() {
                 <div>
                   <input 
                     type="password" 
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="current-password"
                     autoFocus
                     placeholder="••••" 
                     maxLength={10}
                     className="w-full bg-gray-950 border border-gray-700 text-white p-4 rounded-xl text-center text-3xl tracking-[0.4em] font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500 transition shadow-inner"
                     value={authPin}
-                    onChange={e => setAuthPin(e.target.value)}
+                    onChange={e => setAuthPin(e.target.value.replace(/\D/g, ''))}
                   />
                 </div>
                 <button 
@@ -946,8 +949,10 @@ export function SuperAdminDashboard() {
                           </label>
                           <input 
                             type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={pinInput}
-                            onChange={e => setPinInput(e.target.value)}
+                            onChange={e => setPinInput(e.target.value.replace(/\D/g, ''))}
                             className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm font-mono text-white focus:ring-2 focus:ring-amber-500"
                           />
                           {app.pinCode && pinInput === app.pinCode && (

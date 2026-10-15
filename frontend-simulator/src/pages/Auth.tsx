@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Phone, Building2, ArrowRight, Loader2, X, Lock, KeyRound, CheckCircle2, ArrowLeft, Sparkles } from 'lucide-react';
+import { Phone, Building2, ArrowRight, Loader2, X, Lock, KeyRound, CheckCircle2, ArrowLeft, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import evaLogo from '../assets/EVA_favicon_192.png';
 
@@ -14,11 +14,13 @@ export default function Auth() {
   const [salonName, setSalonName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [pinCode, setPinCode] = useState('');
+  const [showPin, setShowPin] = useState(false);
   
   // Stany dla resetowania PIN
   const [resetSmsCode, setResetSmsCode] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmNewPin, setConfirmNewPin] = useState('');
+  const [showNewPin, setShowNewPin] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -296,6 +298,8 @@ export default function Auth() {
                     </div>
                     <input
                       type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
                       required
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
@@ -338,10 +342,13 @@ export default function Auth() {
                     </div>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="one-time-code"
                       required
                       maxLength={6}
                       value={resetSmsCode}
-                      onChange={(e) => setResetSmsCode(e.target.value)}
+                      onChange={(e) => setResetSmsCode(e.target.value.replace(/\D/g, ''))}
                       className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors font-mono tracking-widest text-center text-lg bg-white/50 focus:bg-white"
                       placeholder="123456"
                     />
@@ -349,17 +356,31 @@ export default function Auth() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-surface-700">Nowy 4-cyfrowy kod PIN</label>
+                  <div className="flex justify-between items-center">
+                    <label className="block text-sm font-medium text-surface-700">Nowy 4-cyfrowy kod PIN</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPin(!showNewPin)}
+                      className="text-xs text-gold-600 hover:text-gold-700 font-medium transition-colors flex items-center gap-1"
+                      tabIndex={-1}
+                    >
+                      {showNewPin ? <><EyeOff className="w-3.5 h-3.5" /> Ukryj</> : <><Eye className="w-3.5 h-3.5" /> Pokaż</>}
+                    </button>
+                  </div>
                   <div className="mt-2 relative rounded-xl shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-surface-400">
                       <Lock className="h-5 w-5" />
                     </div>
                     <input
-                      type="password"
+                      type={showNewPin ? "text" : "password"}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="new-password"
+                      maxLength={8}
                       required
                       value={newPin}
-                      onChange={(e) => setNewPin(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-wider"
                       placeholder="Wpisz nowy PIN"
                     />
                   </div>
@@ -372,11 +393,15 @@ export default function Auth() {
                       <Lock className="h-5 w-5" />
                     </div>
                     <input
-                      type="password"
+                      type={showNewPin ? "text" : "password"}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="new-password"
+                      maxLength={8}
                       required
                       value={confirmNewPin}
-                      onChange={(e) => setConfirmNewPin(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                      onChange={(e) => setConfirmNewPin(e.target.value.replace(/\D/g, ''))}
+                      className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-wider"
                       placeholder="Powtórz nowy PIN"
                     />
                   </div>
@@ -436,6 +461,8 @@ export default function Auth() {
                   </div>
                   <input
                     type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                     required
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
@@ -470,13 +497,26 @@ export default function Auth() {
                     <Lock className="h-5 w-5" />
                   </div>
                   <input
-                    type="password"
+                    type={showPin ? "text" : "password"}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete={isLogin ? "current-password" : "new-password"}
+                    maxLength={8}
                     required
                     value={pinCode}
-                    onChange={(e) => setPinCode(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white"
+                    onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
+                    className="block w-full pl-10 pr-10 py-3 border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500/20 focus:border-gold-500 transition-colors bg-white/50 focus:bg-white font-mono tracking-wider"
                     placeholder={isLogin ? "Wpisz kod PIN" : "np. 1234"}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-surface-400 hover:text-surface-600 transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPin ? "Ukryj kod PIN" : "Pokaż kod PIN"}
+                  >
+                    {showPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
                 {!isLogin && (
                   <p className="text-[11px] text-surface-500 mt-1.5">

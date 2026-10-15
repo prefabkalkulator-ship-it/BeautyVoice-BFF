@@ -678,10 +678,13 @@ export default function Subscription() {
                       <Lock className="w-4 h-4 text-surface-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input 
                         type="password"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        autoComplete="current-password"
                         required
-                        maxLength={6}
+                        maxLength={8}
                         value={wipePin}
-                        onChange={e => setWipePin(e.target.value)}
+                        onChange={e => setWipePin(e.target.value.replace(/\D/g, ''))}
                         placeholder="••••"
                         className="w-full pl-10 pr-4 py-3 border-2 border-surface-200 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 text-sm font-mono tracking-widest transition"
                       />

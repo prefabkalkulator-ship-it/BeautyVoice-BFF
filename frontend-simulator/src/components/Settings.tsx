@@ -1536,6 +1536,8 @@ export default function Settings() {
                     </label>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       maxLength={8}
                       placeholder="7777"
                       value={pinCode}
@@ -1689,6 +1691,8 @@ export default function Settings() {
                 </label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   maxLength={8}
                   placeholder="7777"
                   value={confidentialPin}
