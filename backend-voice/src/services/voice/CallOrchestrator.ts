@@ -1343,11 +1343,11 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             (Date.now() - this.lastActionTimestamp < 5000);
 
           if (isRecentlyAfterAction) {
-            console.warn('⚠️ [EndCall BLOCKED] Gemini próbowało wywołać endCall natychmiast po akcji biznesowej (<5s) bez czekania na odpowiedź. Nakazuję zapytać rozmówcę.');
+            console.warn('⚠️ [EndCall BLOCKED] Gemini próbowało wywołać endCall natychmiast po akcji biznesowej (<5s) bez czekania na odpowiedź. Nakazuję poczekać na odpowiedź rozmówcy.');
             return {
               status: "waiting_for_user",
               actionTaken: false,
-              message: "Akcja została zarejestrowana, ale połączenie trwa. Zapytaj teraz rozmówcę: 'Czy mogę jeszcze w czymś pomóc, czy to już wszystko?' i poczekaj na jego odpowiedź."
+              message: "Akcja została zarejestrowana, ale połączenie trwa. Poczekaj na odpowiedź rozmówcy na zadane pytanie i nie powtarzaj go drugi raz."
             };
           }
           this.isAwaitingUserAfterAction = false;

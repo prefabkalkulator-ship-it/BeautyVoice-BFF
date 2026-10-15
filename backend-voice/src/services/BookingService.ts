@@ -2229,7 +2229,7 @@ export class BookingService {
 
       return { 
         success: true, 
-        message: "Wiadomość została pomyślnie zapisana w systemie i przekazana. Powiedz uprzejmie rozmówcy: 'Zanotowałam wiadomość. Czy mogę jeszcze w czymś pomóc, czy to już wszystko?' i poczekaj na odpowiedź." 
+        message: "Wiadomość została pomyślnie zapisana w systemie i przekazana właścicielowi." 
       };
     } catch (err: any) {
       console.error('[BookingService] Błąd w saveCallMessage:', err);

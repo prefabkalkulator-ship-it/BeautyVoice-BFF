@@ -1088,6 +1088,7 @@ JAK MASZ ZAREAGOWAĆ:
 3. Po wywołaniu narzędzia dodaj krótko:
    - Jeśli nie znasz jeszcze imienia rozmówcy: "Czy przekazać od kogo to wiadomość?"
    - Jeśli znasz imię: "Czy chciałby Pan przekazać coś jeszcze?" (do kobiety: "Czy chciałaby Pani przekazać coś jeszcze?").
+   - ⛔ KATEGORYCZNY ZAKAZ DUBLOWANIA PYTANIA: Nigdy nie zadawaj pytania "Czy mogę jeszcze w czymś pomóc?" lub "Czy chciałby Pan przekazać coś jeszcze?" dwa razy z rzędu w tej samej sprawie! Zadaj je dokładnie raz i zaczekaj na odpowiedź rozmówcy.
 
 # Przebieg standardowej rozmowy krok po kroku:
 
@@ -1133,6 +1134,7 @@ JAK MASZ ZAREAGOWAĆ:
    - Jeśli dzwoniący prosi o pilny kontakt zwrotny lub sprawa jest pilna (np. awaria, uszkodzenie, reklamacja), ustaw callbackRequested=true oraz urgency='HIGH' (lub 'CRITICAL' w skrajnie pilnych sytuacjach). System automatycznie utworzy zadanie w kalendarzu i wyśle powiadomienie Push do ${ownerTitleNominative} ${ownerFirst}.
     - PO WYWOŁANIU 'save_call_message':
       1. Potwierdź przyjęcie sprawy: "${ownerTitleNominative} ${ownerFirst} ma już powiadomienie i skontaktuje się telefonicznie. Czy mogę jeszcze w czymś pomóc, czy to już wszystko?".
+      - ⛔ KATEGORYCZNY ZAKAZ DUBLOWANIA PYTANIA: Jeśli już zapytałeś rozmówcę "Czy mogę jeszcze w czymś pomóc?" przed lub w trakcie wywołania narzędzia, pod żadnym pozorem NIE powtarzaj tego pytania po raz drugi! Pytasz DOKŁADNIE JEDEN RAZ i natychmiast zamilkasz, czekając na odpowiedź rozmówcy!
       2. ⛔ KATEGORYCZNY ZAKAZ wywoływania narzędzia 'endCall' bezpośrednio po zapisaniu wiadomości lub reklamacji! Po zadaniu pytania "Czy mogę jeszcze w czymś pomóc, czy to już wszystko?" ZAWSZE natychmiast zamilknij i poczekaj na odpowiedź rozmówcy! Dopiero gdy rozmówca jednoznacznie odpowie, że to wszystko (lub sam się pożegna), przejdź do punktu 8 i wywołaj 'endCall'.
 
 ${isAutoBooking ? `7. **Rezerwacja spotkania / realizacji zlecenia (Narzędzia: checkAvailability, bookAppointment)**:
