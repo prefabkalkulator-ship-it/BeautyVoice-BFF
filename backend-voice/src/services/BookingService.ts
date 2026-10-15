@@ -239,6 +239,11 @@ export class BookingService {
             required: ['customerPhone', 'reason']
           }
         },
+        {
+          name: 'send_booking_sms_link',
+          description: 'Wysyła SMS do dzwoniącego z bezpośrednim linkiem do internetowego grafiku rezerwacji (np. Booksy, ZnanyLekarz lub strona WWW), gdy rozmówca woli zarezerwować termin online lub prosi o link SMS podczas rozmowy.',
+          parameters: { type: 'OBJECT', properties: {} }
+        },
         ...(callerRole === 'VIP' ? [{
           name: 'transferCallToOwner',
           description: 'Wywołaj to narzędzie, jeśli dzwoni kontakt VIP/Rodzina z pilną sprawą i kategorycznie prosi o bezpośrednie połączenie z właścicielem.',
@@ -557,6 +562,77 @@ export class BookingService {
   }
 
   /**
+   * Pomocnicza metoda rezolucji usługi: obsługuje dopasowanie dokładne, wielojęzyczne słowa kluczowe,
+   * jednoosobowe gabinety (1 usługa fallback) oraz generuje czytelną listę dostępnych usług w razie braku dopasowania.
+   */
+  private async resolveService(
+    tenantId: string,
+    serviceName: string,
+    businessProfile?: string,
+    durationMinutes: number = 30
+  ) {
+    let service = await prisma.service.findFirst({
+      where: { tenantId, name: { contains: serviceName || '', mode: 'insensitive' } },
+      include: { staffMembers: { include: { staff: true } } }
+    });
+    if (service) return service;
+
+    const allServices = await prisma.service.findMany({
+      where: { tenantId },
+      include: { staffMembers: { include: { staff: true } } }
+    });
+
+    if (allServices.length === 0) {
+      if (businessProfile === 'personal') {
+        const newSvc = await prisma.service.create({
+          data: { tenantId, name: serviceName || 'Spotkanie / Konsultacja', price: 0, durationMinutes: durationMinutes || 30 }
+        });
+        return { ...newSvc, staffMembers: [] as any[] };
+      }
+      throw new Error(`W salonie nie ma jeszcze zdefiniowanych żadnych usług.`);
+    }
+
+    if (allServices.length === 1) {
+      return allServices[0];
+    }
+
+    const cleanReq = (serviceName || '').toLowerCase().trim();
+    const synonymMap: Record<string, string[]> = {
+      'haircut': ['strzyżenie', 'włosy', 'fryzjer'],
+      'hair': ['strzyżenie', 'włosy', 'fryzjer'],
+      'strzyzenie': ['strzyżenie'],
+      'beard': ['broda', 'brody'],
+      'shave': ['golenie', 'broda'],
+      'massage': ['masaż', 'masaz'],
+      'nails': ['manicure', 'paznokcie'],
+      'pedicure': ['pedicure'],
+      'manicure': ['manicure'],
+      'facial': ['twarz', 'oczyszczanie'],
+      'color': ['koloryzacja', 'farbowanie'],
+      'dye': ['koloryzacja', 'farbowanie'],
+      'consultation': ['konsultacja', 'spotkanie'],
+      'appointment': ['spotkanie', 'konsultacja'],
+      'meeting': ['spotkanie', 'konsultacja']
+    };
+
+    for (const [foreignTerm, plKeywords] of Object.entries(synonymMap)) {
+      if (cleanReq.includes(foreignTerm)) {
+        for (const kw of plKeywords) {
+          const match = allServices.find(s => s.name.toLowerCase().includes(kw));
+          if (match) return match;
+        }
+      }
+    }
+
+    if (businessProfile === 'personal') {
+      return allServices[0];
+    }
+
+    const availableNames = allServices.map(s => `"${s.name}"`).join(', ');
+    throw new Error(`Usługa o nazwie "${serviceName}" nie została znaleziona. Dostępne usługi w systemie: ${availableNames}. Użyj dokładnej polskiej nazwy z tej listy.`);
+  }
+
+  /**
    * 2. Sprawdza wolne terminy w bazie danych na podstawie bookingMode
    */
   public async checkAvailability(
@@ -579,27 +655,7 @@ export class BookingService {
       const bufferMinutes = tenant?.bufferMinutes || 0;
       const bufferMs = bufferMinutes * 60000;
       
-      let service = await prisma.service.findFirst({
-        where: { tenantId, name: { contains: serviceName || '', mode: 'insensitive' } },
-        include: { staffMembers: { include: { staff: true } } }
-      });
-
-      if (!service) {
-        if (tenant?.businessProfile === 'personal') {
-          service = await prisma.service.findFirst({
-            where: { tenantId },
-            include: { staffMembers: { include: { staff: true } } }
-          });
-          if (!service) {
-            const newSvc = await prisma.service.create({
-              data: { tenantId, name: serviceName || 'Spotkanie', price: 0, durationMinutes: durationMinutes || 30 }
-            });
-            service = { ...newSvc, staffMembers: [] };
-          }
-        } else {
-          throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
-        }
-      }
+      const service = await this.resolveService(tenantId, serviceName, tenant?.businessProfile, durationMinutes);
 
       const effectiveDuration = Number(durationMinutes) > 0 ? Number(durationMinutes) : (service?.durationMinutes || 30);
 
@@ -1461,28 +1517,8 @@ export class BookingService {
         endDate = new Date(startDate.getTime() + durationMinutes * 60000);
       }
 
-      let service = await prisma.service.findFirst({
-        where: { tenantId, name: { contains: serviceName || '', mode: 'insensitive' } },
-        include: { staffMembers: { include: { staff: true } } }
-      });
-
-      if (!service) {
-        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-        if (tenant?.businessProfile === 'personal') {
-          service = await prisma.service.findFirst({
-            where: { tenantId },
-            include: { staffMembers: { include: { staff: true } } }
-          });
-          if (!service) {
-            const newSvc = await prisma.service.create({
-              data: { tenantId, name: serviceName || 'Spotkanie / Konsultacja', price: 0, durationMinutes: durationMinutes || 30 }
-            });
-            service = { ...newSvc, staffMembers: [] };
-          }
-        } else {
-          throw new Error(`Usługa o nazwie ${serviceName} nie została znaleziona.`);
-        }
-      }
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      const service = await this.resolveService(tenantId, serviceName, tenant?.businessProfile, durationMinutes);
 
       const existingAppointment = await prisma.appointment.findFirst({
         where: { 
@@ -1503,7 +1539,6 @@ export class BookingService {
       let targetStaffIds: string[] = [];
       const staffList = service.staffMembers.map(sm => sm.staff).filter(s => s.isActive);
       
-      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
       const isTeam = tenant?.businessProfile === 'team' || tenant?.businessProfile === 'facility';
 
       if (preferredStaffName) {

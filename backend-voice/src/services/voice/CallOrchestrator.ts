@@ -34,6 +34,7 @@ export class CallOrchestrator {
 
   // Inactivity / Silence Watchdog (30s) & EndCall state
   private lastActivityTime: number = Date.now();
+  private silencePromptSent: boolean = false;
   private silenceWatchdogInterval: NodeJS.Timeout | null = null;
   private readonly SILENCE_TIMEOUT_MS: number = 30000; // 30 sekund ciszy / szumu w tle
   private shouldHangupAfterTurn: boolean = false;
@@ -394,6 +395,16 @@ export class CallOrchestrator {
   private checkSilenceTimeout() {
     const now = Date.now();
     const silentDuration = now - this.lastActivityTime;
+
+    // Po 12 sekundach ciszy (gdy asystent nie mówi i nie kończy rozmowy) - jednorazowe podtrzymanie kontaktu:
+    if (silentDuration >= 12000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
+      this.silencePromptSent = true;
+      console.log('⏱️ [Silence Watchdog] Minęło 12s ciszy. Asystent wysyła pytanie sprawdzające łączność.');
+      if (this.geminiClient && this.geminiClient.isLive()) {
+        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy, a rozmówca nic nie mówi. Zapytaj krótko i ciepło: 'Halo, czy mnie słychać? W czym mogę dzisiaj pomóc?'.]");
+      }
+    }
+
     if (silentDuration >= this.SILENCE_TIMEOUT_MS) {
       console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy/szumu w tle. Automatyczne odłożenie słuchawki.`);
       if (this.silenceWatchdogInterval) {
@@ -770,10 +781,13 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                   ? this.vipContact.formalityLevel
                   : this.defaultFormalityLevel;
 
+                const vipGender = detectPolishGender(this.vipContact.contactName);
                 if (vipFormality === 'direct_ty') {
-                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się na "Ty". Przywitaj się ciepło po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałbyś/chciałabyś zostawić wiadomość, czy umówić termin rozmowy?".`;
+                  const wouldLikeDirect = vipGender === 'FEMALE' ? 'chciałabyś' : 'chciałbyś';
+                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się na "Ty". Przywitaj się ciepło po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy ${wouldLikeDirect} zostawić wiadomość, czy umówić termin rozmowy?".`;
                 } else {
-                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się serdecznie: "${timeGreeting}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy chciałby Pan / chciałaby Pani zostawić wiadomość, czy umówić termin rozmowy?".`;
+                  const wouldLikeFormal = vipGender === 'FEMALE' ? 'chciałaby Pani' : 'chciałby Pan';
+                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się serdecznie: "${timeGreeting}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy ${wouldLikeFormal} zostawić wiadomość, czy umówić termin rozmowy?".`;
                 }
               } else if (this.isReturningCaller && this.returningCallerName && !this.returningCallerName.toLowerCase().includes('nieznan')) {
                 // POWRACAJĄCY ROZMÓWCA ZE ZNANĄ TOŻSAMOŚCIĄ (Krótkie powitanie po imieniu)
@@ -1320,9 +1334,11 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         }
         case 'endCall':
           // Blokada przedwczesnego zakończenia rozmowy:
-          // Aktywna tylko w trakcie tej samej tury lub natychmiast po wykonaniu akcji (< 5s),
+          // Aktywna tylko w połączeniach przychodzących w trakcie tej samej tury lub natychmiast po wykonaniu akcji (< 5s),
           // jeśli asystent nie zdążył jeszcze zadać pytania "Czy mogę jeszcze w czymś pomóc?".
-          const isRecentlyAfterAction = this.isAwaitingUserAfterAction && 
+          // W połączeniach wychodzących (outbound) asystent dzwoni w jednym celu i może natychmiast zakończyć połączenie.
+          const isRecentlyAfterAction = !this.outboundTaskId &&
+            this.isAwaitingUserAfterAction && 
             this.lastActionTimestamp && 
             (Date.now() - this.lastActionTimestamp < 5000);
 
@@ -1405,6 +1421,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     let isSpeechDetected = false;
     await this.vadService.processAudio(float32Array, (speechProb) => {
       this.lastActivityTime = Date.now(); // Wykryto ludzką mowę (nie szum w tle!)
+      this.silencePromptSent = false;
       isSpeechDetected = true;
       if (this.isAwaitingUserAfterAction) {
         console.log(`🗣️ [VAD] Wykryto mowę rozmówcy po akcji asystenta (prob: ${speechProb.toFixed(2)}). Zwalniam blokadę endCall.`);
