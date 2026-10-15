@@ -757,7 +757,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                }
             } else if ((this.tenantName === 'DEMO' || this.businessProfile === 'demo') && this.geminiClient) {
               // LINIA TESTOWA DEMO (EVA Brand Ambassador)
-              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}, witamy na linii testowej platformy EasyVoiceAssistant, w skrócie EVA. Twój przyszły asystent głosowy. O czym chciałbyś porozmawiać – o tym, jak działam, czy wolisz poznać ceny naszych pakietów?". Mów ze świeżą energią, rześkim, uśmiechniętym głosem i nienaganną, wyraźną dykcją w pewnym, żwawym tempie (kategoryczny zakaz mówienia sennie czy powoli!). Domyślnym językiem rozmowy jest język polski (akcent rozmówcy to nie język obcy!). Kategoryczny zakaz samowolnego przełączania na język obcy przy niewyraźnej mowie lub wschodnim akcencie – na inny język przełącz się wyłącznie na wyraźną prośbę rozmówcy (wtedy całą dalszą rozmowę prowadź czysto w tym wybranym języku).`;
+              contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}, witamy na linii testowej platformy EasyVoiceAssistant, w skrócie EVA. Twój przyszły asystent głosowy. O czym chciałbyś porozmawiać – o tym, jak działam, czy wolisz poznać ceny naszych pakietów?". Mów ze świeżą energią, rześkim, uśmiechniętym głosem i nienaganną, wyraźną dykcją w pewnym, żwawym tempie (kategoryczny zakaz mówienia sennie czy powoli!). Domyślnym językiem rozmowy jest język polski (akcent rozmówcy to nie język obcy!). Gdy rozmówca mówi w obcym języku, zastosuj Bramkę Weryfikacyjną (zapytaj w tym języku i poczekaj na odpowiedź). Kategoryczny zakaz makaronizmów – po zatwierdzeniu przełączenia mów w 100% czysto w danym języku.`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
               const isMale = ['Puck', 'Charon'].includes(this.voiceName);
@@ -834,7 +834,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               }
             }
 
-            const languageLock = ` Domyślnym językiem rozmowy jest język polski (akcent rozmówcy to nie język obcy!). Kategoryczny zakaz samowolnego przełączania na język obcy przy niewyraźnej mowie lub akcencie – na inny język przełącz się wyłącznie na wyraźną prośbę rozmówcy (wtedy całą dalszą rozmowę prowadź czysto w tym wybranym języku).`;
+            const languageLock = ` Domyślnym językiem rozmowy jest język polski (akcent rozmówcy to nie język obcy!). Kategoryczny zakaz samowolnego przełączania na język obcy! Jeśli rozmówca mówi w obcym języku (np. ukraińskim lub angielskim), najpierw zapytaj go w tym języku, czy chciałby rozmawiać w tym języku (np. po ukraińsku: "Доброго дня! Чи хотіли б ви розмовляти українською?") i zamilknij, czekając na odpowiedź. Jeśli potwierdzi – przełącz się na ten język bez makaronizmów. Jeśli odmówi – bezwzględnie zostań w języku polskim. Jeśli wybierze inny język – przełącz się na ten wskazany.`;
             if (contextText && !contextText.includes('językiem rozmowy jest język polski')) {
               contextText += languageLock;
             }

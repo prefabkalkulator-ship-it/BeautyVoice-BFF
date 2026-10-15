@@ -224,7 +224,7 @@ export class BookingService {
         },
         {
           name: 'getFAQ',
-          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną.',
+          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. Uwaga: baza wiedzy jest w języku polskim. Jeśli prowadzisz rozmowę w języku obcym, przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
           parameters: { type: 'OBJECT', properties: {} }
         },
         {
@@ -439,7 +439,7 @@ export class BookingService {
       },
       {
         name: 'getFAQ',
-        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady.',
+        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. Uwaga: baza wiedzy jest w języku polskim. Jeśli prowadzisz rozmowę w języku obcym, przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
