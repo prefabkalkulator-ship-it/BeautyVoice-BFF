@@ -162,42 +162,63 @@ export class VoiceOutboundService {
 
       const repPhone = tenant.phoneNumber; // Numer komórkowy właściciela / handlowca
       const host = process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app';
-      const callerIdToPresent = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48459568507';
-
-      const twiml = `
-        <Response>
-          <Start>
-            <Stream url="wss://${host}/api/copilot-voice" track="both_tracks">
-              <Parameter name="copilotSessionId" value="${sessionId}" />
-              <Parameter name="tenantId" value="${tenantId}" />
-              <Parameter name="customerPhone" value="${customerPhone}" />
-            </Stream>
-          </Start>
-          <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
-          <Dial callerId="${callerIdToPresent}" timeout="35">
-            <Number>${customerPhone}</Number>
-          </Dial>
-        </Response>
-      `;
+      const preferredFrom = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48343433088';
 
       const client = twilio(this.twilioSid, this.twilioToken);
       const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
-      let from = callerIdToPresent.startsWith('+') ? callerIdToPresent : '+' + callerIdToPresent;
 
-      // Zabezpieczenie przed from === to
-      if (from === to) {
-        from = '+48343433088';
+      // Lista zweryfikowanych numerów nadawcy w Twilio w kolejności preferencji
+      const candidateFromNumbers = [
+        preferredFrom,
+        '+48343433088', // oficjalny zweryfikowany numer demo / platformy
+        '+48533989987', // alternatywny zweryfikowany numer
+        process.env.TWILIO_CALLER_ID
+      ].filter((n): n is string => Boolean(n));
+
+      // Normalizacja i wykluczenie numeru to (from === to jest blokowane przez operatorów)
+      const uniqueFromCandidates = Array.from(
+        new Set(candidateFromNumbers.map(n => n.startsWith('+') ? n : '+' + n))
+      ).filter(n => n !== to);
+
+      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Rep (${to}), dostępne zweryfikowane numery CallerID:`, uniqueFromCandidates);
+
+      let call;
+      let lastError = '';
+
+      for (const candidateFrom of uniqueFromCandidates) {
+        try {
+          const twiml = `
+            <Response>
+              <Start>
+                <Stream url="wss://${host}/api/copilot-voice" track="both_tracks">
+                  <Parameter name="copilotSessionId" value="${sessionId}" />
+                  <Parameter name="tenantId" value="${tenantId}" />
+                  <Parameter name="customerPhone" value="${customerPhone}" />
+                </Stream>
+              </Start>
+              <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
+              <Dial callerId="${candidateFrom}" timeout="35">
+                <Number>${customerPhone}</Number>
+              </Dial>
+            </Response>
+          `;
+
+          call = await client.calls.create({
+            twiml,
+            to,
+            from: candidateFrom
+          });
+
+          console.log(`[VoiceOutbound] Copilot Call Bridge utworzony pomyślnie z CallerID: ${candidateFrom}. SID: ${call.sid}`);
+          return { success: true, callSid: call.sid };
+        } catch (err: any) {
+          lastError = err.message;
+          console.warn(`[VoiceOutbound] Próba 2-Leg Bridge z CallerID ${candidateFrom} nie powiodła się: ${err.message}. Próbuję kolejnego numeru...`);
+        }
       }
 
-      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Rep (${to}), prezentowany CallerID (${from})`);
-      const call = await client.calls.create({
-        twiml,
-        to,
-        from
-      });
-
-      console.log(`[VoiceOutbound] Copilot Call Bridge utworzony pomyślnie. SID: ${call.sid}`);
-      return { success: true, callSid: call.sid };
+      console.error(`[VoiceOutbound] Wszystkie próby 2-Leg Copilot Bridge nie powiodły się. Ostatni błąd: ${lastError}`);
+      return { success: false, error: lastError };
     } catch (err: any) {
       console.error('[VoiceOutbound] Błąd 2-Leg Copilot Bridge:', err.message);
       return { success: false, error: err.message };

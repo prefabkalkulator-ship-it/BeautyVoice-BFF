@@ -206,12 +206,12 @@ export class BookingService {
         ] : []),
         {
           name: 'save_call_message',
-          description: 'Zapisuje wiadomość od dzwoniącego, generuje skrót i wysyła natychmiastowe powiadomienie Push do właściciela.',
+          description: 'Zapisuje wiadomość od dzwoniącego, generuje skrót i wysyła natychmiastowe powiadomienie Push do właściciela. ZASADA JĘZYKOWA: Parametry rawMessage i callerName MUSZĄ być zapisane w języku rozmowy. Jeśli rozmowa toczy się po polsku (połączenie z polskiego numeru), treść wiadomości MUSI być w 100% po polsku! Kategoryczny zakaz zapisywania treści w języku rumuńskim czy innym obcym, gdy klient mówi po polsku.',
           parameters: {
             type: 'OBJECT',
             properties: {
-              callerName: { type: 'STRING', description: 'Imię i nazwisko osoby zostawiającej wiadomość' },
-              rawMessage: { type: 'STRING', description: 'Dokładna treść przekazanej wiadomości lub prośby' },
+              callerName: { type: 'STRING', description: 'Imię i nazwisko osoby zostawiającej wiadomość (zapisane w języku polskim / mianowniku)' },
+              rawMessage: { type: 'STRING', description: 'Dokładna treść przekazanej wiadomości lub prośby (w 100% w języku polskim, jeśli rozmowa toczy się po polsku)' },
               urgency: {
                 type: 'STRING',
                 description: 'Poziom pilności sprawy',
@@ -224,7 +224,7 @@ export class BookingService {
         },
         {
           name: 'getFAQ',
-          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. Uwaga: baza wiedzy jest w języku polskim. Jeśli prowadzisz rozmowę w języku obcym, przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
+          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca formalnie potwierdzi zmianę języka w Bramce Weryfikacyjnej, przetłumacz odpowiedzi na ten potwierdzony język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
           parameters: { type: 'OBJECT', properties: {} }
         },
         {
@@ -292,13 +292,13 @@ export class BookingService {
         },
         {
           name: 'endCall',
-          description: 'Kończy połączenie i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub bezpośrednio po zapisaniu wiadomości/rezerwacji! Wolno wywołać to narzędzie WYŁĄCZNIE wtedy, gdy rozmówca wprost i jednoznacznie potwierdzi zakończenie rozmowy lub sam się pożegna (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie"). ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy.',
+          description: 'Kończy połączenie i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub bezpośrednio po zapisaniu wiadomości/rezerwacji! Wolno wywołać to narzędzie WYŁĄCZNIE wtedy, gdy rozmówca wprost i jednoznacznie potwierdzi zakończenie rozmowy lub sam się pożegna (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie"). ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy. ZASADA JĘZYKOWA: Parametr callSummary MUSI być bezwzględnie w języku polskim, aby właściciel mógł natychmiast przeczytać notatkę ze sprawy!',
           parameters: {
             type: 'OBJECT',
             properties: {
               callSummary: {
                 type: 'STRING',
-                description: 'Szczegółowe podsumowanie z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[📅 Rezerwacja] Spotkanie w sprawie MDM 74 na wtorek 11:00. Dodatkowo pytał o: pompę ciepła i terminy. Nastrój i zachowanie: poddenerwowany, używał wulgaryzmów, po wyjaśnieniach spokojniejszy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
+                description: 'Szczegółowe podsumowanie W JĘZYKU POLSKIM z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[💼 Oferta/Doradztwo] Klient prosi o modyfikację oferty: usunięcie płyty fundamentowej i wentylacji. Właściciel oddzwoni. Nastrój: spokojny.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
               },
               callerName: {
                 type: 'STRING',
@@ -439,7 +439,7 @@ export class BookingService {
       },
       {
         name: 'getFAQ',
-        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. Uwaga: baza wiedzy jest w języku polskim. Jeśli prowadzisz rozmowę w języku obcym, przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
+        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca formalnie potwierdzi zmianę języka w Bramce Weryfikacyjnej, przetłumacz odpowiedzi na ten potwierdzony język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
@@ -501,13 +501,13 @@ export class BookingService {
       },
       {
         name: 'endCall',
-        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub po zapisaniu rezerwacji/wiadomości! Użyj tego narzędzia WYŁĄCZNIE wtedy, gdy klient pożegna się (np. "to wszystko, dziękuję", "do widzenia"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta.',
+        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub po zapisaniu rezerwacji/wiadomości! Użyj tego narzędzia WYŁĄCZNIE wtedy, gdy klient pożegna się (np. "to wszystko, dziękuję", "do widzenia"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta. ZASADA JĘZYKOWA: Parametr callSummary MUSI być bezwzględnie w języku polskim, aby właściciel mógł natychmiast przeczytać notatkę ze sprawy!',
         parameters: {
           type: 'OBJECT',
           properties: {
             callSummary: {
               type: 'STRING',
-              description: 'Szczegółowe podsumowanie z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
+              description: 'Szczegółowe podsumowanie W JĘZYKU POLSKIM z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
             },
             callerName: {
               type: 'STRING',

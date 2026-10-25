@@ -231,7 +231,7 @@ export default function Customers() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Klienci / Kartoteka (Mini-CRM)</h2>
+            <h2 className="text-2xl sm:text-3xl font-serif text-surface-900 tracking-tight">Klienci / Kartoteka (Mini-CRM)</h2>
             <PageHelpButton
               title="Kartoteka Klientów i Copilot Rozmów"
               description="Zarządzaj bazą kontaktów, historią interakcji, notatkami oraz dzwoń bezpośrednio z pomocą asystenta Copilot na żywo."
@@ -243,111 +243,196 @@ export default function Customers() {
               guideSectionId="personal-adaptive-roles"
             />
           </div>
-          <p className="text-surface-500 mt-1">Zarządzaj kartoteką kontaktów, notatkami i dzwoń z pomocą Copilota.</p>
+          <p className="text-surface-500 mt-1 text-xs sm:text-sm">Zarządzaj kartoteką kontaktów, notatkami i dzwoń z pomocą Copilota.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+
+        {/* Kontrolki wyszukiwania i dodawania - w 100% dopasowane do telefonów */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
             <input 
               type="text" 
               placeholder="Szukaj klienta..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-white border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500 text-sm"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500 text-sm outline-none shadow-2xs"
             />
           </div>
-          <button onClick={() => setShowNewModal(true)} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-primary/90 transition-colors text-sm cursor-pointer shadow-sm">
-            <Plus className="w-5 h-5" /> Nowy klient
+          <button 
+            onClick={() => setShowNewModal(true)} 
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors text-sm cursor-pointer shadow-sm shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Nowy klient
           </button>
         </div>
       </div>
 
-      <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60 overflow-hidden">
+      <div className="glass-card rounded-2xl p-4 sm:p-6 shadow-sm border border-surface-200/60 overflow-hidden">
         {loading ? (
-          <div className="text-center py-12 text-surface-500">Ładowanie bazy kontaktów...</div>
+          <div className="text-center py-12 text-surface-500 text-sm">Ładowanie bazy kontaktów...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-surface-500">Brak klientów w kartotece. Dodaj pierwszego klienta przyciskiem powyżej.</div>
+          <div className="text-center py-12 text-surface-500 text-sm">Brak klientów w kartotece. Dodaj pierwszego klienta przyciskiem powyżej.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-surface-200 text-sm text-surface-500">
-                  <th className="py-3 font-medium">Imię i nazwisko</th>
-                  <th className="py-3 font-medium">Telefon</th>
-                  <th className="py-3 font-medium">Tagi</th>
-                  <th className="py-3 font-medium">Ostatni kontakt</th>
-                  <th className="py-3 font-medium">Akcje</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(c => (
-                  <tr key={c.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition">
-                    <td className="py-4 font-medium text-surface-900">
-                      <div className="font-semibold">{c.name}</div>
-                      {c.formalityLevel && c.formalityLevel !== 'default' && (
-                        <span className="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5">
-                          {c.formalityLevel === 'direct_ty' ? 'Na Ty' : (c.formalityLevel === 'formal_pan_pani' ? 'Pan/Pani' : 'Uprzejmy')}
+          <>
+            {/* WIDOK MOBILNY: KAFELKI KLIENTÓW (ekrany smartfonów) */}
+            <div className="block md:hidden space-y-3">
+              {filtered.map(c => (
+                <div key={c.id} className="bg-white rounded-2xl p-4 border border-surface-200 shadow-2xs space-y-3">
+                  {/* Górny wiersz kafelka */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-serif font-bold text-base text-surface-900">{c.name}</div>
+                      <a href={`tel:${c.phone}`} className="text-xs font-mono text-indigo-600 font-semibold hover:underline flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3 h-3" />
+                        {c.phone}
+                      </a>
+                    </div>
+                    {c.formalityLevel && c.formalityLevel !== 'default' && (
+                      <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                        {c.formalityLevel === 'direct_ty' ? 'Na Ty' : (c.formalityLevel === 'formal_pan_pani' ? 'Pan/Pani' : 'Uprzejmy')}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Tagi i data ostatniego kontaktu */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1 border-t border-surface-100">
+                    <div className="flex flex-wrap gap-1">
+                      {c.tags && c.tags.length > 0 ? c.tags.map((t, idx) => (
+                        <span key={idx} className="bg-surface-100 text-surface-700 px-2 py-0.5 rounded-md text-[11px] font-medium border border-surface-200/60">
+                          {t}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-4 text-surface-600 font-mono text-sm">{c.phone}</td>
-                    <td className="py-4">
-                      <div className="flex flex-wrap gap-1">
-                        {c.tags && c.tags.length > 0 ? c.tags.map((t, idx) => (
-                          <span key={idx} className="bg-surface-200 text-surface-700 px-2 py-0.5 rounded text-xs font-medium">{t}</span>
-                        )) : <span className="text-surface-400 text-xs italic">Brak tagów</span>}
-                      </div>
-                    </td>
-                    <td className="py-4 text-surface-500 text-sm">
-                      {c.lastVisitAt ? new Date(c.lastVisitAt).toLocaleDateString() : 'Brak danych'}
-                    </td>
-                    <td className="py-4">
-                      <div className="flex items-center gap-2">
-                        {/* PRZYCISK: COPILOT NA ŻYWO */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenCopilot(c.phone, c.name, c.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
-                          title="Zadzwoń z asystentem na żywo (Copilot podpowiada na ekranie podczas rozmowy)"
-                        >
-                          <Headphones className="w-3.5 h-3.5" />
-                          Copilot
-                        </button>
+                      )) : <span className="text-surface-400 text-[11px] italic">Brak tagów</span>}
+                    </div>
+                    <div className="text-[11px] text-surface-500">
+                      {c.lastVisitAt ? `Kontakt: ${new Date(c.lastVisitAt).toLocaleDateString()}` : 'Nowy kontakt'}
+                    </div>
+                  </div>
 
-                        {/* PRZYCISK: HISTORIA / CRM */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenHistory(c)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface-100 hover:bg-surface-200 text-surface-700 font-medium rounded-xl text-xs transition cursor-pointer"
-                          title="Zobacz historię połączeń i notatki"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-surface-500" />
-                          Historia
-                        </button>
+                  {/* Treść notatki CRM (jeśli istnieje) */}
+                  {c.notes && (
+                    <div className="bg-surface-50 p-2.5 rounded-xl border border-surface-200/80 text-xs text-surface-700 leading-relaxed italic">
+                      "{c.notes}"
+                    </div>
+                  )}
 
-                        {/* PRZYCISK: ZWYKŁY GSM */}
-                        <a 
-                          href={`tel:${c.phone}`} 
-                          className="text-surface-500 hover:text-surface-800 p-1.5 rounded-lg hover:bg-surface-100 transition"
-                          title="Zwykłe połączenie GSM"
-                        >
-                          <Phone className="w-4 h-4" />
-                        </a>
+                  {/* Przyciski akcji na telefonie */}
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCopilot(c.phone, c.name, c.id)}
+                      className="col-span-1 py-2 px-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs transition shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Headphones className="w-3.5 h-3.5" />
+                      Copilot
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenHistory(c)}
+                      className="col-span-1 py-2 px-2 bg-surface-100 hover:bg-surface-200 text-surface-800 font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1 cursor-pointer border border-surface-200"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-surface-600" />
+                      Historia
+                    </button>
+                    <div className="col-span-1 flex items-center gap-1">
+                      <a
+                        href={`tel:${c.phone}`}
+                        className="flex-1 py-2 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1 border border-emerald-200 text-center"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                        GSM
+                      </a>
+                      <button
+                        onClick={() => handleDeleteCustomer(c.id)}
+                        className="p-2 text-surface-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
+                        title="Usuń"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                        <button 
-                          onClick={() => handleDeleteCustomer(c.id)} 
-                          className="text-red-400 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50 cursor-pointer" 
-                          title="Usuń klienta"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+            {/* WIDOK DESKTOP: PEŁNA TABELA (komputery i tablety) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-surface-200 text-sm text-surface-500">
+                    <th className="py-3 font-medium">Imię i nazwisko</th>
+                    <th className="py-3 font-medium">Telefon</th>
+                    <th className="py-3 font-medium">Tagi</th>
+                    <th className="py-3 font-medium">Ostatni kontakt</th>
+                    <th className="py-3 font-medium">Akcje</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map(c => (
+                    <tr key={c.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition">
+                      <td className="py-4 font-medium text-surface-900">
+                        <div className="font-semibold">{c.name}</div>
+                        {c.formalityLevel && c.formalityLevel !== 'default' && (
+                          <span className="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5">
+                            {c.formalityLevel === 'direct_ty' ? 'Na Ty' : (c.formalityLevel === 'formal_pan_pani' ? 'Pan/Pani' : 'Uprzejmy')}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 text-surface-600 font-mono text-sm">{c.phone}</td>
+                      <td className="py-4">
+                        <div className="flex flex-wrap gap-1">
+                          {c.tags && c.tags.length > 0 ? c.tags.map((t, idx) => (
+                            <span key={idx} className="bg-surface-200 text-surface-700 px-2 py-0.5 rounded text-xs font-medium">{t}</span>
+                          )) : <span className="text-surface-400 text-xs italic">Brak tagów</span>}
+                        </div>
+                      </td>
+                      <td className="py-4 text-surface-500 text-sm">
+                        {c.lastVisitAt ? new Date(c.lastVisitAt).toLocaleDateString() : 'Brak danych'}
+                      </td>
+                      <td className="py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCopilot(c.phone, c.name, c.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
+                            title="Zadzwoń z asystentem na żywo"
+                          >
+                            <Headphones className="w-3.5 h-3.5" />
+                            Copilot
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenHistory(c)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface-100 hover:bg-surface-200 text-surface-700 font-medium rounded-xl text-xs transition cursor-pointer"
+                            title="Zobacz historię połączeń i notatki"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-surface-500" />
+                            Historia
+                          </button>
+
+                          <a 
+                            href={`tel:${c.phone}`} 
+                            className="text-surface-500 hover:text-surface-800 p-1.5 rounded-lg hover:bg-surface-100 transition"
+                            title="Zwykłe połączenie GSM"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+
+                          <button 
+                            onClick={() => handleDeleteCustomer(c.id)} 
+                            className="text-red-400 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50 cursor-pointer" 
+                            title="Usuń klienta"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -371,7 +456,7 @@ export default function Customers() {
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="flex items-start justify-between pr-8 border-b border-surface-100 pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8 border-b border-surface-100 pb-4">
                 <div>
                   <h3 className="text-xl font-serif font-bold text-surface-900">
                     {selectedCustomer.name}
@@ -394,14 +479,14 @@ export default function Customers() {
                       setSelectedCustomer(null);
                       handleOpenCopilot(cust.phone, cust.name, cust.id);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs hover:from-indigo-700 hover:to-purple-700 transition shadow-sm cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs hover:from-indigo-700 hover:to-purple-700 transition shadow-sm cursor-pointer"
                   >
                     <Headphones className="w-4 h-4" />
                     Zadzwoń z Copilotem
                   </button>
                   <a
                     href={`tel:${selectedCustomer.phone}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-100 text-surface-700 font-semibold rounded-xl text-xs hover:bg-surface-200 transition"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-surface-100 text-surface-700 font-semibold rounded-xl text-xs hover:bg-surface-200 transition"
                   >
                     <Phone className="w-4 h-4" />
                     GSM

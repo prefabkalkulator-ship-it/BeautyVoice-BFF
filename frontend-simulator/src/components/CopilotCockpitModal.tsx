@@ -70,6 +70,7 @@ export default function CopilotCockpitModal({
   const [nextStepTask, setNextStepTask] = useState('');
   const [nextStepDate, setNextStepDate] = useState('');
   const [leadStage, setLeadStage] = useState<'IN_PROGRESS' | 'OFFER_SENT' | 'WON' | 'LOST'>('IN_PROGRESS');
+  const [newChecklistText, setNewChecklistText] = useState('');
 
   // Dynamiczna Checklista (3 pytania kwalifikacyjne / kroki)
   const [checklist, setChecklist] = useState<ChecklistItem[]>([
@@ -77,6 +78,15 @@ export default function CopilotCockpitModal({
     { id: '2', text: 'Przedstaw dopasowany wariant i warunki cenowe', checked: false },
     { id: '3', text: 'Ustal twardy termin kolejnego kroku / podpisania', checked: false }
   ]);
+
+  const handleAddChecklistItem = () => {
+    if (!newChecklistText.trim()) return;
+    setChecklist(prev => [
+      ...prev,
+      { id: String(Date.now()), text: newChecklistText.trim(), checked: false }
+    ]);
+    setNewChecklistText('');
+  };
 
   // Aktywna karta bojowa na ekranie (<400ms scan time, 3 bullety)
   const [activeBattlecard, setActiveBattlecard] = useState<Battlecard>({
@@ -141,7 +151,6 @@ export default function CopilotCockpitModal({
   const handleStartCopilotCall = async () => {
     setCallPhase('connecting');
     try {
-      // Wywołanie API backendu inicjującego 2-Leg Call Bridge
       const res = await fetch('/api/copilot/start-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -152,21 +161,19 @@ export default function CopilotCockpitModal({
         })
       });
 
-      if (!res.ok) {
-        // Fallback symulacyjny jeśli mostek Twilio w trakcie testów
-        console.warn('Backend call bridge API response not 200, switching to interactive live session.');
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        toast.error(data.error || 'Błąd inicjalizacji połączenia.');
+        setCallPhase('setup');
+        return;
       }
 
-      // Po krótkiej symulacji oczekiwania na odebranie w słuchawce przełączamy do aktywnego połączenia
-      setTimeout(() => {
-        setCallPhase('in_call');
-        toast.success('Mostek połączony! Copilot na żywo nasłuchuje w słuchawce.', { icon: '🎧' });
-      }, 2000);
-    } catch (err) {
-      setTimeout(() => {
-        setCallPhase('in_call');
-        toast.success('Tryb asystenta na żywo aktywowany.', { icon: '🎧' });
-      }, 1500);
+      setCallPhase('in_call');
+      toast.success('Centrala dzwoni na Twój telefon! Odbierz, by połączyć się z klientem.', { icon: '📞', duration: 5000 });
+    } catch (err: any) {
+      toast.error('Błąd sieciowy podczas inicjalizacji Copilota.');
+      setCallPhase('setup');
     }
   };
 
@@ -268,9 +275,6 @@ export default function CopilotCockpitModal({
                 <h3 className="font-serif font-bold text-lg text-white tracking-wide">
                   EVA Live Call Copilot
                 </h3>
-                <span className="bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Glanceable UI
-                </span>
               </div>
               <p className="text-xs text-surface-300">
                 Rozmowa z: <strong className="text-white">{customerName}</strong> ({customerPhone})
@@ -299,11 +303,11 @@ export default function CopilotCockpitModal({
         {/* FAZA 1: KONFIGURACJA PRZED POŁĄCZENIEM (SETUP) */}
         {/* ============================================================== */}
         {callPhase === 'setup' && (
-          <div className="p-6 space-y-5 overflow-y-auto">
-            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-start gap-3">
+          <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
+            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 sm:p-4 flex items-start gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
               <div className="text-xs text-indigo-950 leading-relaxed">
-                <strong className="font-semibold block mb-1">Jak działa połączenie 2-Leg Call Bridge:</strong>
+                <strong className="font-semibold block mb-1">Jak działa połączenie:</strong>
                 Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę w słuchawce (AirPods/Bluetooth), a system natychmiast połączy Cię z klientem, prezentując numer Twojej firmy. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
               </div>
             </div>
@@ -312,7 +316,7 @@ export default function CopilotCockpitModal({
               <label className="block text-xs font-bold uppercase tracking-wider text-surface-500 mb-2">
                 Cel / Scenariusz rozmowy:
               </label>
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
                 {[
                   { id: 'sales', label: '💼 Rozmowa handlowa / Oferta', desc: 'Prezentacja wartości, zbijanie obiekcji' },
                   { id: 'callback', label: '🔄 Oddzwonienie / Reaktywacja', desc: 'Klient prosił o kontakt lub powraca' },
@@ -336,17 +340,58 @@ export default function CopilotCockpitModal({
               </div>
             </div>
 
-            <div className="bg-surface-50 rounded-2xl p-4 border border-surface-200 space-y-2">
-              <div className="text-xs font-bold text-surface-700 flex items-center justify-between">
-                <span>Wstępna Checklista Rozmowy:</span>
-                <span className="text-[10px] text-surface-400 font-normal">Edytowalna w trakcie</span>
+            {/* Checklista celów - w pełni interaktywna i edytowalna */}
+            <div className="bg-surface-50 rounded-2xl p-3.5 sm:p-4 border border-surface-200 space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold text-surface-800">
+                <span>Checklista celów rozmowy:</span>
+                <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
+                  {checklist.filter(c => c.checked).length} / {checklist.length} odhaczone
+                </span>
               </div>
-              {checklist.map(item => (
-                <div key={item.id} className="flex items-center gap-2 text-xs text-surface-600">
-                  <Square className="w-3.5 h-3.5 text-surface-400" />
-                  <span>{item.text}</span>
-                </div>
-              ))}
+              <div className="space-y-1.5">
+                {checklist.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleToggleChecklist(item.id)}
+                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left text-xs transition cursor-pointer ${
+                      item.checked 
+                        ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200' 
+                        : 'bg-white text-surface-800 font-medium border border-surface-200 shadow-2xs hover:bg-surface-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {item.checked ? (
+                        <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <Square className="w-4 h-4 text-surface-400 shrink-0" />
+                      )}
+                      <span>{item.text}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Dodawanie własnego punktu checklisty */}
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="text"
+                  placeholder="+ Wpisz własny punkt (np. zapytać o budżet)..."
+                  value={newChecklistText}
+                  onChange={e => setNewChecklistText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleAddChecklistItem();
+                  }}
+                  className="flex-1 bg-white border border-surface-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddChecklistItem}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 cursor-pointer text-xs font-bold shrink-0 transition"
+                >
+                  Dodaj
+                </button>
+              </div>
             </div>
 
             <div className="pt-2">
@@ -553,8 +598,8 @@ export default function CopilotCockpitModal({
         {/* FAZA 4: PODSUMOWANIE I ZAPIS DO CRM (SUMMARY) */}
         {/* ============================================================== */}
         {callPhase === 'summary' && (
-          <div className="p-6 space-y-4 overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-surface-100">
+          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-100 gap-2">
               <div>
                 <h4 className="font-serif font-bold text-base text-surface-900">
                   Podsumowanie rozmowy z {customerName}
@@ -563,7 +608,7 @@ export default function CopilotCockpitModal({
                   Czas trwania: <strong>{formatTimer(callDurationSeconds)}</strong> • Odhaczone punkty checklisty: <strong>{checklist.filter(c => c.checked).length}/{checklist.length}</strong>
                 </p>
               </div>
-              <span className="text-emerald-700 bg-emerald-100 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full">
+              <span className="text-emerald-700 bg-emerald-100 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full self-start sm:self-auto">
                 Rozmowa zakończona
               </span>
             </div>
@@ -573,7 +618,7 @@ export default function CopilotCockpitModal({
               <label className="block text-xs font-bold uppercase tracking-wider text-surface-600 mb-1.5">
                 Etap relacji / Leada:
               </label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   { id: 'IN_PROGRESS', label: 'W toku' },
                   { id: 'OFFER_SENT', label: 'Wysłana oferta' },

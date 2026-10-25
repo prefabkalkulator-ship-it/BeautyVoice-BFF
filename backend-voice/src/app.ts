@@ -2849,6 +2849,11 @@ app.post('/api/copilot/start-call', async (req, res) => {
       customerName
     });
 
+    if (!bridgeResult.success) {
+      console.error(`❌ [Copilot API] Bridge nie powiódł się: ${bridgeResult.error}`);
+      return res.status(500).json({ error: bridgeResult.error || 'Nie udało się połączyć z operatorem telefonii Twilio.' });
+    }
+
     return res.json({
       success: true,
       sessionId: session.sessionId,
