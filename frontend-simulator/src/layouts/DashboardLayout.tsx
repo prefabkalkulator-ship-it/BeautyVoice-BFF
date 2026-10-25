@@ -92,6 +92,10 @@ export default function DashboardLayout() {
 
   const planName = (subData?.planName || '').toLowerCase();
   const isPersonalProfile = businessProfile === 'personal' || planName.includes('personal');
+  const isPersonalExpert = 
+    planName === 'personal_expert' || 
+    planName.includes('expert') ||
+    ((planName === 'beta_pilot' || planName === 'pilot') && (subData?.betaNotes || '').includes('Osobisty Ekspert'));
   const isB2BPremium = 
     !isPersonalProfile && 
     (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
@@ -99,6 +103,7 @@ export default function DashboardLayout() {
   const tabs = businessProfile === 'personal' ? [
     { id: 'appointments', path: '/dashboard/appointments', label: 'Kalendarz & Spotkania', icon: Calendar },
     { id: 'messages', path: '/dashboard/messages', label: 'Wiadomości i Połączenia', icon: PhoneCall },
+    { id: 'customers', path: '/dashboard/customers', label: 'Klienci / Kartoteka', icon: Users },
     { id: 'vip-contacts', path: '/dashboard/vip-contacts', label: 'Kontakty VIP', icon: Star },
     { id: 'annual-events', path: '/dashboard/annual-events', label: 'Ważne Daty', icon: Gift },
     { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
@@ -163,6 +168,8 @@ export default function DashboardLayout() {
               const Icon = tab.icon;
               const isActive = location.pathname.includes(tab.path);
               const isSimulatorLocked = tab.id === 'simulator' && !isB2BPremium;
+              const isCustomersLocked = tab.id === 'customers' && isPersonalProfile && !isPersonalExpert;
+              const isTabLocked = isSimulatorLocked || isCustomersLocked;
 
               return (
                 <Link
@@ -178,22 +185,30 @@ export default function DashboardLayout() {
                         description: 'Moduł Marketing AI (automatyczne wypełnianie okienek Last Minute, reaktywacja bazy 90+, badanie satysfakcji NPS oraz inteligentne kampanie SMS i wychodzące połączenia asystenta) jest dostępny wyłącznie w Pakiecie Premium B2B.',
                         targetPlanName: 'Pakiet Premium B2B'
                       });
+                    } else if (isCustomersLocked) {
+                      e.preventDefault();
+                      setUpgradeModal({
+                        isOpen: true,
+                        title: 'Moduł: Klienci / Kartoteka (Mini-CRM & Copilot)',
+                        description: 'Dostęp do pełnej Kartoteki Klientów, historii relacji, notatek, statusów leadów oraz asystenta Copilot Rozmów na Żywo jest dostępny w Pakiecie Osobisty Ekspert oraz pakietach B2B.',
+                        targetPlanName: 'Pakiet Osobisty Ekspert'
+                      });
                     }
                   }}
                   className={`
                     w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
                     ${isActive 
                       ? 'bg-surface-900 text-white shadow-md shadow-surface-900/10' 
-                      : isSimulatorLocked
+                      : isTabLocked
                         ? 'text-surface-500 hover:bg-amber-50/50 hover:text-amber-900'
                         : 'text-surface-600 hover:bg-surface-100 hover:text-surface-900'}
                   `}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${isActive ? 'text-gold-300' : isSimulatorLocked ? 'text-amber-600/70' : 'text-surface-400'}`} />
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-gold-300' : isTabLocked ? 'text-amber-600/70' : 'text-surface-400'}`} />
                     <span>{tab.label}</span>
                   </div>
-                  {isSimulatorLocked && (
+                  {isTabLocked && (
                     <span className="flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-200/80 px-1.5 py-0.5 rounded-md">
                       <Lock className="w-3 h-3 text-amber-700" />
                       PRO
@@ -280,7 +295,7 @@ export default function DashboardLayout() {
                     }}
                     className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                   >
-                    Przejdź na Premium B2B
+                    Przejdź na {upgradeModal.targetPlanName || 'Wyższy Pakiet'}
                   </button>
                 </div>
               </div>

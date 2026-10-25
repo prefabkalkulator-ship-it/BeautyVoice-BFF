@@ -1040,15 +1040,58 @@ app.put('/api/customers/:id', async (req, res) => {
     const updated = await prisma.customer.update({
       where: { id: req.params.id },
       data: {
-        name: req.body.name,
-        phone: req.body.phone,
-        tags: req.body.tags || [],
-        notes: req.body.notes || '',
+        name: req.body.name !== undefined ? req.body.name : item.name,
+        phone: req.body.phone !== undefined ? req.body.phone : item.phone,
+        tags: req.body.tags !== undefined ? req.body.tags : item.tags,
+        notes: req.body.notes !== undefined ? req.body.notes : item.notes,
         formalityLevel: req.body.formalityLevel !== undefined ? req.body.formalityLevel : undefined
       }
     });
     res.json(updated);
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
+});
+
+app.get('/api/customers/:id/history', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+    const customer = await prisma.customer.findUnique({ where: { id: req.params.id } });
+    if (!customer || customer.tenantId !== tenant.id) return res.status(404).json({ error: 'Nie znaleziono klienta' });
+
+    const rawDigits = customer.phone.replace(/[\s\-\+]/g, '');
+    const last9 = rawDigits.length >= 9 ? rawDigits.slice(-9) : rawDigits;
+
+    const [appointments, callLogs] = await Promise.all([
+      prisma.appointment.findMany({
+        where: {
+          tenantId: tenant.id,
+          OR: [
+            { customerId: customer.id },
+            { customerPhone: { contains: last9 } }
+          ]
+        },
+        include: { service: true },
+        orderBy: { startTime: 'desc' },
+        take: 10
+      }),
+      prisma.callLog.findMany({
+        where: {
+          tenantId: tenant.id,
+          callerPhone: { contains: last9 }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      })
+    ]);
+
+    res.json({
+      customer,
+      appointments,
+      callLogs
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Błąd pobierania historii klienta' });
+  }
 });
 
 app.delete('/api/customers/:id', async (req, res) => {
@@ -2693,6 +2736,163 @@ app.post('/api/admin/verify-caller-id', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// ==========================================
+// --- ASYSTENT INSTAGRAM (@asystent.ewa) ---
+// ==========================================
+import { instagramService } from './services/instagram/InstagramService';
+
+// 1. Weryfikacja Webhooka Meta for Developers (GET /api/instagram/webhook)
+app.get('/api/instagram/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === instagramService.verifyToken) {
+    console.log('✅ [Instagram Webhook] Pomyślna weryfikacja subskrypcji Meta.');
+    return res.status(200).send(challenge);
+  }
+  return res.status(403).send('Forbidden');
+});
+
+// 2. Odbiór zdarzeń z Webhooka Meta (POST /api/instagram/webhook)
+app.post('/api/instagram/webhook', async (req, res) => {
+  // Meta wymaga szybkiej odpowiedzi 200 OK
+  res.status(200).send('EVENT_RECEIVED');
+  try {
+    await instagramService.handleWebhookPayload(req.body);
+  } catch (err: any) {
+    console.error('❌ [Instagram Webhook] Błąd przetwarzania zdarzenia:', err.message);
+  }
+});
+
+// 3. Status konta i podgląd ostatnich publikacji (@asystent.ewa)
+app.get('/api/instagram/status', async (req, res) => {
+  try {
+    const [profile, media] = await Promise.all([
+      instagramService.getProfile(),
+      instagramService.getRecentMedia(Number(req.query.limit) || 11),
+    ]);
+    return res.json({ success: true, profile, media });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Aktywna synchronizacja i auto-odpowiedzi (Komentarze + DM na bazie EVA DEMO)
+app.post('/api/instagram/sync', async (req, res) => {
+  try {
+    const dryRun = Boolean(req.body?.dryRun);
+    const maxCommentReplies = req.body?.maxCommentReplies !== undefined ? Number(req.body.maxCommentReplies) : 5;
+    const processDms = req.body?.processDms !== undefined ? Boolean(req.body.processDms) : true;
+
+    const result = await instagramService.syncAndRespond({
+      dryRun,
+      maxCommentReplies,
+      processDms,
+    });
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    console.error('[Instagram Sync] Błąd:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Generowanie pojedynczej odpowiedzi Asystenta Ewa (DM lub Komentarz) na bazie wiedzy EVA DEMO
+app.post('/api/instagram/generate-reply', async (req, res) => {
+  try {
+    const { message, mode, postCaption, authorUsername, history } = req.body || {};
+    if (!message) {
+      return res.status(400).json({ error: 'Pole message jest wymagane.' });
+    }
+    const reply = await instagramService.generateEvaReply(String(message), {
+      mode: mode === 'comment' ? 'comment' : 'dm',
+      postCaption,
+      authorUsername,
+      history,
+    });
+    return res.json({ success: true, reply });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// --- LIVE CALL COPILOT (Wspomaganie Rozmów na Żywo) ---
+// ==========================================
+import { copilotEngineService } from './services/voice/CopilotEngineService';
+
+// 1. Rozpoczęcie sesji Copilota i inicjalizacja 2-Leg Call Bridge
+app.post('/api/copilot/start-call', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { customerPhone, customerName, scenario } = req.body || {};
+    if (!customerPhone) {
+      return res.status(400).json({ error: 'Pole customerPhone jest wymagane' });
+    }
+
+    // Utwórz sesję w CopilotEngineService z wczytaniem 3-poziomowej Bazy Wiedzy FAQ
+    const session = await copilotEngineService.createSession({
+      tenantId: tenant.id,
+      customerPhone,
+      customerName,
+      scenario
+    });
+
+    // Uruchomienie mostka połączenia Twilio (Leg 1: Właściciel, Leg 2: Klient)
+    const bridgeResult = await VoiceOutboundService.initiateCopilotBridge({
+      sessionId: session.sessionId,
+      tenantId: tenant.id,
+      customerPhone,
+      customerName
+    });
+
+    return res.json({
+      success: true,
+      sessionId: session.sessionId,
+      callSid: bridgeResult.callSid,
+      status: 'bridging'
+    });
+  } catch (err: any) {
+    console.error('❌ [Copilot API] Błąd uruchamiania Copilota:', err);
+    return res.status(500).json({ error: err.message || 'Błąd inicjalizacji Copilota' });
+  }
+});
+
+// 2. Pobranie stanu aktywnej sesji Copilota
+app.get('/api/copilot/session/:id', async (req, res) => {
+  try {
+    const session = copilotEngineService.getSession(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Nie znaleziono sesji' });
+
+    return res.json({
+      sessionId: session.sessionId,
+      customerName: session.customerName,
+      customerPhone: session.customerPhone,
+      checklist: session.checklist,
+      activeBattlecard: session.activeBattlecard,
+      isRepSpeaking: session.isRepSpeaking
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Zakończenie sesji Copilota
+app.post('/api/copilot/end-call', async (req, res) => {
+  try {
+    const { sessionId } = req.body || {};
+    if (sessionId) {
+      copilotEngineService.endSession(sessionId);
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 
 
 

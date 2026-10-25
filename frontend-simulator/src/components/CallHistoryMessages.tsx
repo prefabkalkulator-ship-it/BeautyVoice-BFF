@@ -24,10 +24,12 @@ import {
   X,
   BookOpen,
   Lock,
-  Calendar
+  Calendar,
+  Headphones
 } from 'lucide-react';
 import PageHelpButton from './common/PageHelpButton';
 import ConfirmationModal from './common/ConfirmationModal';
+import CopilotCockpitModal from './CopilotCockpitModal';
 
 interface CallLog {
   id: string;
@@ -83,6 +85,30 @@ export default function CallHistoryMessages() {
   const [isRejecting, setIsRejecting] = useState(false);
   const [rejectSuccess, setRejectSuccess] = useState('');
   const [rejectError, setRejectError] = useState('');
+
+  // Stan modala Copilot na żywo
+  const [copilotModal, setCopilotModal] = useState<{
+    isOpen: boolean;
+    phone: string;
+    name: string;
+  }>({ isOpen: false, phone: '', name: '' });
+
+  const handleOpenCopilot = (phone: string, name?: string | null) => {
+    if (!canUseExpertFeatures) {
+      setUpgradeModal({
+        isOpen: true,
+        title: 'Moduł: Copilot Rozmów na Żywo',
+        description: 'Inteligentny pomocnik konwersacyjny (podpowiedzi na ekranie w trakcie rozmowy, dynamiczna checklista i dostęp do Bazy Wiedzy FAQ) jest dostępny w Pakiecie Osobisty Ekspert oraz pakietach biznesowych B2B.',
+        targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+      });
+      return;
+    }
+    setCopilotModal({
+      isOpen: true,
+      phone,
+      name: name || 'Rozmówca'
+    });
+  };
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -595,6 +621,15 @@ export default function CallHistoryMessages() {
                 <div className="flex flex-col items-stretch md:items-end gap-2 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-surface-100 w-full md:w-auto">
                   {log.callerPhone && log.callerPhone !== 'nieznany' && (
                     <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full md:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCopilot(log.callerPhone, log.callerName)}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs transition shadow-sm w-full md:w-auto text-center cursor-pointer"
+                        title="Oddzwoń z asystentem na żywo (Copilot wyświetla podpowiedzi z FAQ i checklistę na ekranie)"
+                      >
+                        <Headphones className="w-3.5 h-3.5" />
+                        Oddzwoń z Copilotem
+                      </button>
                       <a
                         href={`tel:${log.callerPhone}`}
                         className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold rounded-xl text-xs hover:bg-surface-800 hover:text-white transition shadow-sm w-full md:w-auto text-center"
@@ -932,6 +967,14 @@ export default function CallHistoryMessages() {
         initialAppointmentId={confirmationModalData.appointmentId}
         initialDate={confirmationModalData.date}
         initialTime={confirmationModalData.time}
+      />
+
+      {/* Copilot Cockpit Live Modal */}
+      <CopilotCockpitModal
+        isOpen={copilotModal.isOpen}
+        onClose={() => setCopilotModal({ isOpen: false, phone: '', name: '' })}
+        customerPhone={copilotModal.phone}
+        customerName={copilotModal.name}
       />
     </div>
   );

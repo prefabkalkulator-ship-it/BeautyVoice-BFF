@@ -1,7 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import PageHelpButton from './common/PageHelpButton';
-import { Users, Search, Plus, Mail, Tag, Check, X, Trash2, Phone } from 'lucide-react';
+import { 
+  Users, 
+  Search, 
+  Plus, 
+  Mail, 
+  Tag, 
+  Check, 
+  X, 
+  Trash2, 
+  Phone, 
+  Headphones, 
+  Calendar, 
+  Clock, 
+  ChevronRight, 
+  FileText, 
+  Sparkles, 
+  Lock, 
+  AlertCircle, 
+  MessageSquare,
+  Save
+} from 'lucide-react';
+import CopilotCockpitModal from './CopilotCockpitModal';
+import toast from 'react-hot-toast';
 
 interface Customer {
   id: string;
@@ -20,24 +42,157 @@ export default function Customers() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', tags: '', formalityLevel: 'default' });
 
-  
+  // Stan profilu tenanta i uprawnień
+  const [tenant, setTenant] = useState<any>(null);
+  const [upgradeModal, setUpgradeModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    targetPlanName?: string;
+  }>({ isOpen: false, title: '', description: '' });
+
+  // Stan modala historii klienta
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerHistory, setCustomerHistory] = useState<{
+    customer: Customer;
+    appointments: any[];
+    callLogs: any[];
+  } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [editingNotes, setEditingNotes] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  // Stan modala Copilot na żywo
+  const [copilotModal, setCopilotModal] = useState<{
+    isOpen: boolean;
+    phone: string;
+    name: string;
+    customerId?: string;
+  }>({ isOpen: false, phone: '', name: '' });
+
+  const fetchTenant = async () => {
+    try {
+      const res = await fetch('/api/tenant');
+      if (res.ok) {
+        const data = await res.json();
+        setTenant(data);
+      }
+    } catch (err) {
+      console.error('Błąd tenanta:', err);
+    }
+  };
+
+  const fetchCustomers = () => {
+    fetch('/api/customers')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setCustomers(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchCustomers();
+    fetchTenant();
+  }, []);
+
+  const planName = (tenant?.subscription?.planName || '').toLowerCase();
+  const isPersonalProfile = tenant?.businessProfile === 'personal' || planName.includes('personal');
+  const isPersonalExpert = 
+    planName === 'personal_expert' || 
+    planName.includes('expert') ||
+    ((planName === 'beta_pilot' || planName === 'pilot') && (tenant?.betaNotes || '').includes('Osobisty Ekspert'));
+  const isB2B = !isPersonalProfile;
+  const canAccessCopilot = isB2B || isPersonalExpert;
+
+  const handleOpenCopilot = (phone: string, name: string, customerId?: string) => {
+    if (!canAccessCopilot) {
+      setUpgradeModal({
+        isOpen: true,
+        title: 'Moduł: Copilot Rozmów na Żywo',
+        description: 'Inteligentny pomocnik konwersacyjny (podpowiedzi w uchu/na ekranie w trakcie rozmowy telefonicznej, dynamiczna checklista i dostęp do Bazy Wiedzy FAQ) jest dostępny w Pakiecie Osobisty Ekspert oraz pakietach biznesowych B2B.',
+        targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+      });
+      return;
+    }
+    setCopilotModal({
+      isOpen: true,
+      phone,
+      name,
+      customerId
+    });
+  };
+
+  const handleOpenHistory = async (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setEditingNotes(customer.notes || '');
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/customers/${customer.id}/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerHistory(data);
+      } else {
+        setCustomerHistory({ customer, appointments: [], callLogs: [] });
+      }
+    } catch (err) {
+      setCustomerHistory({ customer, appointments: [], callLogs: [] });
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!selectedCustomer) return;
+    setIsSavingNotes(true);
+    try {
+      const res = await fetch(`/api/customers/${selectedCustomer.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: editingNotes })
+      });
+      if (res.ok) {
+        toast.success('Notatki zaktualizowane!');
+        setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, notes: editingNotes } : c));
+        if (customerHistory) {
+          setCustomerHistory({
+            ...customerHistory,
+            customer: { ...customerHistory.customer, notes: editingNotes }
+          });
+        }
+      } else {
+        toast.error('Błąd zapisu notatek.');
+      }
+    } catch (err) {
+      toast.error('Błąd połączenia.');
+    } finally {
+      setIsSavingNotes(false);
+    }
+  };
+
   const handleDeleteCustomer = async (id: string) => {
     if (!confirm('Czy na pewno chcesz usunąć tego klienta?')) return;
     try {
       const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setCustomers(prev => prev.filter(c => c.id !== id));
+        if (selectedCustomer?.id === id) setSelectedCustomer(null);
+        toast.success('Klient usunięty.');
       } else {
-        alert('Błąd podczas usuwania klienta.');
+        toast.error('Błąd podczas usuwania klienta.');
       }
     } catch (err) {
-      alert('Błąd połączenia.');
+      toast.error('Błąd połączenia.');
     }
   };
 
   const handleAddCustomer = async () => {
     if (!newCustomerForm.name || !newCustomerForm.phone) {
-      alert('Imię i numer telefonu są wymagane!');
+      toast.error('Imię i numer telefonu są wymagane!');
       return;
     }
     const tagsArray = newCustomerForm.tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
@@ -57,26 +212,14 @@ export default function Customers() {
         setCustomers([added, ...customers]);
         setShowNewModal(false);
         setNewCustomerForm({ name: '', phone: '', tags: '', formalityLevel: 'default' });
+        toast.success('Klient dodany!');
       } else {
-        alert('Błąd dodawania klienta');
+        toast.error('Błąd dodawania klienta');
       }
     } catch (err) {
-      alert('Błąd połączenia.');
+      toast.error('Błąd połączenia.');
     }
   };
-
-  useEffect(() => {
-    fetch('/api/customers')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setCustomers(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
-  }, []);
 
   const filtered = customers.filter(c => 
     c.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -88,19 +231,19 @@ export default function Customers() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Klienci (Mini-CRM)</h2>
+            <h2 className="text-3xl font-serif text-surface-900 tracking-tight">Klienci / Kartoteka (Mini-CRM)</h2>
             <PageHelpButton
-              title="Baza Klientów i Rejestr Formalności"
-              description="Zarządzaj bazą kontaktów, indywidualnym poziomem formalności oraz historią interakcji."
+              title="Kartoteka Klientów i Copilot Rozmów"
+              description="Zarządzaj bazą kontaktów, historią interakcji, notatkami oraz dzwoń bezpośrednio z pomocą asystenta Copilot na żywo."
               tips={[
-                "Automatyczne rozpoznawanie: Powracający klienci są witani po imieniu.",
-                "Poziom formalności per kontakt: Ustaw, czy asystent ma zwracać się do danego klienta oficjalnie (Pan/Pani) czy bezpośrednio na 'Ty'.",
-                "Tagi i etykiety: Dodawaj tagi (np. Stały Klient, Negocjacje, VIP), które asystent uwzględnia podczas rozmowy."
+                "Copilot na żywo: Kliknij fioletowy przycisk 'Copilot', aby zadzwonić z asystentem, który podczas rozmowy podpowiada na ekranie argumenty z Bazy Wiedzy i checklistę.",
+                "Historia interakcji: Kliknij 'Szczegóły', aby przejrzeć wcześniejsze połączenia, podsumowania AI i historię spotkań.",
+                "Poziom formalności per kontakt: Ustaw, czy asystent ma zwracać się do danego klienta oficjalnie (Pan/Pani) czy bezpośrednio na 'Ty'."
               ]}
               guideSectionId="personal-adaptive-roles"
             />
           </div>
-          <p className="text-surface-500 mt-1">Zarządzaj swoją bazą kontaktów, poziomem formalności i tagami.</p>
+          <p className="text-surface-500 mt-1">Zarządzaj kartoteką kontaktów, notatkami i dzwoń z pomocą Copilota.</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -110,10 +253,10 @@ export default function Customers() {
               placeholder="Szukaj klienta..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-white border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500"
+              className="pl-10 pr-4 py-2 bg-white border border-surface-200 rounded-xl focus:ring-2 focus:ring-gold-500 text-sm"
             />
           </div>
-          <button onClick={() => setShowNewModal(true)} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-primary/90 transition-colors">
+          <button onClick={() => setShowNewModal(true)} className="bg-primary text-primary-foreground px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-primary/90 transition-colors text-sm cursor-pointer shadow-sm">
             <Plus className="w-5 h-5" /> Nowy klient
           </button>
         </div>
@@ -121,9 +264,9 @@ export default function Customers() {
 
       <div className="glass-card rounded-2xl p-6 shadow-sm border border-surface-200/60 overflow-hidden">
         {loading ? (
-          <div className="text-center py-12 text-surface-500">Ładowanie bazy...</div>
+          <div className="text-center py-12 text-surface-500">Ładowanie bazy kontaktów...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-surface-500">Brak wyników</div>
+          <div className="text-center py-12 text-surface-500">Brak klientów w kartotece. Dodaj pierwszego klienta przyciskiem powyżej.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -132,24 +275,24 @@ export default function Customers() {
                   <th className="py-3 font-medium">Imię i nazwisko</th>
                   <th className="py-3 font-medium">Telefon</th>
                   <th className="py-3 font-medium">Tagi</th>
-                  <th className="py-3 font-medium">Ostatnia wizyta</th>
+                  <th className="py-3 font-medium">Ostatni kontakt</th>
                   <th className="py-3 font-medium">Akcje</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(c => (
-                  <tr key={c.id} className="border-b border-surface-100 hover:bg-surface-50/50">
+                  <tr key={c.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition">
                     <td className="py-4 font-medium text-surface-900">
-                      <div>{c.name}</div>
+                      <div className="font-semibold">{c.name}</div>
                       {c.formalityLevel && c.formalityLevel !== 'default' && (
                         <span className="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5">
                           {c.formalityLevel === 'direct_ty' ? 'Na Ty' : (c.formalityLevel === 'formal_pan_pani' ? 'Pan/Pani' : 'Uprzejmy')}
                         </span>
                       )}
                     </td>
-                    <td className="py-4 text-surface-600">{c.phone}</td>
+                    <td className="py-4 text-surface-600 font-mono text-sm">{c.phone}</td>
                     <td className="py-4">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-1">
                         {c.tags && c.tags.length > 0 ? c.tags.map((t, idx) => (
                           <span key={idx} className="bg-surface-200 text-surface-700 px-2 py-0.5 rounded text-xs font-medium">{t}</span>
                         )) : <span className="text-surface-400 text-xs italic">Brak tagów</span>}
@@ -158,13 +301,47 @@ export default function Customers() {
                     <td className="py-4 text-surface-500 text-sm">
                       {c.lastVisitAt ? new Date(c.lastVisitAt).toLocaleDateString() : 'Brak danych'}
                     </td>
-                    <td className="py-4 flex items-center gap-4">
-                      <a href={`tel:${c.phone}`} className="text-gold-600 hover:text-gold-700 text-sm font-medium flex items-center gap-1">
-                        <Phone className="w-4 h-4" /> Zadzwoń
-                      </a>
-                      <button onClick={() => handleDeleteCustomer(c.id)} className="text-red-400 hover:text-red-600 transition-colors p-1" title="Usuń klienta">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <td className="py-4">
+                      <div className="flex items-center gap-2">
+                        {/* PRZYCISK: COPILOT NA ŻYWO */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCopilot(c.phone, c.name, c.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
+                          title="Zadzwoń z asystentem na żywo (Copilot podpowiada na ekranie podczas rozmowy)"
+                        >
+                          <Headphones className="w-3.5 h-3.5" />
+                          Copilot
+                        </button>
+
+                        {/* PRZYCISK: HISTORIA / CRM */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenHistory(c)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-surface-100 hover:bg-surface-200 text-surface-700 font-medium rounded-xl text-xs transition cursor-pointer"
+                          title="Zobacz historię połączeń i notatki"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-surface-500" />
+                          Historia
+                        </button>
+
+                        {/* PRZYCISK: ZWYKŁY GSM */}
+                        <a 
+                          href={`tel:${c.phone}`} 
+                          className="text-surface-500 hover:text-surface-800 p-1.5 rounded-lg hover:bg-surface-100 transition"
+                          title="Zwykłe połączenie GSM"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </a>
+
+                        <button 
+                          onClick={() => handleDeleteCustomer(c.id)} 
+                          className="text-red-400 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50 cursor-pointer" 
+                          title="Usuń klienta"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -172,8 +349,172 @@ export default function Customers() {
             </table>
           </div>
         )}
-            </div>
+      </div>
 
+      {/* ========================================================================= */}
+      {/* DRAWER / MODAL: HISTORIA INTERAKCJI & NOTATKI KLIENTA */}
+      {/* ========================================================================= */}
+      {selectedCustomer && (
+        createPortal(
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedCustomer(null);
+            }}
+          >
+            <div className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl relative max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-150 space-y-5">
+              <button 
+                onClick={() => setSelectedCustomer(null)} 
+                className="absolute right-4 top-4 text-surface-400 hover:text-surface-700 p-1 rounded-lg cursor-pointer transition-colors"
+                title="Zamknij"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-start justify-between pr-8 border-b border-surface-100 pb-4">
+                <div>
+                  <h3 className="text-xl font-serif font-bold text-surface-900">
+                    {selectedCustomer.name}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-mono text-surface-600">{selectedCustomer.phone}</span>
+                    {selectedCustomer.formalityLevel && (
+                      <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                        {selectedCustomer.formalityLevel === 'direct_ty' ? 'Zwracanie się: Na Ty' : 'Zwracanie się: Pan/Pani'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cust = selectedCustomer;
+                      setSelectedCustomer(null);
+                      handleOpenCopilot(cust.phone, cust.name, cust.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl text-xs hover:from-indigo-700 hover:to-purple-700 transition shadow-sm cursor-pointer"
+                  >
+                    <Headphones className="w-4 h-4" />
+                    Zadzwoń z Copilotem
+                  </button>
+                  <a
+                    href={`tel:${selectedCustomer.phone}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-100 text-surface-700 font-semibold rounded-xl text-xs hover:bg-surface-200 transition"
+                  >
+                    <Phone className="w-4 h-4" />
+                    GSM
+                  </a>
+                </div>
+              </div>
+
+              {historyLoading ? (
+                <div className="text-center py-8 text-surface-400 text-xs">Pobieranie historii połączeń i wizyt...</div>
+              ) : (
+                <div className="space-y-5">
+                  {/* Sekcja: Notatki CRM */}
+                  <div className="bg-surface-50 rounded-2xl p-4 border border-surface-200 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-surface-700">
+                      <span>Notatki i ustalenia handlowe:</span>
+                      <button
+                        type="button"
+                        onClick={handleSaveNotes}
+                        disabled={isSavingNotes}
+                        className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {isSavingNotes ? 'Zapisuję...' : 'Zapisz notatkę'}
+                      </button>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={editingNotes}
+                      onChange={e => setEditingNotes(e.target.value)}
+                      placeholder="Wpisz ustalenia z klientem, preferencje, rabaty lub zadania do wykonania..."
+                      className="w-full bg-white border border-surface-200 rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Sekcja: Historia połączeń */}
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-surface-500 mb-2 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      Historia połączeń telefonicznych ({customerHistory?.callLogs?.length || 0}):
+                    </h4>
+                    {(!customerHistory?.callLogs || customerHistory.callLogs.length === 0) ? (
+                      <div className="text-xs text-surface-400 italic bg-surface-50 p-3 rounded-xl border border-surface-100">
+                        Brak zarejestrowanych połączeń z tego numeru.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {customerHistory.callLogs.map(log => (
+                          <div key={log.id} className="bg-surface-50 p-3 rounded-xl border border-surface-200 text-xs space-y-1">
+                            <div className="flex items-center justify-between text-[11px] text-surface-500">
+                              <span>{new Date(log.createdAt).toLocaleString('pl-PL')} ({log.durationSeconds}s)</span>
+                              <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
+                                log.urgency === 'HIGH' || log.urgency === 'CRITICAL' ? 'bg-red-100 text-red-800' : 'bg-surface-200 text-surface-700'
+                              }`}>
+                                {log.urgency}
+                              </span>
+                            </div>
+                            {log.summary && (
+                              <p className="text-surface-800 leading-relaxed font-medium">
+                                {log.summary}
+                              </p>
+                            )}
+                            {log.actionItems && (
+                              <div className="text-primary font-semibold text-[11px]">
+                                🎯 {log.actionItems}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sekcja: Wizyty / Spotkania */}
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-surface-500 mb-2 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Spotkania i wizyty w kalendarzu ({customerHistory?.appointments?.length || 0}):
+                    </h4>
+                    {(!customerHistory?.appointments || customerHistory.appointments.length === 0) ? (
+                      <div className="text-xs text-surface-400 italic bg-surface-50 p-3 rounded-xl border border-surface-100">
+                        Brak zaplanowanych spotkań.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {customerHistory.appointments.map(app => (
+                          <div key={app.id} className="bg-surface-50 p-3 rounded-xl border border-surface-200 text-xs flex items-center justify-between">
+                            <div>
+                              <div className="font-semibold text-surface-900">{app.service?.name || 'Spotkanie'}</div>
+                              <div className="text-[11px] text-surface-500">
+                                {new Date(app.startTime).toLocaleString('pl-PL')}
+                              </div>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              app.status === 'confirmed' ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-200 text-surface-600'
+                            }`}>
+                              {app.status === 'confirmed' ? 'Potwierdzone' : app.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
+        )
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: NOWY KLIENT */}
+      {/* ========================================================================= */}
       {showNewModal &&
         createPortal(
           <div
@@ -232,7 +573,7 @@ export default function Customers() {
                     value={newCustomerForm.tags}
                     onChange={e => setNewCustomerForm({...newCustomerForm, tags: e.target.value})}
                     className="w-full bg-surface-50 border border-surface-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-gold-500 text-sm outline-none"
-                    placeholder="np. VIP, polecenie"
+                    placeholder="np. VIP, oferta, polecenie"
                   />
                 </div>
                 <button 
@@ -241,6 +582,58 @@ export default function Customers() {
                 >
                   Zapisz klienta
                 </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: COPILOT ROZMÓW NA ŻYWO (COCKPIT) */}
+      {/* ========================================================================= */}
+      <CopilotCockpitModal
+        isOpen={copilotModal.isOpen}
+        onClose={() => setCopilotModal({ isOpen: false, phone: '', name: '' })}
+        customerPhone={copilotModal.phone}
+        customerName={copilotModal.name}
+        customerId={copilotModal.customerId}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL: UPGRADE DO PAKIETU OSOBISTY EKSPERT / PREMIUM B2B */}
+      {/* ========================================================================= */}
+      {upgradeModal.isOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-surface-950/60 backdrop-blur-xs animate-fade-in">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-surface-100 overflow-hidden animate-scale-in">
+              <div className="p-6 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-4">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-200 mb-2 inline-block">
+                  {upgradeModal.targetPlanName || 'Wymagany Pakiet Osobisty Ekspert'}
+                </span>
+                <h3 className="text-base font-bold text-surface-900 mt-2 mb-2">
+                  {upgradeModal.title}
+                </h3>
+                <p className="text-xs text-surface-600 mb-6 leading-relaxed">
+                  {upgradeModal.description}
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setUpgradeModal({ isOpen: false, title: '', description: '' })}
+                    className="flex-1 py-2.5 px-4 rounded-xl border border-surface-200 text-surface-700 font-semibold text-xs hover:bg-surface-50 transition cursor-pointer"
+                  >
+                    Zamknij
+                  </button>
+                  <a
+                    href="/dashboard/subscription"
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    Przejdź na {upgradeModal.targetPlanName || 'Osobisty Ekspert'}
+                  </a>
+                </div>
               </div>
             </div>
           </div>,

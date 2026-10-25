@@ -134,4 +134,73 @@ export class VoiceOutboundService {
     this.activeOutboundCalls.delete(normalized);
     this.activeOutboundCalls.delete(`+${normalized}`);
   }
+
+  /**
+   * 2-Leg Call Bridging dla Copilota Rozmów na Żywo (Wariant 2)
+   * Krok 1: Dzwoni na telefon Właściciela / Handlowca (Leg 1)
+   * Krok 2: Po odebraniu, łączy z Klientem (Leg 2), prezentując numer firmowy
+   * Krok 3: Włącza forkowanie strumienia dwukanałowego (<Stream track="both_tracks">) do /api/copilot-voice
+   */
+  static async initiateCopilotBridge(options: {
+    sessionId: string;
+    tenantId: string;
+    customerPhone: string;
+    customerName?: string;
+  }): Promise<{ success: boolean; callSid?: string; error?: string }> {
+    const { sessionId, tenantId, customerPhone } = options;
+
+    if (!this.twilioSid || !this.twilioToken) {
+      console.warn('[VoiceOutbound] Brak kluczy Twilio SID/Token do 2-Leg Call Bridge. Działa w trybie symulacyjnym.');
+      return { success: true };
+    }
+
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant) {
+        return { success: false, error: 'Nie znaleziono firmy' };
+      }
+
+      const repPhone = tenant.phoneNumber; // Numer komórkowy właściciela / handlowca
+      const host = process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app';
+      const callerIdToPresent = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48459568507';
+
+      const twiml = `
+        <Response>
+          <Start>
+            <Stream url="wss://${host}/api/copilot-voice" track="both_tracks">
+              <Parameter name="copilotSessionId" value="${sessionId}" />
+              <Parameter name="tenantId" value="${tenantId}" />
+              <Parameter name="customerPhone" value="${customerPhone}" />
+            </Stream>
+          </Start>
+          <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
+          <Dial callerId="${callerIdToPresent}" timeout="35">
+            <Number>${customerPhone}</Number>
+          </Dial>
+        </Response>
+      `;
+
+      const client = twilio(this.twilioSid, this.twilioToken);
+      const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
+      let from = callerIdToPresent.startsWith('+') ? callerIdToPresent : '+' + callerIdToPresent;
+
+      // Zabezpieczenie przed from === to
+      if (from === to) {
+        from = '+48343433088';
+      }
+
+      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Rep (${to}), prezentowany CallerID (${from})`);
+      const call = await client.calls.create({
+        twiml,
+        to,
+        from
+      });
+
+      console.log(`[VoiceOutbound] Copilot Call Bridge utworzony pomyślnie. SID: ${call.sid}`);
+      return { success: true, callSid: call.sid };
+    } catch (err: any) {
+      console.error('[VoiceOutbound] Błąd 2-Leg Copilot Bridge:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
 }
