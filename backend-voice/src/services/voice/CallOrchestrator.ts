@@ -7,6 +7,7 @@ import { prisma } from '../../prisma';
 import { PushService } from '../PushService';
 
 import { BookingService } from '../BookingService';
+import { ensurePolishSummary } from '../LanguageSafetyService';
 import { getPolishGenitive, detectPolishGender, normalizePolishNameToNominative, getPolishVocative } from '../../prompts/systemPrompt';
 import { PersonalAssistantWorker } from '../../jobs/PersonalAssistantWorker';
 
@@ -230,7 +231,7 @@ export class CallOrchestrator {
             orderBy: { createdAt: 'desc' }
           });
 
-          let resolvedSummary = this.callSummaryFromAi || undefined;
+          let resolvedSummary = this.callSummaryFromAi ? await ensurePolishSummary(this.callSummaryFromAi) : undefined;
           let resolvedCallerName = this.vipContact 
             ? this.vipContact.contactName 
             : (this.callerRole === 'OWNER' 
@@ -834,7 +835,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               }
             }
 
-            const languageLock = ` Domyślnym językiem rozmowy jest w 100% język polski (akcent rozmówcy oraz pojęcia budowlane i techniczne o rdzeniach łacińskich takie jak fundamenty, płyta fundamentowa, wentylacja, modyfikacja oferty to w 100% język polski, a nie rumuński!). Kategoryczny zakaz samowolnego przełączania na język obcy! Jeśli rozmówca mówi w obcym języku, najpierw zapytaj go w tym języku, czy chciałby rozmawiać w tym języku (np. po ukraińsku: "Доброго дня! Чи хотіли б ви розмовляти українською?", po angielsku: "Hello! Would you like to speak in English?", po rumuńsku: "Bună ziua! Ați dori să vorbiți în română?") i zamilknij, czekając na odpowiedź. Jeśli potwierdzi – przełącz się na ten język bez makaronizmów. Jeśli odmówi – bezwzględnie zostań w języku polskim. Jeśli wybierze inny język – przełącz się na ten wskazany. Skróty intencji i zapisywanie wiadomości podlegają w 100% tej zasadzie i nie mogą zmienić języka!`;
+            const languageLock = ` Domyślnym językiem rozmowy jest w 100% język polski (akcent rozmówcy oraz pojęcia budowlane i techniczne o rdzeniach łacińskich takie jak fundamenty, płyta fundamentowa, wentylacja, modyfikacja oferty to w 100% język polski, a nie rumuński!). Kategoryczny zakaz samowolnego przełączania na język obcy! Jeśli rozmówca mówi w obcym języku, najpierw zapytaj go w tym języku, czy chciałby rozmawiać w tym języku (np. po ukraińsku: "Доброго дня! Чи хотіли б ви розмовляти українською?", po angielsku: "Hello! Would you like to speak in English?", po rumuńsku: "Bună ziua! Ați dori să vorbiți în română?") i zamilknij, czekając na odpowiedź. Jeśli potwierdzi – przełącz się na ten język bez makaronizmów. Jeśli odmówi – bezwzględnie zostań w języku polskim. Jeśli wybierze inny język – przełącz się na ten wskazany. Skróty intencji i zapisywanie wiadomości podlegają w 100% tej zasadzie i nie mogą zmienić języka! ZASADA JĘZYKA INTERFEJSU: Nawet jeśli rozmowa toczy się w języku obcym, wszystkie pisemne notatki, streszczenia i parametry narzędzi ('callSummary' w endCall oraz 'rawMessage' w save_call_message) MUSISZ BEZWZGLĘDNIE zapisać w 100% w języku polskim dla właściciela!`;
             if (contextText && !contextText.includes('językiem rozmowy jest język polski')) {
               contextText += languageLock;
             }
@@ -1270,13 +1271,14 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           return await bookingService.sendSummaryEmail(tenantId, args.subject, args.contentMarkdown, args.timeRange);
         case 'save_call_message': {
           if (args?.callerName) this.callerNameFromAi = args.callerName;
-          const msgSummary = `[📝 Wiadomość] ${args.callerName || 'Rozmówca'}: ${args.rawMessage}`;
+          const cleanMessage = await ensurePolishSummary(args.rawMessage);
+          const msgSummary = `[📝 Wiadomość] ${args.callerName || 'Rozmówca'}: ${cleanMessage}`;
           this.callSummaryFromAi = msgSummary;
           this.callActionJournal.push(msgSummary);
           this.isAwaitingUserAfterAction = true;
           this.lastActionTimestamp = Date.now();
           console.log('📌 [CallOrchestrator] Zapisano wiadomość (save_call_message). Włączam blokadę przedwczesnego endCall do momentu odpowiedzi rozmówcy.');
-          return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, args.rawMessage, args.urgency, args.callbackRequested);
+          return await bookingService.saveCallMessage(tenantId, this.callerPhone, args.callerName, cleanMessage, args.urgency, args.callbackRequested);
         }
         case 'block_calendar_time':
           if (this.callerRole !== 'OWNER' || (this.ownerRequirePin && !this.isOwnerPinVerified) || this.isOwnerLocked) {
@@ -1370,7 +1372,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           }
 
           if (args?.callSummary) {
-            this.callSummaryFromAi = args.callSummary;
+            this.callSummaryFromAi = await ensurePolishSummary(args.callSummary);
             console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
           }
           if (args?.callerName) {

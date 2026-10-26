@@ -1,8 +1,9 @@
 import { getSystemPrompt } from '../prompts/systemPrompt';
 import { BookingService } from '../services/BookingService';
+import { isLikelyForeignText } from '../services/LanguageSafetyService';
 
 function runTests() {
-  console.log('🧪 Rozpoczynam testy weryfikacyjne Protokółu Językowego i Bramki Weryfikacyjnej...\n');
+  console.log('🧪 Rozpoczynam testy weryfikacyjne Protokołu Językowego, Bramki Weryfikacyjnej i Polskiego Języka Notatek...\n');
 
   let passed = 0;
   let failed = 0;
@@ -52,9 +53,9 @@ function runTests() {
   );
 
   assert(
-    personalGuestPrompt.includes('rawMessage i callerName w save_call_message oraz callSummary w endCall') &&
-    personalGuestPrompt.includes('argumenty \'rawMessage\', \'callerName\' i \'callSummary\' MUSZĄ BYĆ W 100% ZAPISYWANE W JĘZYKU POLSKIM!'),
-    'Test 1.5: Parametry narzędzi biznesowych muszą być w 100% po polsku'
+    personalGuestPrompt.includes('ZŁOTA ZASADA JĘZYKA INTERFEJSU I BIZNESU') &&
+    personalGuestPrompt.includes('WSZYSTKIE PISEMNE NOTATKI, STRESZCZENIA I PODSUMOWANIA (\'callSummary\' w endCall oraz \'rawMessage\' w save_call_message) MUSZĄ BYĆ BEZWZGLĘDNIE I W 100% SPORZĄDZONE W JĘZYKU POLSKIM!'),
+    'Test 1.5: Złota zasada języka interfejsu nakazuje 100% polskie notatki i streszczenia nawet dla rozmów obcojęzycznych'
   );
 
   assert(
@@ -87,21 +88,53 @@ function runTests() {
 
   assert(
     saveCallMsgTool &&
-    saveCallMsgTool.description.includes('ZASADA JĘZYKOWA') &&
-    saveCallMsgTool.description.includes('Kategoryczny zakaz zapisywania treści w języku rumuńskim czy innym obcym, gdy klient mówi po polsku'),
-    'Test 3.1: save_call_message w definicji narzędzia nakazuje język polski i zakazuje rumuńskich halucynacji'
+    saveCallMsgTool.description.includes('ZASADA JĘZYKA INTERFEJSU') &&
+    saveCallMsgTool.description.includes('Parametry rawMessage i callerName MUSZĄ być ZAWSZE zapisane w 100% w języku polskim dla właściciela'),
+    'Test 3.1: save_call_message w definicji narzędzia nakazuje język polski interfejsu nawet przy obcej mowie'
   );
 
   assert(
     endCallTool &&
-    endCallTool.description.includes('Parametr callSummary MUSI być bezwzględnie w języku polskim'),
-    'Test 3.2: endCall w definicji narzędzia nakazuje podsumowanie w języku polskim'
+    endCallTool.description.includes('ZASADA JĘZYKA INTERFEJSU') &&
+    endCallTool.description.includes('Parametr callSummary MUSI być bezwzględnie i w 100% w języku polskim (nawet jeśli cała rozmowa z rozmówcą toczyła się w języku obcym!)'),
+    'Test 3.2: endCall w definicji narzędzia nakazuje 100% polskie callSummary'
   );
 
   assert(
     getFaqTool &&
     getFaqTool.description.includes('Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku'),
     'Test 3.3: getFAQ nakazuje odpowiedź po polsku dopóki bramka nie zatwierdzi języka obcego'
+  );
+
+  // 4. Test modułu wykrywania obcego języka (LanguageSafetyService)
+  const romanianSample = "Solicită modificarea ofertei anterioare prin eliminarea plăcii de fundație și a ventilației.";
+  assert(
+    isLikelyForeignText(romanianSample),
+    'Test 4.1: isLikelyForeignText poprawnie wykrywa notatkę w języku rumuńskim'
+  );
+
+  const ukrainianSample = "Доброго дня, я хотів би дізнатися про ціну будинку";
+  assert(
+    isLikelyForeignText(ukrainianSample),
+    'Test 4.2: isLikelyForeignText poprawnie wykrywa cyrylicę / język ukraiński'
+  );
+
+  const englishSample = "Please call me back regarding the quotation for next week";
+  assert(
+    isLikelyForeignText(englishSample),
+    'Test 4.3: isLikelyForeignText poprawnie wykrywa język angielski'
+  );
+
+  const polishSample1 = "[💼 Oferta/Doradztwo] Klient prosi o modyfikację oferty: usunięcie płyty fundamentowej i wentylacji. Pan Dymitr skontaktuje się z klientem. Nastrój i zachowanie: spokojny.";
+  assert(
+    !isLikelyForeignText(polishSample1),
+    'Test 4.4: isLikelyForeignText nie kwalifikuje poprawnego polskiego podsumowania jako obcego'
+  );
+
+  const polishSample2 = "[📝 Wiadomość] Jan Kowalski: Proszę o kontakt telefoniczny po południu w sprawie spotkania.";
+  assert(
+    !isLikelyForeignText(polishSample2),
+    'Test 4.5: isLikelyForeignText nie kwalifikuje polskiej wiadomości jako obcej'
   );
 
   console.log(`\n========================================`);

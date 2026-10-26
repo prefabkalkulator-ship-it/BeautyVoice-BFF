@@ -1,6 +1,7 @@
 import { SMSService } from './sms/SMSService';
 import { prisma } from '../prisma';
 import { normalizePolishNameToNominative, formatTenantWorkingHours } from '../prompts/systemPrompt';
+import { ensurePolishSummary } from './LanguageSafetyService';
 
 export interface ServiceItem {
   id: string;
@@ -206,12 +207,12 @@ export class BookingService {
         ] : []),
         {
           name: 'save_call_message',
-          description: 'Zapisuje wiadomość od dzwoniącego, generuje skrót i wysyła natychmiastowe powiadomienie Push do właściciela. ZASADA JĘZYKOWA: Parametry rawMessage i callerName MUSZĄ być zapisane w języku rozmowy. Jeśli rozmowa toczy się po polsku (połączenie z polskiego numeru), treść wiadomości MUSI być w 100% po polsku! Kategoryczny zakaz zapisywania treści w języku rumuńskim czy innym obcym, gdy klient mówi po polsku.',
+          description: 'Zapisuje wiadomość od dzwoniącego, generuje skrót i wysyła natychmiastowe powiadomienie Push do właściciela. ZASADA JĘZYKA INTERFEJSU: Parametry rawMessage i callerName MUSZĄ być ZAWSZE zapisane w 100% w języku polskim dla właściciela, nawet jeśli rozmówca rozmawiał w języku obcym (przetłumacz treść wiadomości na naturalny język polski)! Kategoryczny zakaz zapisywania treści w języku obcym (rumuńskim, ukraińskim, angielskim itp.).',
           parameters: {
             type: 'OBJECT',
             properties: {
               callerName: { type: 'STRING', description: 'Imię i nazwisko osoby zostawiającej wiadomość (zapisane w języku polskim / mianowniku)' },
-              rawMessage: { type: 'STRING', description: 'Dokładna treść przekazanej wiadomości lub prośby (w 100% w języku polskim, jeśli rozmowa toczy się po polsku)' },
+              rawMessage: { type: 'STRING', description: 'Dokładna treść przekazanej wiadomości lub prośby (BEZWZGLĘDNIE W 100% W JĘZYKU POLSKIM - przetłumaczona na polski dla właściciela i interfejsu, jeśli rozmówca mówił w innym języku)' },
               urgency: {
                 type: 'STRING',
                 description: 'Poziom pilności sprawy',
@@ -292,13 +293,13 @@ export class BookingService {
         },
         {
           name: 'endCall',
-          description: 'Kończy połączenie i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub bezpośrednio po zapisaniu wiadomości/rezerwacji! Wolno wywołać to narzędzie WYŁĄCZNIE wtedy, gdy rozmówca wprost i jednoznacznie potwierdzi zakończenie rozmowy lub sam się pożegna (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie"). ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy. ZASADA JĘZYKOWA: Parametr callSummary MUSI być bezwzględnie w języku polskim, aby właściciel mógł natychmiast przeczytać notatkę ze sprawy!',
+          description: 'Kończy połączenie i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub bezpośrednio po zapisaniu wiadomości/rezerwacji! Wolno wywołać to narzędzie WYŁĄCZNIE wtedy, gdy rozmówca wprost i jednoznacznie potwierdzi zakończenie rozmowy lub sam się pożegna (np. "Dziękuję, to wszystko", "Do widzenia", "Na razie"). ZAWSZE podaj bogate, szczegółowe podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Doradztwo], [🚨 Zgłoszenie/Reklamacja], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, dodatkowymi pytaniami rozmówcy oraz obiektywną oceną nastroju i zachowania (np. spokojny, poddenerwowany, używał wulgaryzmów) oraz imię rozmówcy. ZASADA JĘZYKA INTERFEJSU: Parametr callSummary MUSI być bezwzględnie i w 100% w języku polskim (nawet jeśli cała rozmowa z rozmówcą toczyła się w języku obcym!), aby właściciel i panel CRM otrzymali czytelną notatkę po polsku!',
           parameters: {
             type: 'OBJECT',
             properties: {
               callSummary: {
                 type: 'STRING',
-                description: 'Szczegółowe podsumowanie W JĘZYKU POLSKIM z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[💼 Oferta/Doradztwo] Klient prosi o modyfikację oferty: usunięcie płyty fundamentowej i wentylacji. Właściciel oddzwoni. Nastrój: spokojny.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
+                description: 'Szczegółowe podsumowanie BEZWZGLĘDNIE W 100% W JĘZYKU POLSKIM (nawet jeśli klient rozmawiał po angielsku, ukraińsku, rumuńsku itp. - przetłumacz treść na polski!) z prefiksem intencji, głównymi ustaleniami, pytaniami pobocznymi oraz nastrojem i zachowaniem rozmówcy np. "[💼 Oferta/Doradztwo] Klient prosi o modyfikację oferty: usunięcie płyty fundamentowej i wentylacji. Właściciel oddzwoni. Nastrój: spokojny.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
               },
               callerName: {
                 type: 'STRING',
@@ -501,13 +502,13 @@ export class BookingService {
       },
       {
         name: 'endCall',
-        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub po zapisaniu rezerwacji/wiadomości! Użyj tego narzędzia WYŁĄCZNIE wtedy, gdy klient pożegna się (np. "to wszystko, dziękuję", "do widzenia"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta. ZASADA JĘZYKOWA: Parametr callSummary MUSI być bezwzględnie w języku polskim, aby właściciel mógł natychmiast przeczytać notatkę ze sprawy!',
+        description: 'Kończy połączenie telefoniczne i odkłada słuchawkę. KATEGORYCZNY ZAKAZ wywoływania tego narzędzia z własnej inicjatywy lub po zapisaniu rezerwacji/wiadomości! Użyj tego narzędzia WYŁĄCZNIE wtedy, gdy klient pożegna się (np. "to wszystko, dziękuję", "do widzenia"), sprawa została załatwiona i nadszedł moment zakończenia rozmowy. ZAWSZE podaj bogate podsumowanie rozmowy z prefiksem intencji ([💼 Oferta/Cennik], [🚨 Reklamacja/Problem], [📅 Rezerwacja], [📝 Wiadomość], [ℹ️ Ogólne]), głównym celem, pytaniami pobocznymi oraz nastrojem i zachowaniem klienta (np. spokojny, poddenerwowany) oraz imię klienta. ZASADA JĘZYKA INTERFEJSU: Parametr callSummary MUSI być bezwzględnie i w 100% w języku polskim (nawet jeśli cała rozmowa toczyła się w języku obcym!), aby właściciel i panel CRM otrzymali czytelną notatkę po polsku!',
         parameters: {
           type: 'OBJECT',
           properties: {
             callSummary: {
               type: 'STRING',
-              description: 'Szczegółowe podsumowanie W JĘZYKU POLSKIM z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
+              description: 'Szczegółowe podsumowanie BEZWZGLĘDNIE W 100% W JĘZYKU POLSKIM (nawet jeśli klient rozmawiał po angielsku, ukraińsku, rumuńsku itp. - przetłumacz treść na polski!) z prefiksem intencji np. "[📅 Rezerwacja] Strzyżenie na piątek o 14:00. Dodatkowo pytał o: cennik koloryzacji i parking. Nastrój i zachowanie: spokojny i uprzejmy.". Numery telefonów w podsumowaniu zapisuj bezwzględnie w postaci cyfr (np. 665 536 333), nigdy słownie!'
             },
             callerName: {
               type: 'STRING',
@@ -2153,6 +2154,7 @@ export class BookingService {
     callbackRequested: boolean = true
   ) {
     try {
+      rawMessage = await ensurePolishSummary(rawMessage);
       const callLog = await prisma.callLog.create({
         data: {
           tenantId,
