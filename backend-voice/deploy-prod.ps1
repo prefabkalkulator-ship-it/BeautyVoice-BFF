@@ -4,6 +4,11 @@ param(
 
 Set-Location $PSScriptRoot
 
+$gcloudBin = "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin"
+if (Test-Path $gcloudBin) {
+    $env:PATH = "$gcloudBin;$env:PATH"
+}
+
 Write-Host "[1/3] Sprawdzanie kompilacji TypeScript..." -ForegroundColor Cyan
 & npm.cmd run build
 if ($LASTEXITCODE -ne 0) {
