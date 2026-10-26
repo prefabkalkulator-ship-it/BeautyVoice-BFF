@@ -162,25 +162,27 @@ export class VoiceOutboundService {
 
       const repPhone = tenant.phoneNumber; // Numer komórkowy właściciela / handlowca
       const host = process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app';
-      const preferredFrom = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48343433088';
-
-      const client = twilio(this.twilioSid, this.twilioToken);
       const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
 
-      // Lista zweryfikowanych numerów nadawcy w Twilio w kolejności preferencji
+      // Caller ID prezentowany KLIENTOWI na Leg 2:
+      // Używamy dedykowanego numeru tenanta LUB bezpośredniego numeru komórkowego tenanta (np. +48533989987 - zweryfikowanego w Twilio)
+      const customerLegCallerId = tenant.assignedPhoneNumber || to || process.env.TWILIO_CALLER_ID || '+48343433088';
+
+      const client = twilio(this.twilioSid, this.twilioToken);
+
+      // Lista zweryfikowanych numerów nadawcy w Twilio dla Leg 1 (wywołanie telefonu właściciela)
       const candidateFromNumbers = [
-        preferredFrom,
         '+48343433088', // oficjalny zweryfikowany numer demo / platformy
-        '+48533989987', // alternatywny zweryfikowany numer
-        process.env.TWILIO_CALLER_ID
+        process.env.TWILIO_CALLER_ID,
+        '+48533989987'
       ].filter((n): n is string => Boolean(n));
 
-      // Normalizacja i wykluczenie numeru to (from === to jest blokowane przez operatorów)
+      // Normalizacja i wykluczenie numeru to (from === to jest blokowane przez operatorów na Leg 1)
       const uniqueFromCandidates = Array.from(
         new Set(candidateFromNumbers.map(n => n.startsWith('+') ? n : '+' + n))
       ).filter(n => n !== to);
 
-      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Rep (${to}), dostępne zweryfikowane numery CallerID:`, uniqueFromCandidates);
+      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Rep (${to}) z technicznego CallerID, Leg 2 do Klienta (${customerPhone}) z CallerID: ${customerLegCallerId}`);
 
       let call;
       let lastError = '';
@@ -197,7 +199,7 @@ export class VoiceOutboundService {
                 </Stream>
               </Start>
               <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
-              <Dial callerId="${candidateFrom}" timeout="35">
+              <Dial callerId="${customerLegCallerId}" timeout="35">
                 <Number>${customerPhone}</Number>
               </Dial>
             </Response>
@@ -209,7 +211,7 @@ export class VoiceOutboundService {
             from: candidateFrom
           });
 
-          console.log(`[VoiceOutbound] Copilot Call Bridge utworzony pomyślnie z CallerID: ${candidateFrom}. SID: ${call.sid}`);
+          console.log(`[VoiceOutbound] Copilot Call Bridge utworzony pomyślnie. Leg 1 From: ${candidateFrom} -> To: ${to}, Leg 2 CallerID: ${customerLegCallerId}. SID: ${call.sid}`);
           return { success: true, callSid: call.sid };
         } catch (err: any) {
           lastError = err.message;

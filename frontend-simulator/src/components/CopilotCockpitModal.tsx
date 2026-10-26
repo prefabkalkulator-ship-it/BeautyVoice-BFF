@@ -48,6 +48,82 @@ interface Battlecard {
   urgency: 'high' | 'medium' | 'low';
 }
 
+// Predefiniowane matryce celów i argumentów per scenariusz
+const SCENARIO_PRESETS: Record<string, { checklist: ChecklistItem[]; initialCard: Battlecard }> = {
+  sales: {
+    checklist: [
+      { id: 's1', text: 'Zbadaj aktualne potrzeby i parametry inwestycji', checked: false },
+      { id: 's2', text: 'Wskaż warianty i aktualną promocję z Bazy Czasowej', checked: false },
+      { id: 's3', text: 'Ustal termin przesłania koncepcji / kalkulacji', checked: false }
+    ],
+    initialCard: {
+      category: 'BUYING_SIGNAL',
+      heading: 'Otwarcie rozmowy handlowej',
+      bullets: [
+        'Zbadaj wielkość i planowany termin inwestycji',
+        'Podkreśl szybkość montażu i izolacyjność konstrukcji',
+        'Wskaż aktualną promocję z Bazy Czasowej'
+      ],
+      faqSource: 'current',
+      urgency: 'low'
+    }
+  },
+  callback: {
+    checklist: [
+      { id: 'cb1', text: 'Nawiąż do ustaleń i prośby z poprzedniej rozmowy', checked: false },
+      { id: 'cb2', text: 'Przedstaw skorygowaną specyfikację i warunki cenowe', checked: false },
+      { id: 'cb3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
+    ],
+    initialCard: {
+      category: 'BUYING_SIGNAL',
+      heading: 'Oddzwonienie / Modyfikacja oferty',
+      bullets: [
+        'Nawiąż do poprzedniego kontaktu i zgłoszonej prośby',
+        'Podaj zaktualizowany koszt i czas realizacji',
+        'Ustal twardy kolejny krok i termin decyzji'
+      ],
+      faqSource: 'permanent',
+      urgency: 'medium'
+    }
+  },
+  complaint: {
+    checklist: [
+      { id: 'cp1', text: 'Wysłuchaj bez przerywania (aktywna deeskalacja)', checked: false },
+      { id: 'cp2', text: 'Potwierdź zrozumienie problemu i przeproś za niedogodność', checked: false },
+      { id: 'cp3', text: 'Zaproponuj konkretne rozwiązanie z procedury gwarancyjnej', checked: false }
+    ],
+    initialCard: {
+      category: 'DEESCALATION',
+      heading: 'Obsługa zgłoszenia / Deeskalacja',
+      bullets: [
+        'Wysłuchaj klienta bez wchodzenia w słowo',
+        'Spisz dokładne punkty uwag do protokołu',
+        'Zaproponuj termin wizyty serwisu lub rozwiązanie'
+      ],
+      faqSource: 'permanent',
+      urgency: 'high'
+    }
+  },
+  general: {
+    checklist: [
+      { id: 'g1', text: 'Zbadaj bieżące potrzeby i parametry techniczne', checked: false },
+      { id: 'g2', text: 'Odpowiedz na pytania w oparciu o Bazę FAQ', checked: false },
+      { id: 'g3', text: 'Zaproponuj termin spotkania lub wysyłkę materiałów', checked: false }
+    ],
+    initialCard: {
+      category: 'FACT_QUERY',
+      heading: 'Konsultacja ogólna',
+      bullets: [
+        'Zbadaj stan działki i warunków zabudowy',
+        'Wyjaśnij etapy realizacji: projekt, stan surowy, wykończenie',
+        'Zaproponuj przesłanie katalogu projektów lub spotkanie'
+      ],
+      faqSource: 'permanent',
+      urgency: 'low'
+    }
+  }
+};
+
 export default function CopilotCockpitModal({
   isOpen,
   onClose,
@@ -72,38 +148,24 @@ export default function CopilotCockpitModal({
   const [leadStage, setLeadStage] = useState<'IN_PROGRESS' | 'OFFER_SENT' | 'WON' | 'LOST'>('IN_PROGRESS');
   const [newChecklistText, setNewChecklistText] = useState('');
 
-  // Dynamiczna Checklista (3 pytania kwalifikacyjne / kroki)
-  const [checklist, setChecklist] = useState<ChecklistItem[]>([
-    { id: '1', text: 'Zbadaj aktualny problem lub cel klienta', checked: false },
-    { id: '2', text: 'Przedstaw dopasowany wariant i warunki cenowe', checked: false },
-    { id: '3', text: 'Ustal twardy termin kolejnego kroku / podpisania', checked: false }
-  ]);
-
-  const handleAddChecklistItem = () => {
-    if (!newChecklistText.trim()) return;
-    setChecklist(prev => [
-      ...prev,
-      { id: String(Date.now()), text: newChecklistText.trim(), checked: false }
-    ]);
-    setNewChecklistText('');
-  };
-
-  // Aktywna karta bojowa na ekranie (<400ms scan time, 3 bullety)
-  const [activeBattlecard, setActiveBattlecard] = useState<Battlecard>({
-    category: 'BUYING_SIGNAL',
-    heading: 'Otwarcie rozmowy i nawiązanie relacji',
-    bullets: [
-      'Nawiąż do ostatniego kontaktu',
-      'Zapytaj o kluczowy priorytet na ten kwartał',
-      'Trzymaj tempo: zwięźle i partnersko'
-    ],
-    faqSource: 'permanent',
-    urgency: 'low'
-  });
+  // Dynamiczna Checklista i Aktywna Karta Bojowa (zainicjalizowane z presetów)
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(SCENARIO_PRESETS.sales.checklist);
+  const [activeBattlecard, setActiveBattlecard] = useState<Battlecard>(SCENARIO_PRESETS.sales.initialCard);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Pobierz dane tenanta (numer telefonu właściciela do mostka Leg 1) oraz FAQ
+  // Funkcja zmiany scenariusza z synchronizacją checklisty i karty startowej
+  const handleSelectScenario = (newScenario: 'sales' | 'complaint' | 'callback' | 'general') => {
+    setScenario(newScenario);
+    const preset = SCENARIO_PRESETS[newScenario];
+    if (preset) {
+      setChecklist(preset.checklist);
+      setActiveBattlecard(preset.initialCard);
+    }
+  };
+
+  // Pobierz dane tenanta, FAQ oraz historię kontaktu z klientem
   useEffect(() => {
     if (isOpen) {
       fetch('/api/tenant')
@@ -119,8 +181,51 @@ export default function CopilotCockpitModal({
           if (Array.isArray(data)) setFaqs(data);
         })
         .catch(() => {});
+
+      // Sprawdź historię poprzednich kontaktów klienta (CallLog)
+      const cleanPhone = customerPhone?.replace(/[\s\-\+]/g, '') || '';
+      const last9 = cleanPhone.length >= 9 ? cleanPhone.slice(-9) : cleanPhone;
+      if (customerId || last9) {
+        const histUrl = customerId 
+          ? `/api/customers/${customerId}/history`
+          : `/api/customers/search?phone=${encodeURIComponent(last9)}`;
+
+        fetch(histUrl)
+          .then(r => r.json())
+          .then(data => {
+            const calls = data.recentCalls || data.calls || [];
+            if (calls.length > 0 && calls[0]?.summary) {
+              const clean = calls[0].summary.replace(/^\[[^\]]+\]\s*/, '').trim();
+              setScenario('callback');
+              setChecklist([
+                { id: 'cb1', text: `Nawiąż do: ${clean.slice(0, 36)}...`, checked: false },
+                { id: 'cb2', text: 'Przedstaw skorygowaną specyfikację i warunki cenowe', checked: false },
+                { id: 'cb3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
+              ]);
+              setActiveBattlecard({
+                category: 'BUYING_SIGNAL',
+                heading: `Odprawa: ${customerName}`,
+                bullets: [
+                  clean.length > 68 ? clean.slice(0, 65) + '...' : clean,
+                  calls[0].actionItems ? `Zadanie: ${calls[0].actionItems}` : 'Cel: potwierdzić nowe parametry i cenę',
+                  'Baza FAQ: zweryfikuj specyfikację i rabat czasowy'
+                ],
+                faqSource: 'permanent',
+                urgency: 'high'
+              });
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [isOpen]);
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [isOpen, customerId, customerPhone]);
 
   // Licznik czasu połączenia w fazie 'in_call'
   useEffect(() => {
@@ -148,6 +253,15 @@ export default function CopilotCockpitModal({
     setChecklist(prev => prev.map(item => item.id === id ? { ...item, checked: !item.checked } : item));
   };
 
+  const handleAddChecklistItem = () => {
+    if (!newChecklistText.trim()) return;
+    setChecklist(prev => [
+      ...prev,
+      { id: String(Date.now()), text: newChecklistText.trim(), checked: false }
+    ]);
+    setNewChecklistText('');
+  };
+
   const handleStartCopilotCall = async () => {
     setCallPhase('connecting');
     try {
@@ -169,6 +283,39 @@ export default function CopilotCockpitModal({
         return;
       }
 
+      // Połączenie z kanałem WebSocket Copilota na żywo
+      if (data.sessionId) {
+        try {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const ws = new WebSocket(`${protocol}//${window.location.host}/api/copilot-ui?sessionId=${data.sessionId}`);
+          wsRef.current = ws;
+
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              if (msg.type === 'SESSION_SNAPSHOT') {
+                if (msg.activeBattlecard) setActiveBattlecard(msg.activeBattlecard);
+                if (msg.checklist && msg.checklist.length > 0) setChecklist(msg.checklist);
+              } else if (msg.type === 'BATTLECARD_UPDATE' && msg.battlecard) {
+                setActiveBattlecard(msg.battlecard);
+              } else if (msg.type === 'REP_SPEAKING') {
+                setIsRepSpeaking(Boolean(msg.isSpeaking));
+              } else if (msg.type === 'CALL_ENDED') {
+                handleEndCall();
+              }
+            } catch (err) {
+              console.warn('[Copilot UI] Błąd parsowania komunikatu WebSocket:', err);
+            }
+          };
+
+          ws.onerror = (e) => {
+            console.warn('[Copilot UI] WebSocket error:', e);
+          };
+        } catch (wsErr) {
+          console.warn('[Copilot UI] Nie udało się otworzyć WebSocket:', wsErr);
+        }
+      }
+
       setCallPhase('in_call');
       toast.success('Centrala dzwoni na Twój telefon! Odbierz, by połączyć się z klientem.', { icon: '📞', duration: 5000 });
     } catch (err: any) {
@@ -180,6 +327,10 @@ export default function CopilotCockpitModal({
   const handleEndCall = () => {
     setCallPhase('summary');
     if (timerRef.current) clearInterval(timerRef.current);
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch (e) {}
+      wsRef.current = null;
+    }
   };
 
   const handleSavePostCallSummary = async () => {
@@ -209,13 +360,14 @@ export default function CopilotCockpitModal({
   const triggerObjectionCard = (type: 'price' | 'time' | 'competitor' | 'promo') => {
     if (type === 'price') {
       const confidentialFaq = faqs.find(f => f.isConfidential || f.question.toLowerCase().includes('rabat') || f.question.toLowerCase().includes('cena'));
+      const priceFaq = faqs.find(f => f.question.toLowerCase().includes('cena') || f.question.toLowerCase().includes('koszt'));
       setActiveBattlecard({
         category: 'OBJECTION',
         heading: 'Obiekcja cenowa („Za drogo”)',
         bullets: [
-          'Podkreśl zwrot z inwestycji (ROI)',
-          'Wskaż oszczędność 20h/msc bez zatrudniania',
-          confidentialFaq ? `🔒 Limit rabatu: ${confidentialFaq.answer.slice(0, 45)}...` : 'Propozycja: 14 dni testu bez ryzyka'
+          'Podkreśl certyfikowaną technologię i energooszczędność',
+          priceFaq ? priceFaq.answer.slice(0, 45) : 'Zaproponuj wariant bez opcjonalnych elementów',
+          confidentialFaq ? `🔒 Limit rabatu: ${confidentialFaq.answer.slice(0, 40)}...` : 'Możliwość płatności w transzach realizacyjnych'
         ],
         faqSource: confidentialFaq ? 'confidential' : 'permanent',
         urgency: 'high'
@@ -226,33 +378,35 @@ export default function CopilotCockpitModal({
         category: 'BUYING_SIGNAL',
         heading: '⚡ Aktywna Promocja Czasowa',
         bullets: [
-          promoFaq ? promoFaq.question : 'Promocja wdrożeniowa -20%',
-          promoFaq ? promoFaq.answer.slice(0, 50) : 'Ważna tylko do końca bieżącego tygodnia',
-          'Dodatkowe 50 minut w cenie pierwszego pakietu'
+          promoFaq ? promoFaq.question : 'Promocja wdrożeniowa / sezonowa',
+          promoFaq ? promoFaq.answer.slice(0, 50) : 'Gwarancja stałej ceny przy rezerwacji w tym tygodniu',
+          'Wymóg: potwierdzenie lub zaliczka do piątku'
         ],
         faqSource: 'current',
         urgency: 'medium'
       });
     } else if (type === 'time') {
+      const timeFaq = faqs.find(f => f.question.toLowerCase().includes('czas') || f.question.toLowerCase().includes('termin') || f.question.toLowerCase().includes('montaż'));
       setActiveBattlecard({
         category: 'OBJECTION',
-        heading: 'Obiekcja czasu („Nie mam teraz głowy”)',
+        heading: 'Czas realizacji / Harmonogram',
         bullets: [
-          'Wdrożenie w 3 minuty bez informatyka',
-          'EVA działa na istniejącym numerze komórkowym (*61*)',
-          'Zaproponuj 5-minutowe demo w czwartek o 10:00'
+          timeFaq ? timeFaq.answer.slice(0, 45) : 'Montaż stanu surowego w 7-10 dni roboczych',
+          'Precyzyjny harmonogram gwarantowany w umowie',
+          'Zaproponuj rezerwację terminu ekipy montażowej'
         ],
         faqSource: 'permanent',
         urgency: 'medium'
       });
     } else if (type === 'competitor') {
+      const techFaq = faqs.find(f => f.category !== 'current' && !f.isConfidential && (f.question.toLowerCase().includes('technolog') || f.question.toLowerCase().includes('parametr') || f.question.toLowerCase().includes('zalet')));
       setActiveBattlecard({
         category: 'FACT_QUERY',
-        heading: 'Porównanie z konkurencją / IVR',
+        heading: 'Parametry techniczne FAQ',
         bullets: [
-          'Brak sztywnego „Wciśnij 1, wciśnij 2”',
-          'Obsługa wtrąceń i wejść w słowo (Barge-in <200ms)',
-          'Automatyczna synchronizacja kalendarza i SMS'
+          techFaq ? techFaq.question : 'Wysoka izolacyjność termiczna i akustyczna ścian',
+          techFaq ? techFaq.answer.slice(0, 45) : 'Produkcja modułów w kontrolowanych warunkach fabrycznych',
+          'Pełna dokumentacja i certyfikaty do odbioru budynku'
         ],
         faqSource: 'permanent',
         urgency: 'low'
@@ -308,7 +462,7 @@ export default function CopilotCockpitModal({
               <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
               <div className="text-xs text-indigo-950 leading-relaxed">
                 <strong className="font-semibold block mb-1">Jak działa połączenie:</strong>
-                Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę w słuchawce (AirPods/Bluetooth), a system natychmiast połączy Cię z klientem, prezentując numer Twojej firmy. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
+                Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system natychmiast połączy Cię z klientem. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
               </div>
             </div>
 
@@ -326,7 +480,7 @@ export default function CopilotCockpitModal({
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setScenario(item.id as any)}
+                    onClick={() => handleSelectScenario(item.id as any)}
                     className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
                       scenario === item.id 
                         ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/20' 

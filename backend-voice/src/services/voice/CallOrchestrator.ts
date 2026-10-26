@@ -397,12 +397,12 @@ export class CallOrchestrator {
     const now = Date.now();
     const silentDuration = now - this.lastActivityTime;
 
-    // Po 12 sekundach ciszy (gdy asystent nie mówi i nie kończy rozmowy) - jednorazowe podtrzymanie kontaktu:
-    if (silentDuration >= 12000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
+    // Po 18 sekundach ciszy (gdy asystent nie mówi i nie kończy rozmowy) - jednorazowe podtrzymanie kontaktu:
+    if (silentDuration >= 18000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
       this.silencePromptSent = true;
-      console.log('⏱️ [Silence Watchdog] Minęło 12s ciszy. Asystent wysyła pytanie sprawdzające łączność.');
+      console.log('⏱️ [Silence Watchdog] Minęło 18s ciszy. Asystent wysyła pytanie sprawdzające łączność.');
       if (this.geminiClient && this.geminiClient.isLive()) {
-        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy, a rozmówca nic nie mówi. Zapytaj krótko i ciepło: 'Halo, czy mnie słychać? W czym mogę dzisiaj pomóc?'.]");
+        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż i wykonaj odpowiednie narzędzie! Jeśli rozmówca po prostu milczy, upewnij się łagodnie: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]");
       }
     }
 
@@ -597,6 +597,7 @@ export class CallOrchestrator {
       onTurnComplete: () => this.handleGeminiTurnComplete(),
       onVoiceActivity: () => {
         this.lastActivityTime = Date.now();
+        this.silencePromptSent = false;
         if (this.isAwaitingUserAfterAction) {
           console.log('🗣️ [VoiceActivity] Wykryto aktywność głosu rozmówcy z Gemini Live API. Zwalniam blokadę endCall.');
           this.isAwaitingUserAfterAction = false;
@@ -797,7 +798,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".`;
               } else {
                 // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST)
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?".`;
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?". Jeśli rozmówca w odpowiedzi od razu przedstawi sprawę lub prośbę (np. o ofertę, wycenę, usunięcie elementów) zamiast imienia, NATYCHMIAST ją obsłuż i zastosuj Skrót Intencji!`;
               }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // PAKIET BIZNESOWY (Standard / Premium)
@@ -1454,10 +1455,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         return;
       }
 
-      this.lastActivityTime = Date.now(); // Asystentka mówi
-      this.agentSpeaking = true;
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
+      this.lastActivityTime = Math.max(this.lastActivityTime, Date.now() + durationMs); // Asystentka mówi - uwzględniamy czas rzeczywistego odtwarzania w Twilio
+      this.agentSpeaking = true;
       this.currentTurnAudioDurationMs += durationMs;
 
       if (this.isTerminating) {

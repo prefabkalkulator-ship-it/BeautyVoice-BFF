@@ -1,7 +1,12 @@
 import { WebSocket } from 'ws';
 import { GoogleGenAI } from '@google/genai';
+import { createRequire } from 'module';
 import { prisma } from '../../prisma';
 import { AI_MODELS } from '../../config/aiModels';
+
+const require = createRequire(import.meta.url);
+const { mulaw } = require('alawmulaw');
+const { WaveFile } = require('wavefile');
 
 export interface BattlecardPayload {
   category: 'OBJECTION' | 'FACT_QUERY' | 'BUYING_SIGNAL' | 'DEESCALATION';
@@ -89,25 +94,11 @@ export class CopilotEngineService {
     const confidentialFaqs = allFaqs.filter(f => f.isConfidential);
     const permanentFaqs = allFaqs.filter(f => f.category !== 'current' && !f.isConfidential);
 
-    // Dynamiczna checklista bazująca na pytaniach kwalifikacyjnych tenanta lub scenariuszu
-    const checklist: CopilotChecklistItem[] = [];
-    if (tenant?.leadQuestion1) checklist.push({ id: '1', text: tenant.leadQuestion1, checked: false });
-    if (tenant?.leadQuestion2) checklist.push({ id: '2', text: tenant.leadQuestion2, checked: false });
-    if (tenant?.leadQuestion3) checklist.push({ id: '3', text: tenant.leadQuestion3, checked: false });
-
-    if (checklist.length === 0) {
-      checklist.push(
-        { id: '1', text: 'Zbadaj aktualny problem lub cel klienta', checked: false },
-        { id: '2', text: 'Przedstaw dopasowany wariant i warunki cenowe', checked: false },
-        { id: '3', text: 'Ustal twardy termin kolejnego kroku / podpisania', checked: false }
-      );
-    }
-
-    // Pobierz historię klienta (CallLog i Appointment)
+    // Pobierz historię klienta (CallLog, Appointment i kartotekę Customer)
     const normPhone = options.customerPhone.replace(/[\s\-\+]/g, '');
     const last9 = normPhone.length >= 9 ? normPhone.slice(-9) : normPhone;
 
-    const [recentCalls, recentAppts] = await Promise.all([
+    const [recentCalls, recentAppts, customerRecord] = await Promise.all([
       prisma.callLog.findMany({
         where: {
           tenantId: options.tenantId,
@@ -124,16 +115,106 @@ export class CopilotEngineService {
         include: { service: true },
         orderBy: { startTime: 'desc' },
         take: 3
+      }),
+      prisma.customer.findFirst({
+        where: {
+          tenantId: options.tenantId,
+          phoneNumber: { contains: last9 }
+        }
       })
     ]);
+
+    const lastCallSummary = recentCalls[0]?.summary || '';
+    const cleanLastSummary = lastCallSummary.replace(/^\[[^\]]+\]\s*/, '').trim();
+    const scenario = options.scenario || (lastCallSummary ? 'callback' : 'sales');
+
+    // Dynamiczna checklista bazująca na wybranym scenariuszu i historii kontaktu
+    const checklist: CopilotChecklistItem[] = [];
+    if (scenario === 'callback' && cleanLastSummary) {
+      checklist.push(
+        { id: '1', text: `Nawiąż do ostatniej rozmowy (${cleanLastSummary.slice(0, 38)}...)`, checked: false },
+        { id: '2', text: 'Przedstaw skorygowaną kalkulację i warunki cenowe', checked: false },
+        { id: '3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
+      );
+    } else if (scenario === 'sales') {
+      checklist.push(
+        { id: '1', text: tenant?.leadQuestion1 || 'Zbadaj aktualne potrzeby i parametry inwestycji', checked: false },
+        { id: '2', text: tenant?.leadQuestion2 || 'Wskaż warianty i aktualny rabat z Bazy Czasowej', checked: false },
+        { id: '3', text: tenant?.leadQuestion3 || 'Ustal termin przesłania koncepcji / kalkulacji', checked: false }
+      );
+    } else if (scenario === 'complaint') {
+      checklist.push(
+        { id: '1', text: 'Wysłuchaj bez przerywania (aktywna deeskalacja)', checked: false },
+        { id: '2', text: 'Potwierdź zrozumienie problemu i przeproś za niedogodność', checked: false },
+        { id: '3', text: 'Zaproponuj konkretne rozwiązanie z procedury gwarancyjnej', checked: false }
+      );
+    } else {
+      checklist.push(
+        { id: '1', text: 'Zbadaj bieżące potrzeby i parametry techniczne', checked: false },
+        { id: '2', text: 'Odpowiedz na pytania w oparciu o Bazę FAQ', checked: false },
+        { id: '3', text: 'Zaproponuj termin spotkania lub wysyłkę materiałów', checked: false }
+      );
+    }
+
+    // Dynamiczna karta startowa (Pre-Call Briefing Card) zasilana historią klienta
+    let initialBattlecard: BattlecardPayload;
+    if (cleanLastSummary) {
+      initialBattlecard = {
+        category: 'BUYING_SIGNAL',
+        heading: `Odprawa: ${options.customerName || 'Klient'}`,
+        bullets: [
+          cleanLastSummary.length > 70 ? cleanLastSummary.slice(0, 67) + '...' : cleanLastSummary,
+          recentCalls[0]?.actionItems ? `Zadanie: ${recentCalls[0].actionItems}` : 'Cel: potwierdzić nowe parametry i cenę',
+          'Baza FAQ: zweryfikuj specyfikację i rabat czasowy'
+        ],
+        faqSource: 'permanent',
+        urgency: 'high'
+      };
+    } else if (scenario === 'sales') {
+      initialBattlecard = {
+        category: 'BUYING_SIGNAL',
+        heading: 'Otwarcie rozmowy handlowej',
+        bullets: [
+          'Zbadaj wielkość i planowany termin inwestycji',
+          'Podkreśl szybkość montażu i izolacyjność konstrukcji',
+          'Wskaż aktualną promocję z Bazy Czasowej'
+        ],
+        faqSource: 'current',
+        urgency: 'medium'
+      };
+    } else if (scenario === 'complaint') {
+      initialBattlecard = {
+        category: 'DEESCALATION',
+        heading: 'Obsługa zgłoszenia / Deeskalacja',
+        bullets: [
+          'Wysłuchaj klienta bez wchodzenia w słowo',
+          'Spisz dokładne punkty uwag do protokołu',
+          'Zaproponuj termin wizyty serwisu lub rozwiązanie'
+        ],
+        faqSource: 'permanent',
+        urgency: 'high'
+      };
+    } else {
+      initialBattlecard = {
+        category: 'FACT_QUERY',
+        heading: 'Konsultacja ogólna',
+        bullets: [
+          'Zbadaj stan działki i warunków zabudowy',
+          'Wyjaśnij etapy realizacji: projekt, stan surowy, wykończenie',
+          'Zaproponuj przesłanie katalogu lub spotkanie'
+        ],
+        faqSource: 'permanent',
+        urgency: 'low'
+      };
+    }
 
     const session: CopilotSession = {
       sessionId,
       tenantId: options.tenantId,
       ownerPhone,
       customerPhone: options.customerPhone,
-      customerName: options.customerName || 'Klient',
-      scenario: options.scenario || 'sales',
+      customerName: options.customerName || customerRecord?.name || 'Klient',
+      scenario,
       createdAt: new Date(),
       uiSockets: new Set(),
       isRepSpeaking: false,
@@ -151,21 +232,11 @@ export class CopilotEngineService {
       inboundAudioBuffer: [],
       lastInboundAudioTime: 0,
       evaluatingInbound: false,
-      activeBattlecard: {
-        category: 'BUYING_SIGNAL',
-        heading: 'Otwarcie rozmowy i nawiązanie relacji',
-        bullets: [
-          'Nawiąż do ostatniego kontaktu',
-          'Zapytaj o priorytet na ten kwartał',
-          'Trzymaj tempo: zwięźle i partnersko'
-        ],
-        faqSource: 'permanent',
-        urgency: 'low'
-      }
+      activeBattlecard: initialBattlecard
     };
 
     this.sessions.set(sessionId, session);
-    console.log(`🎧 [CopilotEngine] Utworzono sesję Copilota: ${sessionId} dla klienta: ${options.customerPhone}`);
+    console.log(`🎧 [CopilotEngine] Utworzono sesję Copilota: ${sessionId} dla klienta: ${options.customerPhone} (scenariusz: ${scenario})`);
     return session;
   }
 
@@ -290,19 +361,38 @@ export class CopilotEngineService {
    */
   private async evaluateCustomerIntent(session: CopilotSession, audioBuffer: Buffer) {
     try {
+      // Konwersja bufora mulaw 8kHz do WAV 8kHz w pamięci RAM
+      let wavBase64 = '';
+      try {
+        const pcmInt16 = mulaw.decode(audioBuffer);
+        const wav = new WaveFile();
+        wav.fromScratch(1, 8000, '16', pcmInt16);
+        wavBase64 = wav.toBuffer().toString('base64');
+      } catch (audioErr: any) {
+        console.warn('[CopilotEngine] Błąd konwersji audio WAV:', audioErr.message);
+      }
+
       // Skrót Bazy Wiedzy do promptu decyzyjnego Flash
       const currentPromos = session.faqs.current.map(f => `[PROMO] ${f.question}: ${f.answer}`).join('\n');
       const permanentKnowledge = session.faqs.permanent.map(f => `[FAQ] ${f.question}: ${f.answer}`).join('\n');
       const confidentialLimits = session.faqs.confidential.map(f => `[POUFNE] ${f.question}: ${f.answer}`).join('\n');
 
+      const historyContext = session.customerHistory.recentCallSummaries.length > 0
+        ? `HISTORIA POPRZEDNICH ROZMÓW Z KLIENTEM:\n${session.customerHistory.recentCallSummaries.join('\n')}`
+        : 'Pierwsza rozmowa z klientem.';
+
       const systemPrompt = `
 Jesteś ultranowoczesnym asystentem czasu rzeczywistego (Live Call Copilot) wspomagającym handlowca podczas rozmowy telefonicznej.
 Twoim celem jest wygenerowanie TELEGRAFICZNEJ KARTY BOJOWEJ (Glanceable Battlecard) do odczytania w ułamku sekundy (<400ms scan time).
 
+ROZMÓWCA: ${session.customerName} (${session.customerPhone})
+SCENARIUSZ ROZMOWY: ${session.scenario}
+${historyContext}
+
 BAZA WIEDZY CZASOWA (Aktualne promocje, rabaty, akcje marketingowe):
 ${currentPromos || 'Brak aktywnych promocji czasowych.'}
 
-BAZA WIEDZY STAŁA (Parametry, godziny, procedury, cenniki):
+BAZA WIEDZY STAŁA (Parametry techniczne, procedury, realizacje, cenniki):
 ${permanentKnowledge || 'Standardowe warunki handlowe.'}
 
 BAZA WIEDZY POUFNA (Maksymalny rabat, koszty, próg negocjacyjny):
@@ -314,9 +404,9 @@ WYMOGI FORMATOWANIA:
   "category": "OBJECTION" | "FACT_QUERY" | "BUYING_SIGNAL" | "DEESCALATION",
   "heading": "Zwięzły tytuł sytuacji (maks. 5 słów)",
   "bullets": [
-    "Pierwszy argument (3-5 słów)",
-    "Drugi argument (3-5 słów z konkretną ceną/liczbą)",
-    "Trzeci argument (3-5 słów z propozycją kroku)"
+    "Pierwszy konkretny argument (3-5 słów)",
+    "Drugi argument (3-5 słów z konkretną liczbą/ceną/terminem)",
+    "Trzeci argument (3-5 słów z propozycją kolejnego kroku)"
   ],
   "faqSource": "current" | "permanent" | "confidential" | null,
   "urgency": "high" | "medium" | "low"
@@ -324,15 +414,25 @@ WYMOGI FORMATOWANIA:
 BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne hasła z twardymi liczbami.
 `;
 
+      const userParts: any[] = [{ text: systemPrompt }];
+      if (wavBase64) {
+        userParts.push({
+          inlineData: {
+            mimeType: 'audio/wav',
+            data: wavBase64
+          }
+        });
+      }
+      userParts.push({
+        text: 'Odsłuchaj powyższe nagranie wypowiedzi klienta. Zidentyfikuj intencję, pytanie lub obiekcję i dopasuj telegraficzną odpowiedź opartą o bazę wiedzy i kontekst klienta:'
+      });
+
       const response = await this.ai.models.generateContent({
         model: AI_MODELS.TEXT_FLASH,
         contents: [
           {
             role: 'user',
-            parts: [
-              { text: systemPrompt },
-              { text: `Ostatnia wypowiedź klienta (klient zadaje pytanie lub zgłasza wątpliwość). Przygotuj telegraficzną odpowiedź opartą o bazę wiedzy:` }
-            ]
+            parts: userParts
           }
         ],
         config: {

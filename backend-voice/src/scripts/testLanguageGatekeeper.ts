@@ -137,6 +137,20 @@ function runTests() {
     'Test 4.5: isLikelyForeignText nie kwalifikuje polskiej wiadomości jako obcej'
   );
 
+  // 5. Test Tury 1 i natychmiastowego podejmowania sprawy (Skrót Intencji w pierwszym kontakcie)
+  assert(
+    personalGuestPrompt.includes('WYJĄTEK ABSOLUTNY – ROZMÓWCA W TURZE 1 OD RAZU MÓWI O SWOJEJ SPRAWIE (SKRÓT INTENCJI)') &&
+    personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ ponownego dopytywania o imię przed załatwieniem sprawy!') &&
+    personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ mówienia "z kim mam przyjemność?" lub "nie dosłyszałam, z kim rozmawiam"!'),
+    'Test 5.1: Tura 1 zawiera bezwzględny nakaz natychmiastowej obsługi sprawy rozmówcy bez powtórnego pytania o imię'
+  );
+
+  assert(
+    personalGuestPrompt.includes('Dzwonię w sprawie korekty oferty...') &&
+    personalGuestPrompt.includes('Chodzi o usunięcie płyty fundamentowej lub wentylacji...'),
+    'Test 5.2: Wzorce Skrótu Intencji zawierają jednoznaczne przykłady korekty oferty i wyceny'
+  );
+
   console.log(`\n========================================`);
   console.log(`Wynik testów: ${passed} zdanych, ${failed} nieudanych.`);
   console.log(`========================================\n`);
