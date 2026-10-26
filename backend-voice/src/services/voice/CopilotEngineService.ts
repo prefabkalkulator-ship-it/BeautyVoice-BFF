@@ -98,31 +98,39 @@ export class CopilotEngineService {
     const normPhone = options.customerPhone.replace(/[\s\-\+]/g, '');
     const last9 = normPhone.length >= 9 ? normPhone.slice(-9) : normPhone;
 
-    const [recentCalls, recentAppts, customerRecord] = await Promise.all([
-      prisma.callLog.findMany({
-        where: {
-          tenantId: options.tenantId,
-          callerPhone: { contains: last9 }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 3
-      }),
-      prisma.appointment.findMany({
-        where: {
-          tenantId: options.tenantId,
-          customerPhone: { contains: last9 }
-        },
-        include: { service: true },
-        orderBy: { startTime: 'desc' },
-        take: 3
-      }),
-      prisma.customer.findFirst({
-        where: {
-          tenantId: options.tenantId,
-          phoneNumber: { contains: last9 }
-        }
-      })
-    ]);
+    let recentCalls: any[] = [];
+    let recentAppts: any[] = [];
+    let customerRecord: any = null;
+
+    try {
+      [recentCalls, recentAppts, customerRecord] = await Promise.all([
+        prisma.callLog.findMany({
+          where: {
+            tenantId: options.tenantId,
+            callerPhone: { contains: last9 }
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 3
+        }),
+        prisma.appointment.findMany({
+          where: {
+            tenantId: options.tenantId,
+            customerPhone: { contains: last9 }
+          },
+          include: { service: true },
+          orderBy: { startTime: 'desc' },
+          take: 3
+        }),
+        prisma.customer.findFirst({
+          where: {
+            tenantId: options.tenantId,
+            phone: { contains: last9 }
+          }
+        })
+      ]);
+    } catch (dbErr: any) {
+      console.warn('[CopilotEngine] Ostrzeżenie przy pobieraniu historii klienta:', dbErr.message);
+    }
 
     const lastCallSummary = recentCalls[0]?.summary || '';
     const cleanLastSummary = lastCallSummary.replace(/^\[[^\]]+\]\s*/, '').trim();

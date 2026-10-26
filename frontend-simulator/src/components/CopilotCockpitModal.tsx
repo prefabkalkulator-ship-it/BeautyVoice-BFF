@@ -193,7 +193,7 @@ export default function CopilotCockpitModal({
         fetch(histUrl)
           .then(r => r.json())
           .then(data => {
-            const calls = data.recentCalls || data.calls || [];
+            const calls = data.recentCalls || data.callLogs || data.calls || [];
             if (calls.length > 0 && calls[0]?.summary) {
               const clean = calls[0].summary.replace(/^\[[^\]]+\]\s*/, '').trim();
               setScenario('callback');

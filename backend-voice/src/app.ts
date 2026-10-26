@@ -1051,6 +1051,53 @@ app.put('/api/customers/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Błąd' }); }
 });
 
+app.get('/api/customers/search', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const rawPhone = String(req.query.phone || '').replace(/[\s\-\+]/g, '');
+    const last9 = rawPhone.length >= 9 ? rawPhone.slice(-9) : rawPhone;
+
+    if (!last9) return res.json({ customer: null, recentCalls: [], callLogs: [], appointments: [] });
+
+    const [customer, callLogs, appointments] = await Promise.all([
+      prisma.customer.findFirst({
+        where: {
+          tenantId: tenant.id,
+          phone: { contains: last9 }
+        }
+      }),
+      prisma.callLog.findMany({
+        where: {
+          tenantId: tenant.id,
+          callerPhone: { contains: last9 }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      }),
+      prisma.appointment.findMany({
+        where: {
+          tenantId: tenant.id,
+          customerPhone: { contains: last9 }
+        },
+        include: { service: true },
+        orderBy: { startTime: 'desc' },
+        take: 5
+      })
+    ]);
+
+    return res.json({
+      customer,
+      recentCalls: callLogs,
+      callLogs,
+      appointments
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/customers/:id/history', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
