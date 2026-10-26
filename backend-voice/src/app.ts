@@ -2901,6 +2901,10 @@ app.post('/api/copilot/start-call', async (req, res) => {
       return res.status(500).json({ error: bridgeResult.error || 'Nie udało się połączyć z operatorem telefonii Twilio.' });
     }
 
+    if (bridgeResult.callSid) {
+      session.callSid = bridgeResult.callSid;
+    }
+
     return res.json({
       success: true,
       sessionId: session.sessionId,
@@ -2932,16 +2936,112 @@ app.get('/api/copilot/session/:id', async (req, res) => {
   }
 });
 
-// 3. Zakończenie sesji Copilota
+// 3. Zakończenie sesji Copilota (i natychmiastowe rozłączenie w Twilio)
 app.post('/api/copilot/end-call', async (req, res) => {
   try {
     const { sessionId } = req.body || {};
     if (sessionId) {
-      copilotEngineService.endSession(sessionId);
+      await copilotEngineService.endSession(sessionId);
     }
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Zapisanie ustaleń po rozmowie w CRM (automatyczny upsert klienta w kartotece)
+app.post('/api/copilot/save-summary', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { customerPhone, customerName, notes, nextStepTask, nextStepDate, leadStage } = req.body || {};
+    if (!customerPhone) return res.status(400).json({ error: 'Brak numeru telefonu klienta' });
+
+    const rawPhone = String(customerPhone).replace(/[\s\-\+]/g, '');
+    const last9 = rawPhone.length >= 9 ? rawPhone.slice(-9) : rawPhone;
+
+    // 1. Znajdź istniejącego klienta lub utwórz nowego
+    let customer = await prisma.customer.findFirst({
+      where: {
+        tenantId: tenant.id,
+        phone: { contains: last9 }
+      }
+    });
+
+    const formattedNote = notes ? `[Rozmowa Copilot ${new Date().toLocaleDateString('pl-PL')}]: ${notes}${nextStepTask ? `\nZadanie: ${nextStepTask} (${nextStepDate || 'wkrótce'})` : ''}` : '';
+
+    if (customer) {
+      const existingNotes = customer.notes ? `${customer.notes}\n\n` : '';
+      const updatedTags = Array.from(new Set([...(customer.tags || []), '#copilot', ...(leadStage ? [`#${leadStage.toLowerCase()}`] : [])]));
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          notes: formattedNote ? `${existingNotes}${formattedNote}` : customer.notes,
+          tags: updatedTags,
+          lastVisitAt: new Date()
+        }
+      });
+      console.log(`✅ [Copilot CRM] Zaktualizowano kartotekę klienta ${customer.name} (${customer.id})`);
+    } else {
+      customer = await prisma.customer.create({
+        data: {
+          tenantId: tenant.id,
+          name: customerName || 'Nowy Klient Copilot',
+          phone: customerPhone,
+          notes: formattedNote,
+          tags: ['#copilot', ...(leadStage ? [`#${leadStage.toLowerCase()}`] : [])],
+          lastVisitAt: new Date()
+        }
+      });
+      console.log(`✅ [Copilot CRM] Utworzono nową kartotekę klienta ${customer.name} (${customer.id})`);
+    }
+
+    // 2. Jeśli zdefiniowano zadanie / kolejny krok, utwórz wpis Appointment jako contactLevel = 'TASK'
+    if (nextStepTask) {
+      try {
+        const taskDate = nextStepDate ? new Date(nextStepDate) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const defaultService = await prisma.service.findFirst({ where: { tenantId: tenant.id } });
+        if (defaultService) {
+          await prisma.appointment.create({
+            data: {
+              tenantId: tenant.id,
+              serviceId: defaultService.id,
+              customerId: customer.id,
+              customerName: customer.name,
+              customerPhone: customer.phone,
+              startTime: isNaN(taskDate.getTime()) ? new Date() : taskDate,
+              endTime: new Date((isNaN(taskDate.getTime()) ? Date.now() : taskDate.getTime()) + 30 * 60 * 1000),
+              status: 'confirmed',
+              contactLevel: 'TASK',
+              notes: nextStepTask,
+              isProcessed: false
+            }
+          });
+          console.log(`✅ [Copilot CRM] Utworzono zadanie CRM: "${nextStepTask}" na ${taskDate.toISOString()}`);
+        }
+      } catch (taskErr: any) {
+        console.warn('[Copilot CRM] Ostrzeżenie przy tworzeniu zadania CRM:', taskErr.message);
+      }
+    }
+
+    // 3. Oznacz powiązany wpis CallLog jako obsłużony
+    try {
+      await prisma.callLog.updateMany({
+        where: {
+          tenantId: tenant.id,
+          callerPhone: { contains: last9 }
+        },
+        data: {
+          isProcessed: true
+        }
+      });
+    } catch (_) {}
+
+    return res.json({ success: true, customer });
+  } catch (err: any) {
+    console.error('❌ [Copilot CRM] Błąd zapisu podsumowania:', err);
+    return res.status(500).json({ error: err.message || 'Błąd zapisu podsumowania' });
   }
 });
 

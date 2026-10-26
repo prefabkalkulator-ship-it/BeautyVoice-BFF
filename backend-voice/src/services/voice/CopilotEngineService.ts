@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createRequire } from 'module';
 import { prisma } from '../../prisma';
 import { AI_MODELS } from '../../config/aiModels';
+import { VoiceOutboundService } from './VoiceOutboundService';
 
 const require = createRequire(import.meta.url);
 const { mulaw } = require('alawmulaw');
@@ -32,6 +33,7 @@ export interface CopilotSession {
   scenario: string;
   createdAt: Date;
   uiSockets: Set<WebSocket>;
+  callSid?: string;
   twilioStreamSid?: string;
   isRepSpeaking: boolean;
   lastRepSpeechTime: number;
@@ -310,14 +312,14 @@ export class CopilotEngineService {
 
     const audioChunk = Buffer.from(payloadBase64, 'base64');
 
-    // Prosta detekcja energii głosu (RMS na próbkach audio 8kHz mulaw)
+    // Precyzyjna detekcja energii głosu na zdekodowanych próbkach 16-bit linear PCM (G.711 mulaw decode)
+    const pcmInt16 = mulaw.decode(audioChunk);
     let sumSquares = 0;
-    for (let i = 0; i < audioChunk.length; i++) {
-      const sample = audioChunk[i] - 128;
-      sumSquares += sample * sample;
+    for (let i = 0; i < pcmInt16.length; i++) {
+      sumSquares += pcmInt16[i] * pcmInt16[i];
     }
-    const rms = Math.sqrt(sumSquares / audioChunk.length);
-    const hasVoiceEnergy = rms > 22; // próg mowy
+    const rms = Math.sqrt(sumSquares / pcmInt16.length);
+    const hasVoiceEnergy = rms > 650; // próg mowy w 16-bit PCM (cisza: 0-200, mowa: 1000-8000)
 
     const now = Date.now();
 
@@ -465,18 +467,22 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
   }
 
   /**
-   * Zakończenie sesji Copilota i czyszczenie pamięci
+   * Zakończenie sesji Copilota, rozłączenie centrali Twilio i czyszczenie pamięci
    */
-  public endSession(sessionId: string) {
+  public async endSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+
+    if (session.callSid) {
+      await VoiceOutboundService.terminateCall(session.callSid);
+    }
 
     this.broadcastToUi(session, { type: 'CALL_ENDED' });
     for (const ws of session.uiSockets) {
       try { ws.close(); } catch (e) {}
     }
     this.sessions.delete(sessionId);
-    console.log(`🛑 [CopilotEngine] Zamknięto sesję Copilota: ${sessionId}`);
+    console.log(`🛑 [CopilotEngine] Zamknięto sesję Copilota i rozłączono połączenie: ${sessionId}`);
   }
 }
 

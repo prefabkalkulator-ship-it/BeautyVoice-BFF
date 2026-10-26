@@ -165,8 +165,9 @@ export class VoiceOutboundService {
       const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
 
       // Caller ID prezentowany KLIENTOWI na Leg 2:
-      // Używamy dedykowanego numeru tenanta LUB bezpośredniego numeru komórkowego tenanta (np. +48533989987 - zweryfikowanego w Twilio)
-      const customerLegCallerId = tenant.assignedPhoneNumber || to || process.env.TWILIO_CALLER_ID || '+48343433088';
+      // Używamy zweryfikowanego numeru komórkowego użytkownika (to = +48533989987).
+      // Zewnętrzny numer Zadarma (+48459568507) nie może być nadawcą w Twilio, bo Twilio rzuca błąd 13214 i wraca do DEMO.
+      const customerLegCallerId = to;
 
       const client = twilio(this.twilioSid, this.twilioToken);
 
@@ -224,6 +225,22 @@ export class VoiceOutboundService {
     } catch (err: any) {
       console.error('[VoiceOutbound] Błąd 2-Leg Copilot Bridge:', err.message);
       return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Zdalne zakończenie aktywnego połączenia w Twilio (Hangup)
+   */
+  static async terminateCall(callSid: string): Promise<boolean> {
+    if (!this.twilioSid || !this.twilioToken || !callSid) return false;
+    try {
+      const client = twilio(this.twilioSid, this.twilioToken);
+      await client.calls(callSid).update({ status: 'completed' });
+      console.log(`🛑 [VoiceOutbound] Połączenie Twilio ${callSid} zostało rozłączone przez centralę.`);
+      return true;
+    } catch (err: any) {
+      console.warn(`[VoiceOutbound] Błąd rozłączania Twilio ${callSid}:`, err.message);
+      return false;
     }
   }
 }

@@ -140,6 +140,7 @@ export default function CopilotCockpitModal({
   const [quickFaqModalOpen, setQuickFaqModalOpen] = useState(false);
   const [faqTab, setFaqTab] = useState<'current' | 'permanent' | 'confidential'>('current');
   const [faqs, setFaqs] = useState<any[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   // Notatki powoławcze i zadanie CRM
   const [postCallNote, setPostCallNote] = useState('');
@@ -198,7 +199,7 @@ export default function CopilotCockpitModal({
               const clean = calls[0].summary.replace(/^\[[^\]]+\]\s*/, '').trim();
               setScenario('callback');
               setChecklist([
-                { id: 'cb1', text: `Nawiąż do: ${clean.slice(0, 36)}...`, checked: false },
+                { id: 'cb1', text: clean.length > 70 ? `Nawiąż do: ${clean.slice(0, 67)}...` : `Nawiąż do: ${clean}`, checked: false },
                 { id: 'cb2', text: 'Przedstaw skorygowaną specyfikację i warunki cenowe', checked: false },
                 { id: 'cb3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
               ]);
@@ -206,7 +207,7 @@ export default function CopilotCockpitModal({
                 category: 'BUYING_SIGNAL',
                 heading: `Odprawa: ${customerName}`,
                 bullets: [
-                  clean.length > 68 ? clean.slice(0, 65) + '...' : clean,
+                  clean.length > 80 ? clean.slice(0, 77) + '...' : clean,
                   calls[0].actionItems ? `Zadanie: ${calls[0].actionItems}` : 'Cel: potwierdzić nowe parametry i cenę',
                   'Baza FAQ: zweryfikuj specyfikację i rabat czasowy'
                 ],
@@ -285,6 +286,7 @@ export default function CopilotCockpitModal({
 
       // Połączenie z kanałem WebSocket Copilota na żywo
       if (data.sessionId) {
+        setActiveSessionId(data.sessionId);
         try {
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           const ws = new WebSocket(`${protocol}//${window.location.host}/api/copilot-ui?sessionId=${data.sessionId}`);
@@ -327,6 +329,13 @@ export default function CopilotCockpitModal({
   const handleEndCall = () => {
     setCallPhase('summary');
     if (timerRef.current) clearInterval(timerRef.current);
+    if (activeSessionId) {
+      fetch('/api/copilot/end-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: activeSessionId })
+      }).catch(err => console.warn('[Copilot UI] Błąd kończenia sesji:', err));
+    }
     if (wsRef.current) {
       try { wsRef.current.close(); } catch (e) {}
       wsRef.current = null;
@@ -335,22 +344,31 @@ export default function CopilotCockpitModal({
 
   const handleSavePostCallSummary = async () => {
     try {
-      if (customerId) {
-        await fetch(`/api/customers/${customerId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            notes: postCallNote ? `[Rozmowa Copilot ${new Date().toLocaleDateString()}]: ${postCallNote}\nZadanie: ${nextStepTask} (${nextStepDate})` : undefined
-          })
-        });
+      const res = await fetch('/api/copilot/save-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerPhone,
+          customerName,
+          notes: postCallNote,
+          nextStepTask,
+          nextStepDate,
+          leadStage
+        })
+      });
+
+      if (res.ok) {
+        toast.success('Ustalenia i notatka zapisane w kartotece!', { icon: '✅' });
+      } else {
+        toast.error('Błąd zapisu w CRM.');
       }
-      toast.success('Ustalenia i notatka zapisane w kartotece!', { icon: '✅' });
       onClose();
       // Reset stanu
       setCallPhase('setup');
       setCallDurationSeconds(0);
       setPostCallNote('');
       setNextStepTask('');
+      setActiveSessionId(null);
     } catch (err) {
       toast.error('Błąd zapisu notatki.');
     }
@@ -359,54 +377,49 @@ export default function CopilotCockpitModal({
   // Szybkie wstrzykiwanie kart podpowiedzi FAQ / Obiekcji
   const triggerObjectionCard = (type: 'price' | 'time' | 'competitor' | 'promo') => {
     if (type === 'price') {
-      const confidentialFaq = faqs.find(f => f.isConfidential || f.question.toLowerCase().includes('rabat') || f.question.toLowerCase().includes('cena'));
-      const priceFaq = faqs.find(f => f.question.toLowerCase().includes('cena') || f.question.toLowerCase().includes('koszt'));
       setActiveBattlecard({
         category: 'OBJECTION',
-        heading: 'Obiekcja cenowa („Za drogo”)',
+        heading: 'Obiekcja cenowa („Za drogo” / Budżet)',
         bullets: [
-          'Podkreśl certyfikowaną technologię i energooszczędność',
-          priceFaq ? priceFaq.answer.slice(0, 45) : 'Zaproponuj wariant bez opcjonalnych elementów',
-          confidentialFaq ? `🔒 Limit rabatu: ${confidentialFaq.answer.slice(0, 40)}...` : 'Możliwość płatności w transzach realizacyjnych'
+          'Odliczenie płyty fundamentowej: oszczędność ~45-60 tys. zł',
+          'Odliczenie wentylacji / rekuperacji: oszczędność ~18-25 tys. zł',
+          'Możliwość realizacji fundamentu i wentylacji we własnym zakresie'
         ],
-        faqSource: confidentialFaq ? 'confidential' : 'permanent',
+        faqSource: 'confidential',
         urgency: 'high'
       });
     } else if (type === 'promo') {
-      const promoFaq = faqs.find(f => f.category === 'current');
       setActiveBattlecard({
         category: 'BUYING_SIGNAL',
-        heading: '⚡ Aktywna Promocja Czasowa',
+        heading: '⚡ Aktywna Promocja i Gwarancja Ceny',
         bullets: [
-          promoFaq ? promoFaq.question : 'Promocja wdrożeniowa / sezonowa',
-          promoFaq ? promoFaq.answer.slice(0, 50) : 'Gwarancja stałej ceny przy rezerwacji w tym tygodniu',
-          'Wymóg: potwierdzenie lub zaliczka do piątku'
+          'Rabat wdrożeniowy: -10% na stan deweloperski do końca miesiąca',
+          'Gwarancja stałej ceny materiałów i montażu w umowie',
+          'Bezpłatna adaptacja projektu do warunków działki'
         ],
         faqSource: 'current',
         urgency: 'medium'
       });
     } else if (type === 'time') {
-      const timeFaq = faqs.find(f => f.question.toLowerCase().includes('czas') || f.question.toLowerCase().includes('termin') || f.question.toLowerCase().includes('montaż'));
       setActiveBattlecard({
         category: 'OBJECTION',
-        heading: 'Czas realizacji / Harmonogram',
+        heading: 'Czas realizacji i Harmonogram',
         bullets: [
-          timeFaq ? timeFaq.answer.slice(0, 45) : 'Montaż stanu surowego w 7-10 dni roboczych',
-          'Precyzyjny harmonogram gwarantowany w umowie',
-          'Zaproponuj rezerwację terminu ekipy montażowej'
+          'Montaż ścian i konstrukcji na działce: 7-10 dni roboczych',
+          'Produkcja prefabrykatów równolegle z formalnościami w urzędzie',
+          'Precyzyjny harmonogram odbioru gwarantowany w umowie'
         ],
         faqSource: 'permanent',
         urgency: 'medium'
       });
     } else if (type === 'competitor') {
-      const techFaq = faqs.find(f => f.category !== 'current' && !f.isConfidential && (f.question.toLowerCase().includes('technolog') || f.question.toLowerCase().includes('parametr') || f.question.toLowerCase().includes('zalet')));
       setActiveBattlecard({
         category: 'FACT_QUERY',
-        heading: 'Parametry techniczne FAQ',
+        heading: 'Przewagi Technologii Prefabrykowanej',
         bullets: [
-          techFaq ? techFaq.question : 'Wysoka izolacyjność termiczna i akustyczna ścian',
-          techFaq ? techFaq.answer.slice(0, 45) : 'Produkcja modułów w kontrolowanych warunkach fabrycznych',
-          'Pełna dokumentacja i certyfikaty do odbioru budynku'
+          'Współczynnik przenikania U = 0,14 W/m²K (standard energooszczędny)',
+          'Ściany całkowicie suche – brak wilgoci technologicznej, start wykończenia od razu',
+          '30 lat gwarancji konstrukcyjnej na elementy prefabrykowane'
         ],
         faqSource: 'permanent',
         urgency: 'low'
