@@ -38,18 +38,10 @@ export class VoiceOutboundService {
       `;
       
       const to = targetPhone.startsWith('+') ? targetPhone : '+' + targetPhone;
+      // Dla połączeń wychodzących bota do klienta (np. potwierdzenie rezerwacji w pakiecie Premium):
+      // Zawsze używamy zweryfikowanego stacjonarnego numeru centrali Twilio (TWILIO_CALLER_ID),
+      // ponieważ polskie sieci komórkowe (Play/Orange/T-Mobile) blokują tranzyt VoIP prezentujący polski numer komórkowy (błąd 486 Busy / CLI Spoofing).
       let from = process.env.TWILIO_CALLER_ID || '+48343433088';
-
-      if (tenantId) {
-        try {
-          const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-          if (tenant?.assignedPhoneNumber) {
-            from = tenant.assignedPhoneNumber;
-          } else if (tenant?.phoneNumber) {
-            from = tenant.phoneNumber;
-          }
-        } catch (e) {}
-      }
 
       // KRYTYCZNE ZABEZPIECZENIE: Nigdy nie wolno dzwonić z numeru na ten sam numer (from === to)
       // Operatorzy telekomunikacyjni odrzucają takie połączenia z błędem pętli (Failed)

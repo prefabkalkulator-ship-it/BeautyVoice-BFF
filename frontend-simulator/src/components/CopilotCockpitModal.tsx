@@ -21,7 +21,10 @@ import {
   Volume2,
   Mic,
   MicOff,
-  UserCheck
+  UserCheck,
+  Copy,
+  Check,
+  PhoneCall
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -133,6 +136,9 @@ export default function CopilotCockpitModal({
 }: CopilotCockpitModalProps) {
   // Stan fazy: 'setup' -> 'connecting' -> 'in_call' -> 'summary'
   const [callPhase, setCallPhase] = useState<'setup' | 'connecting' | 'in_call' | 'summary'>('setup');
+  const [callMode, setCallMode] = useState<'conference' | 'bridge'>('conference'); // Konferencja z komórki jako domyślny tryb
+  const [conferenceAssistantNumber, setConferenceAssistantNumber] = useState('');
+  const [copiedNumber, setCopiedNumber] = useState(false);
   const [scenario, setScenario] = useState<'sales' | 'complaint' | 'callback' | 'general'>('sales');
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
   const [isRepSpeaking, setIsRepSpeaking] = useState(false);
@@ -265,6 +271,78 @@ export default function CopilotCockpitModal({
     setNewChecklistText('');
   };
 
+  const handleCopyNumber = (num: string) => {
+    navigator.clipboard.writeText(num);
+    setCopiedNumber(true);
+    toast.success('Skopiowano numer asystenta!', { icon: '📋' });
+    setTimeout(() => setCopiedNumber(false), 3000);
+  };
+
+  // Uruchomienie Copilota w trybie Konferencji (Wariant A - Cichy Pasażer)
+  const handleStartConferenceCall = async () => {
+    setCallPhase('connecting');
+    try {
+      const res = await fetch('/api/copilot/start-conference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerPhone,
+          customerName,
+          scenario
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || 'Błąd inicjalizacji sesji konferencyjnej.');
+        setCallPhase('setup');
+        return;
+      }
+
+      const num = data.assistantPhone || assignedPhone || '+48459568507';
+      setConferenceAssistantNumber(num);
+
+      if (data.sessionId) {
+        setActiveSessionId(data.sessionId);
+        try {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const ws = new WebSocket(`${protocol}//${window.location.host}/api/copilot-ui?sessionId=${data.sessionId}`);
+          wsRef.current = ws;
+
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              if (msg.type === 'CALL_CONNECTED') {
+                setCallPhase('in_call');
+                toast.success('EVA dołączyła do konferencji! Asystent słucha i podpowiada na żywo.', { icon: '🎧', duration: 4000 });
+              } else if (msg.type === 'SESSION_SNAPSHOT') {
+                if (msg.activeBattlecard) setActiveBattlecard(msg.activeBattlecard);
+                if (msg.checklist && msg.checklist.length > 0) setChecklist(msg.checklist);
+              } else if (msg.type === 'BATTLECARD_UPDATE' && msg.battlecard) {
+                setActiveBattlecard(msg.battlecard);
+              } else if (msg.type === 'REP_SPEAKING') {
+                setIsRepSpeaking(Boolean(msg.isSpeaking));
+              } else if (msg.type === 'CALL_ENDED') {
+                handleEndCall();
+              }
+            } catch (err) {
+              console.warn('[Copilot UI] Błąd parsowania komunikatu WebSocket:', err);
+            }
+          };
+
+          ws.onerror = (e) => {
+            console.warn('[Copilot UI] WebSocket error:', e);
+          };
+        } catch (wsErr) {
+          console.warn('[Copilot UI] Nie udało się otworzyć WebSocket:', wsErr);
+        }
+      }
+    } catch (err: any) {
+      toast.error('Błąd sieciowy podczas inicjalizacji Copilota.');
+      setCallPhase('setup');
+    }
+  };
+
   const handleStartCopilotCall = async () => {
     setCallPhase('connecting');
     try {
@@ -297,7 +375,9 @@ export default function CopilotCockpitModal({
           ws.onmessage = (event) => {
             try {
               const msg = JSON.parse(event.data);
-              if (msg.type === 'SESSION_SNAPSHOT') {
+              if (msg.type === 'CALL_CONNECTED') {
+                setCallPhase('in_call');
+              } else if (msg.type === 'SESSION_SNAPSHOT') {
                 if (msg.activeBattlecard) setActiveBattlecard(msg.activeBattlecard);
                 if (msg.checklist && msg.checklist.length > 0) setChecklist(msg.checklist);
               } else if (msg.type === 'BATTLECARD_UPDATE' && msg.battlecard) {
@@ -355,12 +435,13 @@ export default function CopilotCockpitModal({
           notes: postCallNote,
           nextStepTask,
           nextStepDate,
-          leadStage
+          leadStage,
+          callDurationSeconds: callDurationSeconds || 60
         })
       });
 
       if (res.ok) {
-        toast.success('Ustalenia i notatka zapisane w kartotece!', { icon: '✅' });
+        toast.success('Ustalenia i rozmowa zapisane w historii CRM!', { icon: '✅' });
       } else {
         toast.error('Błąd zapisu w CRM.');
       }
@@ -473,13 +554,60 @@ export default function CopilotCockpitModal({
         {/* ============================================================== */}
         {callPhase === 'setup' && (
           <div className="p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 overflow-y-auto">
-            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 sm:p-4 md:p-5 flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 text-indigo-600 shrink-0 mt-0.5" />
-              <div className="text-xs md:text-sm text-indigo-950 leading-relaxed">
-                <strong className="font-semibold block mb-1">Jak działa połączenie z Copilotem:</strong>
-                Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę (w słuchawce lub zestawie), a system natychmiast połączy Cię z klientem, prezentując numer techniczny Twojej firmy{assignedPhone ? <> (<strong>{assignedPhone}</strong>)</> : ''}. Jeśli klient na niego oddzwoni, centrala automatycznie połączy go z Twoim numerem firmowym. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
-              </div>
+            
+            {/* Przełącznik trybu połączenia: Konferencja vs Centrala */}
+            <div className="flex bg-surface-100 p-1.5 rounded-2xl border border-surface-200 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCallMode('conference')}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs md:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                  callMode === 'conference'
+                    ? 'bg-white text-indigo-950 shadow-sm border border-surface-200/80 ring-1 ring-black/5'
+                    : 'text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                <PhoneCall className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="flex items-center gap-1.5 flex-wrap justify-center">
+                  <span>📞 Konferencja telefoniczna</span>
+                  <span className="text-[10px] md:text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full">Twój numer komórkowy</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCallMode('bridge')}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs md:text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                  callMode === 'bridge'
+                    ? 'bg-white text-indigo-950 shadow-sm border border-surface-200/80 ring-1 ring-black/5'
+                    : 'text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                <Headphones className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="flex items-center gap-1.5 flex-wrap justify-center">
+                  <span>⚡ Centrala automatyczna</span>
+                  <span className="text-[10px] md:text-xs bg-surface-200 text-surface-700 font-medium px-2 py-0.5 rounded-full">Numer stacjonarny</span>
+                </span>
+              </button>
             </div>
+
+            {callMode === 'conference' ? (
+              <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3.5 sm:p-4 md:p-5 flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-xs md:text-sm text-emerald-950 leading-relaxed">
+                  <strong className="font-semibold block mb-1">Jak działa Konferencja z Copilotem (Klient widzi Twój numer):</strong>
+                  1. Zadzwoń ze swojego telefonu komórkowego do klienta (<strong>{customerPhone}</strong>) — klient widzi Twój własny numer!<br/>
+                  2. Podczas rozmowy kliknij na ekranie telefonu <strong>„Dodaj połączenie”</strong> i wybierz numer asystenta EVA: <strong>{assignedPhone || '+48 459 568 507'}</strong>.<br/>
+                  3. Kliknij <strong>„Scal połączenia”</strong> (Konferencja). EVA dołączy <strong>całkowicie bezgłośnie</strong> jako cichy słuchacz i będzie podpowiadać na żywo na tym ekranie!
+                </div>
+              </div>
+            ) : (
+              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 sm:p-4 md:p-5 flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 text-indigo-600 shrink-0 mt-0.5" />
+                <div className="text-xs md:text-sm text-indigo-950 leading-relaxed">
+                  <strong className="font-semibold block mb-1">Połączenie przez Centralę automatyczną:</strong>
+                  Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system automatycznie połączy Cię z klientem. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-500 mb-2">
@@ -564,14 +692,25 @@ export default function CopilotCockpitModal({
             </div>
 
             <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleStartCopilotCall}
-                className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm md:text-base transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 cursor-pointer"
-              >
-                <Headphones className="w-5 h-5 md:w-6 md:h-6" />
-                Zadzwoń z Copilotem na żywo
-              </button>
+              {callMode === 'conference' ? (
+                <button
+                  type="button"
+                  onClick={handleStartConferenceCall}
+                  className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-700 to-indigo-700 hover:from-emerald-700 hover:to-indigo-800 text-white font-bold text-sm md:text-base transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-3 cursor-pointer"
+                >
+                  <Headphones className="w-5 h-5 md:w-6 md:h-6" />
+                  Aktywuj nasłuch Copilota (Konferencja)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartCopilotCall}
+                  className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm md:text-base transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 cursor-pointer"
+                >
+                  <PhoneCall className="w-5 h-5 md:w-6 md:h-6" />
+                  Zadzwoń przez centralę automatyczną
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -580,24 +719,80 @@ export default function CopilotCockpitModal({
         {/* FAZA 2: ŁĄCZENIE (CONNECTING) */}
         {/* ============================================================== */}
         {callPhase === 'connecting' && (
-          <div className="p-12 md:p-16 text-center space-y-4 md:space-y-6">
-            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto animate-bounce">
-              <Phone className="w-8 h-8 md:w-10 md:h-10" />
-            </div>
-            <h4 className="text-base md:text-xl font-bold text-surface-900">
-              Dzwonię na Twój telefon...
-            </h4>
-            <p className="text-xs md:text-sm text-surface-500 max-w-sm md:max-w-md mx-auto leading-relaxed">
-              Odbierz połączenie przychodzące na swoim telefonie. Gdy podniesiesz słuchawkę, system natychmiast zadzwoni do klienta i aktywuje podpowiedzi.
-            </p>
-            <div className="flex justify-center pt-2">
-              <button
-                onClick={() => setCallPhase('setup')}
-                className="text-xs md:text-sm text-surface-400 hover:text-surface-700 underline"
-              >
-                Anuluj
-              </button>
-            </div>
+          <div className="p-8 sm:p-12 md:p-16 text-center space-y-5 md:space-y-6">
+            {callMode === 'conference' ? (
+              <>
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-pulse">
+                  <Volume2 className="w-8 h-8 md:w-10 md:h-10" />
+                </div>
+                <div>
+                  <h4 className="text-lg md:text-2xl font-bold text-surface-900">
+                    EVA oczekuje na dołączenie do konferencji...
+                  </h4>
+                  <p className="text-xs md:text-sm text-surface-500 max-w-md mx-auto mt-2 leading-relaxed">
+                    Zadzwoń ze swojego telefonu do klienta <strong>{customerPhone}</strong>. W trakcie rozmowy dodaj poniższy numer asystenta i kliknij <strong>„Scal”</strong>:
+                  </p>
+                </div>
+
+                <div className="max-w-xs mx-auto bg-surface-50 border border-surface-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-xs">
+                  <div className="text-left pl-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-surface-400 block">Numer asystenta EVA:</span>
+                    <strong className="text-base md:text-lg font-mono text-indigo-900 tracking-wide">
+                      {conferenceAssistantNumber || assignedPhone || '+48 459 568 507'}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyNumber(conferenceAssistantNumber || assignedPhone || '+48 459 568 507')}
+                    className="p-2.5 bg-white hover:bg-surface-100 text-surface-700 rounded-xl border border-surface-200 transition flex items-center gap-1.5 text-xs font-semibold cursor-pointer shadow-2xs shrink-0"
+                  >
+                    {copiedNumber ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-surface-500" />}
+                    <span>{copiedNumber ? 'Skopiowano' : 'Kopiuj'}</span>
+                  </button>
+                </div>
+
+                <p className="text-[11px] md:text-xs text-emerald-700 bg-emerald-50 border border-emerald-200/60 rounded-xl py-2 px-3 max-w-sm mx-auto">
+                  🛡️ Asystent dołączy w 100% bezgłośnie. Ani Ty, ani klient nie usłyszycie głosu bota w słuchawce.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCallPhase('in_call')}
+                    className="py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs md:text-sm font-bold transition cursor-pointer shadow-xs"
+                  >
+                    Przejdź od razu do podpowiedzi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallPhase('setup')}
+                    className="text-xs md:text-sm text-surface-400 hover:text-surface-700 underline py-2 px-3"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto animate-bounce">
+                  <Phone className="w-8 h-8 md:w-10 md:h-10" />
+                </div>
+                <h4 className="text-base md:text-xl font-bold text-surface-900">
+                  Dzwonię na Twój telefon...
+                </h4>
+                <p className="text-xs md:text-sm text-surface-500 max-w-sm md:max-w-md mx-auto leading-relaxed">
+                  Odbierz połączenie przychodzące na swoim telefonie. Gdy podniesiesz słuchawkę, system natychmiast zadzwoni do klienta i aktywuje podpowiedzi.
+                </p>
+                <div className="flex justify-center pt-2">
+                  <button
+                    onClick={() => setCallPhase('setup')}
+                    className="text-xs md:text-sm text-surface-400 hover:text-surface-700 underline"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

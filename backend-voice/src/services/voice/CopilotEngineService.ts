@@ -31,6 +31,7 @@ export interface CopilotSession {
   customerPhone: string;
   customerName: string;
   scenario: string;
+  mode?: 'bridge' | 'conference';
   createdAt: Date;
   uiSockets: Set<WebSocket>;
   callSid?: string;
@@ -57,6 +58,7 @@ export interface CopilotSession {
 export class CopilotEngineService {
   private static instance: CopilotEngineService;
   private sessions = new Map<string, CopilotSession>();
+  private pendingConferenceByCaller = new Map<string, CopilotSession>();
   private ai: GoogleGenAI;
 
   private constructor() {
@@ -70,6 +72,17 @@ export class CopilotEngineService {
     return CopilotEngineService.instance;
   }
 
+  public getPendingConferenceSession(callerPhone: string, tenantId?: string): CopilotSession | undefined {
+    const norm = callerPhone.replace(/[\s\-\+]/g, '');
+    const session = this.pendingConferenceByCaller.get(norm) || this.pendingConferenceByCaller.get(`+${norm}`);
+    if (session) {
+      if (!tenantId || session.tenantId === tenantId) {
+        return session;
+      }
+    }
+    return undefined;
+  }
+
   /**
    * Inicjalizuje nową sesję Copilota z pre-ładowaniem Bazy Wiedzy FAQ i historii CRM
    */
@@ -78,6 +91,7 @@ export class CopilotEngineService {
     customerPhone: string;
     customerName?: string;
     scenario?: string;
+    mode?: 'bridge' | 'conference';
   }): Promise<CopilotSession> {
     const sessionId = `copilot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     
@@ -175,7 +189,7 @@ export class CopilotEngineService {
         category: 'BUYING_SIGNAL',
         heading: `Odprawa: ${options.customerName || 'Klient'}`,
         bullets: [
-          cleanLastSummary.length > 70 ? cleanLastSummary.slice(0, 67) + '...' : cleanLastSummary,
+          cleanLastSummary,
           recentCalls[0]?.actionItems ? `Zadanie: ${recentCalls[0].actionItems}` : 'Cel: potwierdzić nowe parametry i cenę',
           'Baza FAQ: zweryfikuj specyfikację i rabat czasowy'
         ],
@@ -227,6 +241,7 @@ export class CopilotEngineService {
       customerPhone: options.customerPhone,
       customerName: options.customerName || customerRecord?.name || 'Klient',
       scenario,
+      mode: options.mode || 'bridge',
       createdAt: new Date(),
       uiSockets: new Set(),
       isRepSpeaking: false,
@@ -249,7 +264,24 @@ export class CopilotEngineService {
     };
 
     this.sessions.set(sessionId, session);
-    console.log(`🎧 [CopilotEngine] Utworzono sesję Copilota: ${sessionId} dla klienta: ${options.customerPhone} (scenariusz: ${scenario})`);
+
+    // Jeśli tryb to konferencja - zarejestruj oczekiwanie na połączenie od handlowca (ownerPhone)
+    if (options.mode === 'conference') {
+      const normalizedOwner = ownerPhone.replace(/[\s\-\+]/g, '');
+      if (normalizedOwner) {
+        this.pendingConferenceByCaller.set(normalizedOwner, session);
+        this.pendingConferenceByCaller.set(`+${normalizedOwner}`, session);
+        console.log(`🎧 [CopilotEngine] Zarejestrowano oczekiwanie na konferencję od handlowca: ${normalizedOwner} (sesja ${sessionId})`);
+        setTimeout(() => {
+          if (this.pendingConferenceByCaller.get(normalizedOwner)?.sessionId === sessionId) {
+            this.pendingConferenceByCaller.delete(normalizedOwner);
+            this.pendingConferenceByCaller.delete(`+${normalizedOwner}`);
+          }
+        }, 30 * 60 * 1000);
+      }
+    }
+
+    console.log(`🎧 [CopilotEngine] Utworzono sesję Copilota (${options.mode || 'bridge'}): ${sessionId} dla klienta: ${options.customerPhone} (scenariusz: ${scenario})`);
     return session;
   }
 
@@ -380,7 +412,8 @@ export class CopilotEngineService {
         const pcmInt16 = mulaw.decode(audioBuffer);
         const wav = new WaveFile();
         wav.fromScratch(1, 8000, '16', pcmInt16);
-        wavBase64 = wav.toBuffer().toString('base64');
+        const wavBytes = wav.toBuffer();
+        wavBase64 = Buffer.from(wavBytes).toString('base64');
       } catch (audioErr: any) {
         console.warn('[CopilotEngine] Błąd konwersji audio WAV:', audioErr.message);
       }
@@ -489,6 +522,11 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
     this.broadcastToUi(session, { type: 'CALL_ENDED' });
     for (const ws of session.uiSockets) {
       try { ws.close(); } catch (e) {}
+    }
+    for (const [key, sess] of this.pendingConferenceByCaller.entries()) {
+      if (sess.sessionId === sessionId) {
+        this.pendingConferenceByCaller.delete(key);
+      }
     }
     this.sessions.delete(sessionId);
     console.log(`🛑 [CopilotEngine] Zamknięto sesję Copilota i rozłączono połączenie: ${sessionId}`);

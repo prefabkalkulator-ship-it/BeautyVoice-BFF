@@ -35,6 +35,14 @@ copilotVoiceWss.on('connection', (ws) => {
       const data = JSON.parse(message.toString());
       if (data.event === 'start') {
         currentSessionId = data.start.customParameters?.copilotSessionId || '';
+        const session = copilotEngineService.getSession(currentSessionId);
+        if (session) {
+          session.twilioStreamSid = data.start.streamSid;
+          copilotEngineService.broadcastToUi(session, {
+            type: 'CALL_CONNECTED',
+            sessionId: currentSessionId
+          });
+        }
         console.log(`🎙️ [CopilotVoice] Start forkowania audio dla sesji: ${currentSessionId}`);
       } else if (data.event === 'media' && currentSessionId) {
         const track = (data.media?.track === 'outbound' ? 'outbound' : 'inbound') as 'inbound' | 'outbound';

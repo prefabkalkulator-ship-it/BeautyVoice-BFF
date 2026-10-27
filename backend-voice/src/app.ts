@@ -1854,6 +1854,14 @@ app.post("/api/twilio-incoming", async (req, res) => {
 
   res.type("text/xml");
 
+  // 0. Sprawdzenie czy połączenie nie pochodzi od handlowca dołączającego do Copilota w trybie Konferencji
+  const pendingCopilot = copilotEngineService.getPendingConferenceSession(callerPhone, tenant?.id);
+  if (pendingCopilot) {
+    console.log(`🎧 [Twilio Incoming] Wykryto połączenie konferencyjne Copilota od właściciela ${callerPhone} dla sesji ${pendingCopilot.sessionId}`);
+    pendingCopilot.callSid = req.body.CallSid;
+    return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Start><Stream url="wss://${host}/api/copilot-voice" track="both_tracks"><Parameter name="copilotSessionId" value="${pendingCopilot.sessionId}" /><Parameter name="tenantId" value="${pendingCopilot.tenantId}" /><Parameter name="customerPhone" value="${pendingCopilot.customerPhone}" /><Parameter name="isConference" value="true" /></Stream></Start><Pause length="3600"/></Response>`);
+  }
+
   if (!tenant) {
     console.log(`⚠️ [Twilio Incoming] Odrzucono połączenie od ${callerPhone} do ${calledNumber}: Numer nie jest przypisany do żadnego aktywnego salonu.`);
     return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Wybrany numer nie jest obecnie przypisany do żadnego aktywnego salonu. Prosimy sprawdzić poprawność numeru.</Say><Hangup/></Response>`);
@@ -2885,7 +2893,8 @@ app.post('/api/copilot/start-call', async (req, res) => {
       tenantId: tenant.id,
       customerPhone,
       customerName,
-      scenario
+      scenario,
+      mode: 'bridge'
     });
 
     // Uruchomienie mostka połączenia Twilio (Leg 1: Właściciel, Leg 2: Klient)
@@ -2914,6 +2923,43 @@ app.post('/api/copilot/start-call', async (req, res) => {
   } catch (err: any) {
     console.error('❌ [Copilot API] Błąd uruchamiania Copilota:', err);
     return res.status(500).json({ error: err.message || 'Błąd inicjalizacji Copilota' });
+  }
+});
+
+// 1b. Rozpoczęcie sesji Copilota w trybie Konferencji (Wariant A - Cichy Pasażer)
+app.post('/api/copilot/start-conference', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { customerPhone, customerName, scenario } = req.body || {};
+    if (!customerPhone) {
+      return res.status(400).json({ error: 'Pole customerPhone jest wymagane' });
+    }
+
+    const session = await copilotEngineService.createSession({
+      tenantId: tenant.id,
+      customerPhone,
+      customerName,
+      scenario,
+      mode: 'conference'
+    });
+
+    // Numer asystenta, na który handlowiec dzwoni z telefonu dodając połączenie do konferencji
+    const assistantPhone = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48343433088';
+
+    console.log(`🎧 [Copilot API] Zainicjowano sesję konferencyjną Copilota: ${session.sessionId} dla handlowca: ${tenant.phoneNumber}`);
+
+    return res.json({
+      success: true,
+      sessionId: session.sessionId,
+      assistantPhone,
+      ownerPhone: tenant.phoneNumber,
+      mode: 'conference'
+    });
+  } catch (err: any) {
+    console.error('❌ [Copilot API] Błąd rejestracji konferencji Copilota:', err);
+    return res.status(500).json({ error: err.message || 'Błąd inicjalizacji konferencji Copilota' });
   }
 });
 
@@ -2949,13 +2995,13 @@ app.post('/api/copilot/end-call', async (req, res) => {
   }
 });
 
-// 4. Zapisanie ustaleń po rozmowie w CRM (automatyczny upsert klienta w kartotece)
+// 4. Zapisanie ustaleń po rozmowie w CRM (kartoteka klienta i pełny wpis w historii CallLog)
 app.post('/api/copilot/save-summary', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
-    const { customerPhone, customerName, notes, nextStepTask, nextStepDate, leadStage } = req.body || {};
+    const { customerPhone, customerName, notes, nextStepTask, nextStepDate, leadStage, callDurationSeconds } = req.body || {};
     if (!customerPhone) return res.status(400).json({ error: 'Brak numeru telefonu klienta' });
 
     const rawPhone = String(customerPhone).replace(/[\s\-\+]/g, '');
@@ -2969,7 +3015,8 @@ app.post('/api/copilot/save-summary', async (req, res) => {
       }
     });
 
-    const formattedNote = notes ? `[Rozmowa Copilot ${new Date().toLocaleDateString('pl-PL')}]: ${notes}${nextStepTask ? `\nZadanie: ${nextStepTask} (${nextStepDate || 'wkrótce'})` : ''}` : '';
+    const noteBody = notes ? notes.trim() : (nextStepTask ? `Kolejny krok: ${nextStepTask}` : 'Ukończono rozmowę handlową z Copilotem');
+    const formattedNote = `[Rozmowa Copilot ${new Date().toLocaleDateString('pl-PL')}]: ${noteBody}${nextStepTask && notes ? `\nZadanie: ${nextStepTask} (${nextStepDate || 'wkrótce'})` : ''}`;
 
     if (customer) {
       const existingNotes = customer.notes ? `${customer.notes}\n\n` : '';
@@ -2977,7 +3024,7 @@ app.post('/api/copilot/save-summary', async (req, res) => {
       customer = await prisma.customer.update({
         where: { id: customer.id },
         data: {
-          notes: formattedNote ? `${existingNotes}${formattedNote}` : customer.notes,
+          notes: `${existingNotes}${formattedNote}`,
           tags: updatedTags,
           lastVisitAt: new Date()
         }
@@ -2997,7 +3044,33 @@ app.post('/api/copilot/save-summary', async (req, res) => {
       console.log(`✅ [Copilot CRM] Utworzono nową kartotekę klienta ${customer.name} (${customer.id})`);
     }
 
-    // 2. Jeśli zdefiniowano zadanie / kolejny krok, utwórz wpis Appointment jako contactLevel = 'TASK'
+    // 2. Utwórz oficjalny rekord w tabeli CallLog (Historia połączeń)
+    const duration = Number(callDurationSeconds) || 60;
+    const summaryText = notes 
+      ? `[Rozmowa Copilot] ${notes}` 
+      : `[Rozmowa Copilot] Rozmowa z klientem ${customerName || customerPhone}. Status: ${leadStage || 'IN_PROGRESS'}.`;
+
+    try {
+      const newCallLog = await prisma.callLog.create({
+        data: {
+          tenantId: tenant.id,
+          callerPhone: customerPhone,
+          callerName: customerName || customer.name || 'Klient',
+          callerRole: 'GUEST',
+          durationSeconds: duration,
+          status: 'COMPLETED',
+          summary: summaryText,
+          actionItems: nextStepTask ? `${nextStepTask}${nextStepDate ? ` (Termin: ${nextStepDate})` : ''}` : null,
+          isProcessed: true,
+          urgency: 'NORMAL'
+        }
+      });
+      console.log(`✅ [Copilot CRM] Utworzono wpis CallLog w historii: ${newCallLog.id}`);
+    } catch (logErr: any) {
+      console.warn('⚠️ [Copilot CRM] Błąd zapisu wpisu CallLog:', logErr.message);
+    }
+
+    // 3. Jeśli zdefiniowano zadanie / kolejny krok, utwórz wpis Appointment jako contactLevel = 'TASK'
     if (nextStepTask) {
       try {
         const taskDate = nextStepDate ? new Date(nextStepDate) : new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -3025,7 +3098,7 @@ app.post('/api/copilot/save-summary', async (req, res) => {
       }
     }
 
-    // 3. Oznacz powiązany wpis CallLog jako obsłużony
+    // 4. Oznacz wcześniejsze oczekujące wpisy CallLog dla tego numeru jako obsłużone
     try {
       await prisma.callLog.updateMany({
         where: {
