@@ -137,6 +137,7 @@ export default function CopilotCockpitModal({
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
   const [isRepSpeaking, setIsRepSpeaking] = useState(false);
   const [ownerPhone, setOwnerPhone] = useState('');
+  const [assignedPhone, setAssignedPhone] = useState('');
   const [quickFaqModalOpen, setQuickFaqModalOpen] = useState(false);
   const [faqTab, setFaqTab] = useState<'current' | 'permanent' | 'confidential'>('current');
   const [faqs, setFaqs] = useState<any[]>([]);
@@ -173,6 +174,7 @@ export default function CopilotCockpitModal({
         .then(r => r.json())
         .then(t => {
           if (t?.phoneNumber) setOwnerPhone(t.phoneNumber);
+          if (t?.assignedPhoneNumber) setAssignedPhone(t.assignedPhoneNumber);
         })
         .catch(() => {});
 
@@ -474,8 +476,8 @@ export default function CopilotCockpitModal({
             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 sm:p-4 flex items-start gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
               <div className="text-xs text-indigo-950 leading-relaxed">
-                <strong className="font-semibold block mb-1">Jak działa połączenie:</strong>
-                Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system natychmiast połączy Cię z klientem. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
+                <strong className="font-semibold block mb-1">Jak działa połączenie z Copilotem:</strong>
+                Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę (w słuchawce lub zestawie), a system natychmiast połączy Cię z klientem, prezentując numer techniczny Twojej firmy{assignedPhone ? <> (<strong>{assignedPhone}</strong>)</> : ''}. Jeśli klient na niego oddzwoni, centrala automatycznie połączy go z Twoim numerem firmowym. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
               </div>
             </div>
 

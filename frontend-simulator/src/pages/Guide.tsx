@@ -811,6 +811,41 @@ export default function Guide() {
       )
     },
     {
+      id: 'personal-copilot-guide',
+      category: 'expert',
+      question: 'Jak działa Copilot Rozmów na żywo i prezentacja numeru telefonu?',
+      summary: 'Dzwonisz jednym kliknięciem z komputera lub telefonu. Centrala łączy Cię z klientem, prezentując numer techniczny Twojej firmy, a oddzwonienia trafiają na Twój numer firmowy.',
+      actionPath: '/dashboard/customers',
+      actionLabel: 'Przejdź do Kartoteki i Copilota',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            <strong>EVA Live Call Copilot</strong> to inteligentny asystent wspierający Cię w trakcie rozmowy telefonicznej z klientem. Działa w modelu bezpiecznego mostka centrali:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200 text-xs">
+              <strong className="text-indigo-950 block mb-1">📞 Inicjalizacja połączenia:</strong>
+              Klikasz <em>„Zadzwoń z Copilotem”</em> w karcie klienta (najwygodniej na komputerze). Centrala najpierw dzwoni na Twój telefon firmowy, a po podniesieniu słuchawki natychmiast łączy Cię z klientem.
+            </div>
+            <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 text-xs">
+              <strong className="text-purple-950 block mb-1">📱 Jaki numer widzi klient?</strong>
+              Klient widzi na ekranie dedykowany numer techniczny Twojej firmy <code className="font-mono font-bold text-surface-900">{assignedPhone || 'przypisany do konta'}</code> (certyfikowany numer komórkowy/VoIP, który nie jest blokowany przez filtry antyspoofingowe operatorów GSM).
+            </div>
+          </div>
+          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs space-y-2">
+            <strong className="text-surface-900 block">🔄 Co się dzieje, gdy klient oddzwania na ten numer?</strong>
+            <p className="text-surface-600">
+              Gdy klient oddzwania na numer techniczny, centrala automatycznie łączy go z Twoim telefonem firmowym. Jeśli w tym czasie jesteś na spotkaniu lub w salonie (i masz włączone przekierowanie na telefonie), połączenie płynnie przejmuje Asystent EVA. Dzięki automatycznemu wykrywaniu nagłówka Diversion centrala zapobiega powstawaniu pętli połączeń.
+            </p>
+          </div>
+          <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 text-xs">
+            <strong className="text-emerald-950 block mb-1">💡 Co widzisz na ekranie w trakcie rozmowy?</strong>
+            Copilot w ułamku sekundy analizuje wypowiedzi klienta i wyświetla telegraficzne karty podpowiedzi z Bazy Wiedzy FAQ, cennika produktów i historii wcześniejszych kontaktów. Po rozmowie jednym kliknięciem zapisujesz ustalenia i kolejne zadanie do CRM.
+          </div>
+        </div>
+      )
+    },
+    {
       id: 'personal-meeting-confirmations',
       category: 'schedule',
       question: 'Jak działa moduł Potwierdzeń Spotkań dla Profesjonalistów (SMS i Telefon AI)?',
@@ -934,6 +969,41 @@ export default function Guide() {
             <div>
               <strong>Jak wyłączyć przekierowanie?</strong> Wystarczy wklepać na telefonie kod <code className="font-mono font-bold">#21#</code> lub <code className="font-mono font-bold">#61#</code> (albo wyczyścić wszystko kodem <code className="font-mono font-bold">##002#</code>) i zatwierdzić zieloną słuchawką.
             </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'business-copilot-guide',
+      category: 'forwarding',
+      question: 'Jak działa Copilot Rozmów na żywo i prezentacja numeru telefonu?',
+      summary: 'Dzwonisz jednym kliknięciem z komputera lub telefonu. Centrala łączy Cię z klientem, prezentując numer techniczny Twojej firmy, a oddzwonienia trafiają na Twój numer firmowy.',
+      actionPath: '/dashboard/customers',
+      actionLabel: 'Przejdź do Kartoteki Klientów',
+      answer: (
+        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+          <p>
+            <strong>EVA Live Call Copilot</strong> to inteligentny asystent wspierający handlowca w trakcie rozmowy telefonicznej z klientem. Działa w modelu bezpiecznego mostka centrali:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200 text-xs">
+              <strong className="text-indigo-950 block mb-1">📞 Inicjalizacja rozmowy (1 kliknięcie):</strong>
+              W Kartotece Klientów klikasz <em>„Zadzwoń z Copilotem”</em> (najwygodniej z laptopa). Centrala najpierw dzwoni na Twój telefon firmowy, a po odebraniu w słuchawce natychmiast łączy z klientem.
+            </div>
+            <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 text-xs">
+              <strong className="text-purple-950 block mb-1">📱 Prezentacja numeru (Caller ID):</strong>
+              Klient widzi na ekranie dedykowany numer komórkowy/VoIP Twojej firmy <code className="font-mono font-bold text-surface-900">{assignedPhone || 'przypisany do konta'}</code>. Jest to w 100% legalny numer biznesowy, który nie jest blokowany przez filtry antyspoofingowe operatorów GSM.
+            </div>
+          </div>
+          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs space-y-2">
+            <strong className="text-surface-900 block">🔄 Co się dzieje, gdy klient oddzwania?</strong>
+            <p className="text-surface-600 leading-relaxed">
+              Gdy klient oddzwania na numer techniczny, centrala automatycznie łączy go z Twoim telefonem firmowym. Jeśli w tym czasie jesteś na spotkaniu lub w salonie (i masz włączone przekierowanie na telefonie), połączenie płynnie przejmuje Asystent EVA. Dzięki automatycznemu wykrywaniu nagłówka Diversion centrala zapobiega powstawaniu pętli połączeń.
+            </p>
+          </div>
+          <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 text-xs">
+            <strong className="text-emerald-950 block mb-1">💡 Asystent na żywo podczas rozmowy:</strong>
+            Copilot w czasie rzeczywistym analizuje pytania klienta i wyświetla na ekranie komputera konkretne odpowiedzi: pozycje z cennika, rabaty z Bazy Czasowej, parametry techniczne i checklistę ustaleń. Po rozmowie notatka i zadanie zapisują się automatycznie w CRM.
           </div>
         </div>
       )

@@ -236,7 +236,7 @@ export default function Customers() {
               title="Kartoteka Klientów i Copilot Rozmów"
               description="Zarządzaj bazą kontaktów, historią interakcji, notatkami oraz dzwoń bezpośrednio z pomocą asystenta Copilot na żywo."
               tips={[
-                "Copilot na żywo: Kliknij fioletowy przycisk 'Copilot', aby zadzwonić z asystentem, który podczas rozmowy podpowiada na ekranie argumenty z Bazy Wiedzy i checklistę.",
+                "Copilot na żywo: Kliknij fioletowy przycisk 'Copilot', aby zadzwonić z komputera lub telefonu. Centrala połączy Cię z klientem, prezentując numer techniczny (oddzwonienia klienta trafiają na Twój numer firmowy), a asystent w czasie rzeczywistym podpowiada argumenty z Bazy Wiedzy, cennik i checklistę.",
                 "Historia interakcji: Kliknij 'Szczegóły', aby przejrzeć wcześniejsze połączenia, podsumowania AI i historię spotkań.",
                 "Poziom formalności per kontakt: Ustaw, czy asystent ma zwracać się do danego klienta oficjalnie (Pan/Pani) czy bezpośrednio na 'Ty'."
               ]}

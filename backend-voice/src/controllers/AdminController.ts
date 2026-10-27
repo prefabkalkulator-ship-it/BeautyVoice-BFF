@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import twilio from 'twilio';
 import { prisma } from '../prisma';
 import { createAdminToken } from '../middleware/adminAuth';
 import { SMSService } from '../services/sms/SMSService';
@@ -465,6 +466,40 @@ export class AdminController {
         : `Twój asystent EVA dla firmy ${tenant.name} jest gotowy! Dedykowany numer: ${cleanNumber}. Zaloguj się do panelu swoim numerem telefonu i ustalonym PIN-em: https://beautyvoice-bff.web.app/dashboard`;
       
       const smsSent = await SMSService.sendSMS(tenant.phoneNumber, smsBody);
+
+      // Automatyczna weryfikacja Outgoing Caller ID w Twilio przez DTMF dla nowego numeru
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+        try {
+          const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+          const outgoings = await twilioClient.outgoingCallerIds.list({ limit: 50 });
+          const isAlreadyVerified = outgoings.some(o => o.phoneNumber === cleanNumber);
+          if (!isAlreadyVerified) {
+            console.log(`🔑 [Admin Verify] Nowy numer ${cleanNumber} dla ${tenant.name} nie jest jeszcze zweryfikowany w Twilio. Inicjuję żądanie weryfikacji...`);
+            const validation = await twilioClient.validationRequests.create({
+              phoneNumber: cleanNumber,
+              friendlyName: `${tenant.name} (${cleanNumber})`
+            });
+            await prisma.outboundQueue.create({
+              data: {
+                tenantId: tenant.id,
+                targetPhone: cleanNumber,
+                channel: 'verification',
+                status: 'pending',
+                scheduledFor: new Date(),
+                payload: {
+                  code: String(validation.validationCode),
+                  callSid: validation.callSid
+                }
+              }
+            });
+            console.log(`🔑 [Admin Verify] Utworzono zadanie DTMF w kolejce dla ${cleanNumber} z kodem ${validation.validationCode}`);
+          } else {
+            console.log(`✅ [Admin Verify] Numer ${cleanNumber} jest już zweryfikowany w Twilio.`);
+          }
+        } catch (verifyErr: any) {
+          console.warn(`[Admin Verify] Ostrzeżenie przy auto-weryfikacji numeru ${cleanNumber}:`, verifyErr.message);
+        }
+      }
 
       console.log(`🎉 [Beta Approval] Aktywowano (${targetPlan}) ${tenant.name}, przypisano numer ${cleanNumber}, PIN: ${finalPin}. SMS wysłany: ${smsSent}`);
 
