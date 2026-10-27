@@ -39,6 +39,7 @@ export interface CopilotSession {
   lastRepSpeechTime: number;
   checklist: CopilotChecklistItem[];
   activeBattlecard?: BattlecardPayload;
+  services: any[];
   faqs: {
     current: any[];
     permanent: any[];
@@ -84,7 +85,8 @@ export class CopilotEngineService {
     const tenant = await prisma.tenant.findUnique({
       where: { id: options.tenantId },
       include: {
-        faqEntries: true
+        faqEntries: true,
+        services: true
       }
     });
 
@@ -230,14 +232,15 @@ export class CopilotEngineService {
       isRepSpeaking: false,
       lastRepSpeechTime: 0,
       checklist,
+      services: tenant?.services || [],
       faqs: {
         current: currentFaqs,
         permanent: permanentFaqs,
         confidential: confidentialFaqs
       },
       customerHistory: {
-        recentCallSummaries: recentCalls.map(c => c.summary || '').filter(Boolean),
-        recentAppointments: recentAppts.map(a => `${a.service?.name} (${new Date(a.startTime).toLocaleDateString()})`)
+        recentCallSummaries: recentCalls.map(c => c.summary ? `[${new Date(c.createdAt).toLocaleDateString('pl-PL')}]: ${c.summary}` : '').filter(Boolean),
+        recentAppointments: recentAppts.map(a => `${a.service?.name || a.contactLevel || 'Zadanie'}: ${a.notes || ''} (${new Date(a.startTime).toLocaleDateString('pl-PL')})`)
       },
       inboundAudioBuffer: [],
       lastInboundAudioTime: 0,
@@ -382,13 +385,16 @@ export class CopilotEngineService {
         console.warn('[CopilotEngine] Błąd konwersji audio WAV:', audioErr.message);
       }
 
-      // Skrót Bazy Wiedzy do promptu decyzyjnego Flash
+      // Skrót Bazy Wiedzy i Cennika do promptu decyzyjnego Flash
       const currentPromos = session.faqs.current.map(f => `[PROMO] ${f.question}: ${f.answer}`).join('\n');
       const permanentKnowledge = session.faqs.permanent.map(f => `[FAQ] ${f.question}: ${f.answer}`).join('\n');
       const confidentialLimits = session.faqs.confidential.map(f => `[POUFNE] ${f.question}: ${f.answer}`).join('\n');
+      const serviceCatalog = (session.services || []).map(s => `- ${s.name}: ${s.price ? `${s.price} zł` : 'Wycena indywidualna'} (${s.durationMinutes ? `${s.durationMinutes} min` : ''}) ${s.description || ''}`).join('\n');
 
-      const historyContext = session.customerHistory.recentCallSummaries.length > 0
-        ? `HISTORIA POPRZEDNICH ROZMÓW Z KLIENTEM:\n${session.customerHistory.recentCallSummaries.join('\n')}`
+      const callSummaries = session.customerHistory.recentCallSummaries.join('\n');
+      const apptSummaries = session.customerHistory.recentAppointments.join('\n');
+      const historyContext = (callSummaries || apptSummaries)
+        ? `HISTORIA POPRZEDNICH ROZMÓW I ZDARZEŃ Z KLIENTEM:\n${callSummaries ? `Rozmowy:\n${callSummaries}\n` : ''}${apptSummaries ? `Zadania i terminy:\n${apptSummaries}` : ''}`
         : 'Pierwsza rozmowa z klientem.';
 
       const systemPrompt = `
@@ -398,6 +404,9 @@ Twoim celem jest wygenerowanie TELEGRAFICZNEJ KARTY BOJOWEJ (Glanceable Battleca
 ROZMÓWCA: ${session.customerName} (${session.customerPhone})
 SCENARIUSZ ROZMOWY: ${session.scenario}
 ${historyContext}
+
+CENNIK PRODUKTÓW I USŁUG FIRMY:
+${serviceCatalog || 'Standardowy cennik usług.'}
 
 BAZA WIEDZY CZASOWA (Aktualne promocje, rabaty, akcje marketingowe):
 ${currentPromos || 'Brak aktywnych promocji czasowych.'}

@@ -23,7 +23,7 @@ export default function Guide() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [guideMode, setGuideMode] = useState<'personal' | 'business'>('business');
-  const [assignedPhone, setAssignedPhone] = useState<string>('+48459568507');
+  const [assignedPhone, setAssignedPhone] = useState<string>('');
   const [openItems, setOpenItems] = useState<Record<string, boolean>>({
     'personal-onboarding': true,
     'personal-forwarding': true,

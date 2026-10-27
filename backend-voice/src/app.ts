@@ -519,7 +519,7 @@ app.post('/api/tenant/test-push', async (req, res) => {
       'Test powiadomienia EVA 🚀',
       'Pojedyncze markowe powiadomienie aplikacji z przyciskiem Zadzwoń.',
       'https://beautyvoice-bff.web.app/dashboard',
-      '+48533989987',
+      tenant.phoneNumber || '',
       tenant.id
     );
     res.json({ success: true, tokensCount: tenant.fcmTokens.length });
@@ -1831,8 +1831,8 @@ app.post("/api/twilio-incoming", async (req, res) => {
   // 🔀 Opcjonalne przekierowanie deweloperskie (Dev Proxy)
   // Pozwala na bezpieczne testowanie na numerze deweloperskim bez dotykania konfiguracji Zadarma dla salonów produkcyjnych
   const devForwardUrl = process.env.DEV_FORWARD_URL;
-  const devTestNumber = process.env.DEV_TEST_PHONE_NUMBER || '+48459568507';
-  if (devForwardUrl && (normalizedDialed === devTestNumber || calledNumber === devTestNumber)) {
+  const devTestNumber = process.env.DEV_TEST_PHONE_NUMBER;
+  if (devForwardUrl && devTestNumber && (normalizedDialed === devTestNumber || calledNumber === devTestNumber)) {
     console.log(`🔀 [Dev Proxy] Przekierowanie połączenia testowego (${normalizedDialed}) na serwer dev: ${devForwardUrl}`);
     const cleanHost = devForwardUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     res.type("text/xml");

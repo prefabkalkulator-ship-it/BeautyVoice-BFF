@@ -165,17 +165,17 @@ export class VoiceOutboundService {
       const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
 
       // Caller ID prezentowany KLIENTOWI na Leg 2:
-      // Używamy zweryfikowanego numeru komórkowego użytkownika (to = +48533989987).
-      // Zewnętrzny numer Zadarma (+48459568507) nie może być nadawcą w Twilio, bo Twilio rzuca błąd 13214 i wraca do DEMO.
-      const customerLegCallerId = to;
+      // Używamy dedykowanego wirtualnego numeru technicznego tenanta (tenant.assignedPhoneNumber),
+      // a w przypadku jego braku - domyślnego numeru centrali (process.env.TWILIO_CALLER_ID).
+      const customerLegCallerId = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48343433088';
 
       const client = twilio(this.twilioSid, this.twilioToken);
 
       // Lista zweryfikowanych numerów nadawcy w Twilio dla Leg 1 (wywołanie telefonu właściciela)
       const candidateFromNumbers = [
-        '+48343433088', // oficjalny zweryfikowany numer demo / platformy
+        tenant.assignedPhoneNumber,
         process.env.TWILIO_CALLER_ID,
-        '+48533989987'
+        '+48343433088'
       ].filter((n): n is string => Boolean(n));
 
       // Normalizacja i wykluczenie numeru to (from === to jest blokowane przez operatorów na Leg 1)
@@ -203,6 +203,7 @@ export class VoiceOutboundService {
               <Dial callerId="${customerLegCallerId}" timeout="35">
                 <Number>${customerPhone}</Number>
               </Dial>
+              <Say language="pl-PL">Nie udało się połączyć z klientem. Linia jest zajęta lub nie odpowiada.</Say>
             </Response>
           `;
 
