@@ -201,7 +201,7 @@ export default function CopilotCockpitModal({
               const clean = calls[0].summary.replace(/^\[[^\]]+\]\s*/, '').trim();
               setScenario('callback');
               setChecklist([
-                { id: 'cb1', text: clean.length > 70 ? `Nawiąż do: ${clean.slice(0, 67)}...` : `Nawiąż do: ${clean}`, checked: false },
+                { id: 'cb1', text: clean.startsWith('Nawiąż do') ? clean : `Nawiąż do: ${clean}`, checked: false },
                 { id: 'cb2', text: 'Przedstaw skorygowaną specyfikację i warunki cenowe', checked: false },
                 { id: 'cb3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
               ]);
@@ -209,7 +209,7 @@ export default function CopilotCockpitModal({
                 category: 'BUYING_SIGNAL',
                 heading: `Odprawa: ${customerName}`,
                 bullets: [
-                  clean.length > 80 ? clean.slice(0, 77) + '...' : clean,
+                  clean,
                   calls[0].actionItems ? `Zadanie: ${calls[0].actionItems}` : 'Cel: potwierdzić nowe parametry i cenę',
                   'Baza FAQ: zweryfikuj specyfikację i rabat czasowy'
                 ],
@@ -431,21 +431,21 @@ export default function CopilotCockpitModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-2 sm:p-4 bg-surface-950/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl border border-surface-200 overflow-hidden flex flex-col max-h-[94vh] animate-scale-in">
+      <div className="bg-white rounded-3xl w-full max-w-2xl md:max-w-4xl lg:max-w-5xl shadow-2xl border border-surface-200 overflow-hidden flex flex-col max-h-[94vh] animate-scale-in">
         
         {/* NAGŁÓWEK KOKPITU */}
-        <div className="bg-gradient-to-r from-surface-900 via-indigo-950 to-surface-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-surface-800 shrink-0">
+        <div className="bg-gradient-to-r from-surface-900 via-indigo-950 to-surface-900 text-white p-4 sm:p-5 md:p-6 flex items-center justify-between border-b border-surface-800 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
-              <Headphones className="w-5 h-5 animate-pulse" />
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+              <Headphones className="w-5 h-5 md:w-6 md:h-6 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-serif font-bold text-lg text-white tracking-wide">
+                <h3 className="font-serif font-bold text-lg md:text-xl text-white tracking-wide">
                   EVA Live Call Copilot
                 </h3>
               </div>
-              <p className="text-xs text-surface-300">
+              <p className="text-xs md:text-sm text-surface-300">
                 Rozmowa z: <strong className="text-white">{customerName}</strong> ({customerPhone})
               </p>
             </div>
@@ -453,7 +453,7 @@ export default function CopilotCockpitModal({
 
           <div className="flex items-center gap-2">
             {callPhase === 'in_call' && (
-              <div className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-3 py-1 rounded-full text-xs font-mono font-bold animate-pulse">
+              <div className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-3 py-1 rounded-full text-xs md:text-sm font-mono font-bold animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                 {formatTimer(callDurationSeconds)}
               </div>
@@ -463,7 +463,7 @@ export default function CopilotCockpitModal({
               className="text-surface-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition"
               title="Zamknij okno"
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </div>
         </div>
@@ -472,20 +472,20 @@ export default function CopilotCockpitModal({
         {/* FAZA 1: KONFIGURACJA PRZED POŁĄCZENIEM (SETUP) */}
         {/* ============================================================== */}
         {callPhase === 'setup' && (
-          <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
-            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 sm:p-4 flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-              <div className="text-xs text-indigo-950 leading-relaxed">
+          <div className="p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 overflow-y-auto">
+            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3.5 sm:p-4 md:p-5 flex items-start gap-3">
+              <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 text-indigo-600 shrink-0 mt-0.5" />
+              <div className="text-xs md:text-sm text-indigo-950 leading-relaxed">
                 <strong className="font-semibold block mb-1">Jak działa połączenie z Copilotem:</strong>
                 Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę (w słuchawce lub zestawie), a system natychmiast połączy Cię z klientem, prezentując numer techniczny Twojej firmy{assignedPhone ? <> (<strong>{assignedPhone}</strong>)</> : ''}. Jeśli klient na niego oddzwoni, centrala automatycznie połączy go z Twoim numerem firmowym. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-surface-500 mb-2">
+              <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-500 mb-2">
                 Cel / Scenariusz rozmowy:
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                 {[
                   { id: 'sales', label: '💼 Rozmowa handlowa / Oferta', desc: 'Prezentacja wartości, zbijanie obiekcji' },
                   { id: 'callback', label: '🔄 Oddzwonienie / Reaktywacja', desc: 'Klient prosił o kontakt lub powraca' },
@@ -496,24 +496,24 @@ export default function CopilotCockpitModal({
                     key={item.id}
                     type="button"
                     onClick={() => handleSelectScenario(item.id as any)}
-                    className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                    className={`p-3 md:p-4 rounded-2xl border text-left transition cursor-pointer ${
                       scenario === item.id 
                         ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/20' 
                         : 'border-surface-200 bg-surface-50 hover:bg-surface-100'
                     }`}
                   >
-                    <div className="font-bold text-xs text-surface-900">{item.label}</div>
-                    <div className="text-[11px] text-surface-500 mt-0.5">{item.desc}</div>
+                    <div className="font-bold text-xs md:text-sm text-surface-900">{item.label}</div>
+                    <div className="text-[11px] md:text-xs text-surface-500 mt-0.5">{item.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Checklista celów - w pełni interaktywna i edytowalna */}
-            <div className="bg-surface-50 rounded-2xl p-3.5 sm:p-4 border border-surface-200 space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-surface-800">
+            <div className="bg-surface-50 rounded-2xl p-3.5 sm:p-4 md:p-5 border border-surface-200 space-y-2.5">
+              <div className="flex items-center justify-between text-xs md:text-sm font-bold text-surface-800">
                 <span>Checklista celów rozmowy:</span>
-                <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
+                <span className="text-xs md:text-sm text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
                   {checklist.filter(c => c.checked).length} / {checklist.length} odhaczone
                 </span>
               </div>
@@ -523,7 +523,7 @@ export default function CopilotCockpitModal({
                     key={item.id}
                     type="button"
                     onClick={() => handleToggleChecklist(item.id)}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left text-xs transition cursor-pointer ${
+                    className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl text-left text-xs md:text-sm transition cursor-pointer ${
                       item.checked 
                         ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200' 
                         : 'bg-white text-surface-800 font-medium border border-surface-200 shadow-2xs hover:bg-surface-50'
@@ -531,11 +531,11 @@ export default function CopilotCockpitModal({
                   >
                     <div className="flex items-center gap-2.5">
                       {item.checked ? (
-                        <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
                       ) : (
-                        <Square className="w-4 h-4 text-surface-400 shrink-0" />
+                        <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
                       )}
-                      <span>{item.text}</span>
+                      <span className="break-words text-wrap leading-relaxed">{item.text}</span>
                     </div>
                   </button>
                 ))}
@@ -551,12 +551,12 @@ export default function CopilotCockpitModal({
                   onKeyDown={e => {
                     if (e.key === 'Enter') handleAddChecklistItem();
                   }}
-                  className="flex-1 bg-white border border-surface-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+                  className="flex-1 bg-white border border-surface-200 rounded-xl px-3 md:px-4 py-1.5 md:py-2.5 text-xs md:text-sm outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={handleAddChecklistItem}
-                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 cursor-pointer text-xs font-bold shrink-0 transition"
+                  className="px-3 md:px-4 py-1.5 md:py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 cursor-pointer text-xs md:text-sm font-bold shrink-0 transition"
                 >
                   Dodaj
                 </button>
@@ -567,9 +567,9 @@ export default function CopilotCockpitModal({
               <button
                 type="button"
                 onClick={handleStartCopilotCall}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 cursor-pointer"
+                className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm md:text-base transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 cursor-pointer"
               >
-                <Headphones className="w-5 h-5" />
+                <Headphones className="w-5 h-5 md:w-6 md:h-6" />
                 Zadzwoń z Copilotem na żywo
               </button>
             </div>
@@ -580,20 +580,20 @@ export default function CopilotCockpitModal({
         {/* FAZA 2: ŁĄCZENIE (CONNECTING) */}
         {/* ============================================================== */}
         {callPhase === 'connecting' && (
-          <div className="p-12 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto animate-bounce">
-              <Phone className="w-8 h-8" />
+          <div className="p-12 md:p-16 text-center space-y-4 md:space-y-6">
+            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto animate-bounce">
+              <Phone className="w-8 h-8 md:w-10 md:h-10" />
             </div>
-            <h4 className="text-base font-bold text-surface-900">
+            <h4 className="text-base md:text-xl font-bold text-surface-900">
               Dzwonię na Twój telefon...
             </h4>
-            <p className="text-xs text-surface-500 max-w-sm mx-auto leading-relaxed">
+            <p className="text-xs md:text-sm text-surface-500 max-w-sm md:max-w-md mx-auto leading-relaxed">
               Odbierz połączenie przychodzące na swoim telefonie. Gdy podniesiesz słuchawkę, system natychmiast zadzwoni do klienta i aktywuje podpowiedzi.
             </p>
             <div className="flex justify-center pt-2">
               <button
                 onClick={() => setCallPhase('setup')}
-                className="text-xs text-surface-400 hover:text-surface-700 underline"
+                className="text-xs md:text-sm text-surface-400 hover:text-surface-700 underline"
               >
                 Anuluj
               </button>
@@ -605,39 +605,39 @@ export default function CopilotCockpitModal({
         {/* FAZA 3: AKTYWNY KOKPIT W TRAKCIE ROZMOWY (IN_CALL) */}
         {/* ============================================================== */}
         {callPhase === 'in_call' && (
-          <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          <div className="p-4 sm:p-5 md:p-6 space-y-4 md:space-y-5 overflow-y-auto flex-1">
             
             {/* PASEK STANU MÓWCY (UI Freeze Asymmetry) */}
-            <div className="flex items-center justify-between bg-surface-100 p-2.5 rounded-2xl border border-surface-200">
+            <div className="flex items-center justify-between bg-surface-100 p-2.5 md:p-3 rounded-2xl border border-surface-200">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsRepSpeaking(!isRepSpeaking)}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 md:px-4 py-1 md:py-1.5 rounded-xl text-xs md:text-sm font-bold transition cursor-pointer ${
                     isRepSpeaking 
                       ? 'bg-amber-500 text-white shadow-sm' 
                       : 'bg-white text-surface-700 border border-surface-200'
                   }`}
                   title="Kliknij, aby przetestować asymetrię (gdy mówisz, UI zamraża się)"
                 >
-                  {isRepSpeaking ? <Mic className="w-3.5 h-3.5 animate-pulse" /> : <MicOff className="w-3.5 h-3.5" />}
+                  {isRepSpeaking ? <Mic className="w-3.5 h-3.5 md:w-4 md:h-4 animate-pulse" /> : <MicOff className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                   {isRepSpeaking ? '🎙️ Mówisz Ty (UI Zamrożone)' : '🎧 Słuchasz klienta (Aktywny)'}
                 </button>
               </div>
 
-              <div className="text-[11px] text-surface-500 font-medium">
+              <div className="text-[11px] md:text-xs text-surface-500 font-medium">
                 {isRepSpeaking ? 'Skup się na rozmowie' : 'Baza wiedzy zsynchronizowana'}
               </div>
             </div>
 
             {/* STREFA 1: DYNAMICZNA CHECKLISTA */}
-            <div className="bg-white rounded-2xl border border-surface-200 p-3.5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-surface-800">
+            <div className="bg-white rounded-2xl border border-surface-200 p-3.5 md:p-4 shadow-xs space-y-2">
+              <div className="flex items-center justify-between text-xs md:text-sm font-bold text-surface-800">
                 <span className="flex items-center gap-1.5">
-                  <CheckSquare className="w-4 h-4 text-indigo-600" />
+                  <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-indigo-600" />
                   Kroki rozmowy (Checklista):
                 </span>
-                <span className="text-[11px] text-surface-400 font-normal">
+                <span className="text-[11px] md:text-xs text-surface-400 font-normal">
                   {checklist.filter(c => c.checked).length} / {checklist.length}
                 </span>
               </div>
@@ -647,25 +647,25 @@ export default function CopilotCockpitModal({
                     key={item.id}
                     type="button"
                     onClick={() => handleToggleChecklist(item.id)}
-                    className={`w-full flex items-center gap-2 p-2 rounded-xl text-left text-xs transition cursor-pointer ${
+                    className={`w-full flex items-center gap-2.5 p-2 md:p-2.5 rounded-xl text-left text-xs md:text-sm transition cursor-pointer ${
                       item.checked 
                         ? 'bg-emerald-50 text-emerald-900 line-through opacity-80' 
                         : 'bg-surface-50 hover:bg-surface-100 text-surface-800 font-medium'
                     }`}
                   >
                     {item.checked ? (
-                      <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
                     ) : (
-                      <Square className="w-4 h-4 text-surface-400 shrink-0" />
+                      <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
                     )}
-                    <span>{item.text}</span>
+                    <span className="break-words text-wrap leading-relaxed">{item.text}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* STREFA 2: GLANCEABLE BATTLECARD (<400ms scan time, max 3 bullety) */}
-            <div className={`rounded-2xl p-4 border transition-all duration-200 shadow-sm ${
+            <div className={`rounded-2xl p-4 md:p-5 border transition-all duration-200 shadow-sm ${
               activeBattlecard.category === 'OBJECTION' 
                 ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20' 
                 : activeBattlecard.category === 'BUYING_SIGNAL'
@@ -674,35 +674,35 @@ export default function CopilotCockpitModal({
             }`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-indigo-600" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-surface-700">
+                  <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-indigo-600" />
+                  <span className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-surface-700">
                     Podpowiedź AI:
                   </span>
                 </div>
                 {activeBattlecard.faqSource && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  <span className={`text-[10px] md:text-xs font-bold px-2 md:px-2.5 py-0.5 md:py-1 rounded-full flex items-center gap-1 ${
                     activeBattlecard.faqSource === 'current'
                       ? 'bg-purple-100 text-purple-800 border border-purple-200'
                       : activeBattlecard.faqSource === 'confidential'
                         ? 'bg-red-100 text-red-800 border border-red-200 font-mono'
                         : 'bg-blue-100 text-blue-800 border border-blue-200'
                   }`}>
-                    {activeBattlecard.faqSource === 'current' && <Zap className="w-3 h-3 text-purple-600" />}
-                    {activeBattlecard.faqSource === 'confidential' && <Lock className="w-3 h-3 text-red-600" />}
+                    {activeBattlecard.faqSource === 'current' && <Zap className="w-3 h-3 md:w-3.5 md:h-3.5 text-purple-600" />}
+                    {activeBattlecard.faqSource === 'confidential' && <Lock className="w-3 h-3 md:w-3.5 md:h-3.5 text-red-600" />}
                     {activeBattlecard.faqSource === 'current' ? 'Baza Czasowa (Promocje)' : (activeBattlecard.faqSource === 'confidential' ? '🔒 Baza Poufna' : 'Baza Stała FAQ')}
                   </span>
                 )}
               </div>
 
-              <h4 className="font-serif font-bold text-sm sm:text-base text-surface-900 mb-2">
+              <h4 className="font-serif font-bold text-sm sm:text-base md:text-lg text-surface-900 mb-2">
                 {activeBattlecard.heading}
               </h4>
 
-              <ul className="space-y-1.5">
+              <ul className="space-y-1.5 md:space-y-2">
                 {activeBattlecard.bullets.map((bullet, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-xs text-surface-800 font-semibold leading-relaxed">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0 mt-1.5"></span>
-                    <span>{bullet}</span>
+                  <li key={idx} className="flex items-start gap-2.5 text-xs md:text-sm text-surface-800 font-semibold leading-relaxed">
+                    <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-indigo-600 shrink-0 mt-1.5 md:mt-2"></span>
+                    <span className="break-words text-wrap">{bullet}</span>
                   </li>
                 ))}
               </ul>
@@ -710,40 +710,40 @@ export default function CopilotCockpitModal({
 
             {/* STREFA 3: SZYBKIE PRZYCISKI WSTRZYKIWANIA ARGUMENTÓW (FAQ & OBJEKCJE) */}
             <div className="space-y-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-surface-400">
+              <div className="text-[11px] md:text-xs font-bold uppercase tracking-wider text-surface-400">
                 Szybkie karty argumentów (1-tap):
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
                 <button
                   type="button"
                   onClick={() => triggerObjectionCard('price')}
-                  className="p-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="p-2 md:p-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  <AlertTriangle className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-600" />
                   Za drogo
                 </button>
                 <button
                   type="button"
                   onClick={() => triggerObjectionCard('promo')}
-                  className="p-2 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="p-2 md:p-2.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Zap className="w-3.5 h-3.5 text-purple-600" />
+                  <Zap className="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-600" />
                   Promocje (Czasowa)
                 </button>
                 <button
                   type="button"
                   onClick={() => triggerObjectionCard('time')}
-                  className="p-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="p-2 md:p-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600" />
                   Brak czasu
                 </button>
                 <button
                   type="button"
                   onClick={() => triggerObjectionCard('competitor')}
-                  className="p-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="p-2 md:p-2.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs md:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  <BookOpen className="w-3.5 h-3.5 md:w-4 md:h-4 text-indigo-600" />
                   Parametry FAQ
                 </button>
               </div>
@@ -754,9 +754,9 @@ export default function CopilotCockpitModal({
               <button
                 type="button"
                 onClick={handleEndCall}
-                className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                className="w-full py-3 md:py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs md:text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
               >
-                <PhoneOff className="w-4 h-4" />
+                <PhoneOff className="w-4 h-4 md:w-5 md:h-5" />
                 Zakończ rozmowę i przejdź do podsumowania
               </button>
             </div>
@@ -767,27 +767,27 @@ export default function CopilotCockpitModal({
         {/* FAZA 4: PODSUMOWANIE I ZAPIS DO CRM (SUMMARY) */}
         {/* ============================================================== */}
         {callPhase === 'summary' && (
-          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto">
+          <div className="p-4 sm:p-6 md:p-8 space-y-4 md:space-y-6 overflow-y-auto">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-100 gap-2">
               <div>
-                <h4 className="font-serif font-bold text-base text-surface-900">
+                <h4 className="font-serif font-bold text-base md:text-lg text-surface-900">
                   Podsumowanie rozmowy z {customerName}
                 </h4>
-                <p className="text-xs text-surface-500">
+                <p className="text-xs md:text-sm text-surface-500">
                   Czas trwania: <strong>{formatTimer(callDurationSeconds)}</strong> • Odhaczone punkty checklisty: <strong>{checklist.filter(c => c.checked).length}/{checklist.length}</strong>
                 </p>
               </div>
-              <span className="text-emerald-700 bg-emerald-100 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full self-start sm:self-auto">
+              <span className="text-emerald-700 bg-emerald-100 border border-emerald-200 text-xs md:text-sm font-bold px-3 py-1 rounded-full self-start sm:self-auto">
                 Rozmowa zakończona
               </span>
             </div>
 
             {/* Status leada */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-surface-600 mb-1.5">
+              <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-600 mb-1.5">
                 Etap relacji / Leada:
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
                 {[
                   { id: 'IN_PROGRESS', label: 'W toku' },
                   { id: 'OFFER_SENT', label: 'Wysłana oferta' },
@@ -798,7 +798,7 @@ export default function CopilotCockpitModal({
                     key={stage.id}
                     type="button"
                     onClick={() => setLeadStage(stage.id as any)}
-                    className={`py-2 px-3 rounded-xl text-xs font-semibold border transition cursor-pointer text-center ${
+                    className={`py-2 md:py-2.5 px-3 md:px-4 rounded-xl text-xs md:text-sm font-semibold border transition cursor-pointer text-center ${
                       leadStage === stage.id
                         ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20'
                         : 'border-surface-200 bg-white text-surface-600 hover:bg-surface-50'
@@ -812,7 +812,7 @@ export default function CopilotCockpitModal({
 
             {/* Ustalenia / Notatka */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-surface-600 mb-1.5">
+              <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-600 mb-1.5">
                 Kluczowe ustalenia z rozmowy:
               </label>
               <textarea
@@ -820,14 +820,14 @@ export default function CopilotCockpitModal({
                 value={postCallNote}
                 onChange={e => setPostCallNote(e.target.value)}
                 placeholder="np. Klient zdecydowany na pakiet Osobisty Ekspert. Wymaga integracji z kalendarzem Google. Przesłać ofertę i link do płatności."
-                className="w-full bg-surface-50 border border-surface-200 rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"
+                className="w-full bg-surface-50 border border-surface-200 rounded-xl p-3 md:p-3.5 text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"
               />
             </div>
 
             {/* Następny krok */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-surface-600 mb-1.5">
+                <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-600 mb-1.5">
                   Zadanie (Następny krok):
                 </label>
                 <input
@@ -835,18 +835,18 @@ export default function CopilotCockpitModal({
                   value={nextStepTask}
                   onChange={e => setNextStepTask(e.target.value)}
                   placeholder="np. Wysłać link do umowy i potwierdzić SMS"
-                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-3 py-2 md:py-2.5 text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-surface-600 mb-1.5">
+                <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-600 mb-1.5">
                   Termin realizacji:
                 </label>
                 <input
                   type="date"
                   value={nextStepDate}
                   onChange={e => setNextStepDate(e.target.value)}
-                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-surface-50 border border-surface-200 rounded-xl px-3 py-2 md:py-2.5 text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </div>
             </div>
@@ -855,16 +855,16 @@ export default function CopilotCockpitModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 py-3 px-4 rounded-xl border border-surface-200 text-surface-600 font-semibold text-xs hover:bg-surface-50 transition cursor-pointer"
+                className="flex-1 py-3 md:py-3.5 px-4 rounded-xl border border-surface-200 text-surface-600 font-semibold text-xs md:text-sm hover:bg-surface-50 transition cursor-pointer"
               >
                 Pomiń zapis
               </button>
               <button
                 type="button"
                 onClick={handleSavePostCallSummary}
-                className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                className="flex-1 py-3 md:py-3.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs md:text-sm transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-4 h-4 md:w-5 md:h-5" />
                 Zapisz do Kartoteki CRM
               </button>
             </div>

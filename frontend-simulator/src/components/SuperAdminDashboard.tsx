@@ -403,7 +403,7 @@ export function SuperAdminDashboard() {
 
   const submitApproveBeta = async (tenantId: string) => {
     if (!assignedNumberInput || assignedNumberInput.trim().length < 9) {
-      alert('Wprowadź prawidłowy wirtualny numer telefonu zakupiony w Zadarma (np. +48459568507)');
+      alert('Wprowadź prawidłowy wirtualny numer telefonu zakupiony w Zadarma (np. +48XXXXXXXXX)');
       return;
     }
     if (!window.confirm(`Czy na pewno chcesz aktywować pakiet Premium dla firmy i przypisać numer ${assignedNumberInput}? Klient otrzyma powiadomienie SMS o aktywacji.`)) {

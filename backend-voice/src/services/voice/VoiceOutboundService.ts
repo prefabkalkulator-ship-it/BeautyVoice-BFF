@@ -7,7 +7,7 @@ export class VoiceOutboundService {
   private static zadarmaSecret = process.env.ZADARMA_SECRET;
   private static twilioSid = process.env.TWILIO_ACCOUNT_SID;
   private static twilioToken = process.env.TWILIO_AUTH_TOKEN;
-  private static callerId = process.env.ZADARMA_PHONE_NUMBER || '+48459568507';
+  private static callerId = process.env.ZADARMA_PHONE_NUMBER || process.env.TWILIO_CALLER_ID || '+48343433088';
 
   public static activeOutboundCalls = new Map<string, string>();
 
@@ -38,7 +38,7 @@ export class VoiceOutboundService {
       `;
       
       const to = targetPhone.startsWith('+') ? targetPhone : '+' + targetPhone;
-      let from = process.env.TWILIO_CALLER_ID || '+48459568507';
+      let from = process.env.TWILIO_CALLER_ID || '+48343433088';
 
       if (tenantId) {
         try {
@@ -54,8 +54,8 @@ export class VoiceOutboundService {
       // KRYTYCZNE ZABEZPIECZENIE: Nigdy nie wolno dzwonić z numeru na ten sam numer (from === to)
       // Operatorzy telekomunikacyjni odrzucają takie połączenia z błędem pętli (Failed)
       if (from === to) {
-        console.warn(`[VoiceOutbound] Wykryto from === to (${from}). Zmiana na zweryfikowany numer zastępczy +48343433088.`);
-        from = '+48343433088';
+        console.warn(`[VoiceOutbound] Wykryto from === to (${from}). Zmiana na zweryfikowany numer zastępczy centrali.`);
+        from = process.env.TWILIO_CALLER_ID || '+48343433088';
       }
 
       let call;
@@ -70,8 +70,9 @@ export class VoiceOutboundService {
       } catch (err: any) {
         console.warn(`[VoiceOutbound] Próba połączenia z ${from} zwróciła błąd: ${err.message}. Próbuję alternatywnych zweryfikowanych numerów...`);
         // Bezwzględnie wykluczamy zarówno numer bieżący (from), jak i numer docelowy (to)!
-        const candidateFallbacks = ['+48459568507', '+48343433088', '+48533989987'];
-        const fallbacks = candidateFallbacks.filter(f => f !== from && f !== to);
+        const centrala = process.env.TWILIO_CALLER_ID || '+48343433088';
+        const candidateFallbacks = [centrala, '+48343433088'];
+        const fallbacks = Array.from(new Set(candidateFallbacks)).filter(f => f !== from && f !== to);
 
         for (const fallbackFrom of fallbacks) {
           try {
@@ -163,50 +164,59 @@ export class VoiceOutboundService {
       const repPhone = tenant.phoneNumber; // Numer komórkowy właściciela / handlowca
       const host = process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app';
       const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
+      const custTo = customerPhone.startsWith('+') ? customerPhone : '+' + customerPhone;
 
-      // Caller ID prezentowany KLIENTOWI na Leg 2:
+      // 1. Numer Centrali Twilio (oficjalna zweryfikowana linia Twilio)
+      const centralaCallerId = process.env.TWILIO_CALLER_ID || '+48343433088';
+
+      // 2. Caller ID prezentowany KLIENTOWI na Leg 2:
       // Używamy dedykowanego wirtualnego numeru technicznego tenanta (tenant.assignedPhoneNumber),
-      // a w przypadku jego braku - domyślnego numeru centrali (process.env.TWILIO_CALLER_ID).
-      const customerLegCallerId = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48343433088';
+      // a w przypadku jego braku - domyślnego numeru centrali (centralaCallerId).
+      const customerLegCallerId = tenant.assignedPhoneNumber || centralaCallerId;
 
       const client = twilio(this.twilioSid, this.twilioToken);
 
-      // Lista zweryfikowanych numerów nadawcy w Twilio dla Leg 1 (wywołanie telefonu właściciela)
-      const candidateFromNumbers = [
-        tenant.assignedPhoneNumber,
-        process.env.TWILIO_CALLER_ID,
-        '+48343433088'
-      ].filter((n): n is string => Boolean(n));
+      // KROK 1 (Leg 1): Centrala dzwoni do HANDLOWCA (to: repPhone).
+      // Leg 1 MUSI być zestawiany z numeru Centrali Twilio (centralaCallerId), aby polscy operatorzy
+      // komórkowi nie odrzucali połączenia ze stacji VoIP na numer komórkowy.
+      const leg1FromCandidates = Array.from(new Set([
+        centralaCallerId,
+        '+48343433088',
+        tenant.assignedPhoneNumber
+      ].filter((n): n is string => Boolean(n) && (n.startsWith('+') ? n : '+' + n) !== to)));
 
-      // Normalizacja i wykluczenie numeru to (from === to jest blokowane przez operatorów na Leg 1)
-      const uniqueFromCandidates = Array.from(
-        new Set(candidateFromNumbers.map(n => n.startsWith('+') ? n : '+' + n))
-      ).filter(n => n !== to);
+      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Handlowca (${to}) z CallerID centrali, Leg 2 do Klienta (${custTo}) z CallerID: ${customerLegCallerId}`);
 
-      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Rep (${to}) z technicznego CallerID, Leg 2 do Klienta (${customerPhone}) z CallerID: ${customerLegCallerId}`);
+      // Fallback w TwiML na wypadek problemów z połączeniem z numeru wirtualnego:
+      const fallbackDial = (customerLegCallerId !== centralaCallerId && centralaCallerId !== custTo) ? `
+              <Say language="pl-PL">Przełączam na linię rezerwową centrali.</Say>
+              <Dial callerId="${centralaCallerId}" timeout="35">
+                <Number>${custTo}</Number>
+              </Dial>` : '';
+
+      const twiml = `
+        <Response>
+          <Start>
+            <Stream url="wss://${host}/api/copilot-voice" track="both_tracks">
+              <Parameter name="copilotSessionId" value="${sessionId}" />
+              <Parameter name="tenantId" value="${tenantId}" />
+              <Parameter name="customerPhone" value="${custTo}" />
+            </Stream>
+          </Start>
+          <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
+          <Dial callerId="${customerLegCallerId}" timeout="30">
+            <Number>${custTo}</Number>
+          </Dial>
+          ${fallbackDial}
+          <Say language="pl-PL">Nie udało się połączyć z klientem. Linia jest zajęta lub nie odpowiada.</Say>
+        </Response>
+      `;
 
       let call;
       let lastError = '';
 
-      for (const candidateFrom of uniqueFromCandidates) {
+      for (const candidateFrom of leg1FromCandidates) {
         try {
-          const twiml = `
-            <Response>
-              <Start>
-                <Stream url="wss://${host}/api/copilot-voice" track="both_tracks">
-                  <Parameter name="copilotSessionId" value="${sessionId}" />
-                  <Parameter name="tenantId" value="${tenantId}" />
-                  <Parameter name="customerPhone" value="${customerPhone}" />
-                </Stream>
-              </Start>
-              <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
-              <Dial callerId="${customerLegCallerId}" timeout="35">
-                <Number>${customerPhone}</Number>
-              </Dial>
-              <Say language="pl-PL">Nie udało się połączyć z klientem. Linia jest zajęta lub nie odpowiada.</Say>
-            </Response>
-          `;
-
           call = await client.calls.create({
             twiml,
             to,
