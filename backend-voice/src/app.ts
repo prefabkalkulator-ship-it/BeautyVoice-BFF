@@ -2945,16 +2945,31 @@ app.post('/api/copilot/start-conference', async (req, res) => {
       mode: 'conference'
     });
 
-    // Numer asystenta, na który handlowiec dzwoni z telefonu dodając połączenie do konferencji
+    // Numer asystenta / centrali Twilio
     const assistantPhone = tenant.assignedPhoneNumber || process.env.TWILIO_CALLER_ID || '+48343433088';
 
-    console.log(`🎧 [Copilot API] Zainicjowano sesję konferencyjną Copilota: ${session.sessionId} dla handlowca: ${tenant.phoneNumber}`);
+    // Inicjacja połączenia z centrali do handlowca (Odwrócony Mostek - Inverted Conference Call)
+    const confResult = await VoiceOutboundService.initiateCopilotConferenceCall({
+      sessionId: session.sessionId,
+      tenantId: tenant.id,
+      customerPhone,
+      customerName
+    });
+
+    if (confResult.callSid) {
+      session.callSid = confResult.callSid;
+    }
+
+    console.log(`🎧 [Copilot API] Zainicjowano sesję odwróconej konferencji Copilota: ${session.sessionId} dla handlowca: ${tenant.phoneNumber} (Twilio Call SID: ${confResult.callSid || 'symulacja'})`);
 
     return res.json({
       success: true,
       sessionId: session.sessionId,
+      callSid: confResult.callSid,
       assistantPhone,
       ownerPhone: tenant.phoneNumber,
+      customerPhone,
+      customerName: session.customerName,
       mode: 'conference'
     });
   } catch (err: any) {
@@ -2975,11 +2990,31 @@ app.get('/api/copilot/session/:id', async (req, res) => {
       customerPhone: session.customerPhone,
       checklist: session.checklist,
       activeBattlecard: session.activeBattlecard,
+      battlecards: session.battlecards || [],
       isRepSpeaking: session.isRepSpeaking
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// 2b. SSE (Server-Sent Events) strumień zdarzeń Copilota dla kokpitu PWA (niezawodny przez Firebase Hosting / Proxy)
+app.get('/api/copilot/events', (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  if (!sessionId) {
+    return res.status(400).send('Missing sessionId');
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const unsubscribe = copilotEngineService.registerSseClient(sessionId, res);
+
+  req.on('close', () => {
+    unsubscribe();
+  });
 });
 
 // 3. Zakończenie sesji Copilota (i natychmiastowe rozłączenie w Twilio)

@@ -232,6 +232,70 @@ export class VoiceOutboundService {
   }
 
   /**
+   * Schemat odwróconego mostka (Inverted Conference Call)
+   * Krok 1: Centrala dzwoni do Handlowca z oficjalnego numeru (+48343433088).
+   * Krok 2: Handlowiec odbiera telefon (w słuchawce cisza - asystent nasłuchujący).
+   * Krok 3: Handlowiec klika na telefonie 'Dodaj połączenie' (+) i dzwoni do klienta (klient widzi numer komórkowy handlowca!).
+   * Krok 4: Handlowiec scala połączenia w konferencję GSM (3-way merge).
+   */
+  static async initiateCopilotConferenceCall(options: {
+    sessionId: string;
+    tenantId: string;
+    customerPhone: string;
+    customerName?: string;
+  }): Promise<{ success: boolean; callSid?: string; error?: string }> {
+    const { sessionId, tenantId, customerPhone } = options;
+
+    if (!this.twilioSid || !this.twilioToken) {
+      console.warn('[VoiceOutbound] Brak kluczy Twilio SID/Token do konferencji. Działa w trybie symulacyjnym.');
+      return { success: true };
+    }
+
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant || !tenant.phoneNumber) {
+        return { success: false, error: 'Brak numeru telefonu handlowca w profilu tenanta.' };
+      }
+
+      const repPhone = tenant.phoneNumber;
+      const host = process.env.HOST || 'beautyvoice-bff-739272851032.europe-central2.run.app';
+      const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
+      const custTo = customerPhone.startsWith('+') ? customerPhone : '+' + customerPhone;
+      const centralaCallerId = process.env.TWILIO_CALLER_ID || '+48343433088';
+
+      const client = twilio(this.twilioSid, this.twilioToken);
+
+      console.log(`[VoiceOutbound] Inicjowanie połączenia konferencyjnego Copilota do Handlowca: ${to} z numeru centrali: ${centralaCallerId}`);
+
+      const twiml = `
+        <Response>
+          <Start>
+            <Stream url="wss://${host}/api/copilot-voice" track="both_tracks">
+              <Parameter name="copilotSessionId" value="${sessionId}" />
+              <Parameter name="tenantId" value="${tenantId}" />
+              <Parameter name="customerPhone" value="${custTo}" />
+              <Parameter name="isConference" value="true" />
+            </Stream>
+          </Start>
+          <Pause length="3600" />
+        </Response>
+      `;
+
+      const call = await client.calls.create({
+        twiml,
+        to,
+        from: centralaCallerId
+      });
+
+      console.log(`[VoiceOutbound] Połączenie do Handlowca utworzone pomyślnie. SID: ${call.sid}`);
+      return { success: true, callSid: call.sid };
+    } catch (err: any) {
+      console.error(`[VoiceOutbound] Błąd inicjowania połączenia konferencyjnego do Handlowca:`, err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
    * Zdalne zakończenie aktywnego połączenia w Twilio (Hangup)
    */
   static async terminateCall(callSid: string): Promise<boolean> {

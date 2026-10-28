@@ -10,6 +10,8 @@ const { mulaw } = require('alawmulaw');
 const { WaveFile } = require('wavefile');
 
 export interface BattlecardPayload {
+  id?: string;
+  timestamp?: string;
   category: 'OBJECTION' | 'FACT_QUERY' | 'BUYING_SIGNAL' | 'DEESCALATION';
   heading: string;
   bullets: string[];
@@ -40,6 +42,7 @@ export interface CopilotSession {
   lastRepSpeechTime: number;
   checklist: CopilotChecklistItem[];
   activeBattlecard?: BattlecardPayload;
+  battlecards: BattlecardPayload[];
   services: any[];
   faqs: {
     current: any[];
@@ -53,6 +56,7 @@ export interface CopilotSession {
   inboundAudioBuffer: Buffer[];
   lastInboundAudioTime: number;
   evaluatingInbound: boolean;
+  recentEmittedHints: string[];
 }
 
 export class CopilotEngineService {
@@ -234,6 +238,9 @@ export class CopilotEngineService {
       };
     }
 
+    initialBattlecard.id = 'bc_init';
+    initialBattlecard.timestamp = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+
     const session: CopilotSession = {
       sessionId,
       tenantId: options.tenantId,
@@ -260,7 +267,9 @@ export class CopilotEngineService {
       inboundAudioBuffer: [],
       lastInboundAudioTime: 0,
       evaluatingInbound: false,
-      activeBattlecard: initialBattlecard
+      activeBattlecard: initialBattlecard,
+      battlecards: [initialBattlecard],
+      recentEmittedHints: [initialBattlecard.heading, ...initialBattlecard.bullets]
     };
 
     this.sessions.set(sessionId, session);
@@ -310,6 +319,7 @@ export class CopilotEngineService {
       customerPhone: session.customerPhone,
       checklist: session.checklist,
       activeBattlecard: session.activeBattlecard,
+      battlecards: session.battlecards || (session.activeBattlecard ? [session.activeBattlecard] : []),
       faqsCount: {
         current: session.faqs.current.length,
         permanent: session.faqs.permanent.length,
@@ -323,14 +333,66 @@ export class CopilotEngineService {
     });
   }
 
+  private sseClients: Map<string, Set<any>> = new Map();
+
   /**
-   * Rozgłoszenie zdarzenia do wszystkich podłączonych kokpitów UI danej sesji
+   * Rejestracja klienta SSE (Server-Sent Events) z przeglądarki PWA
+   */
+  public registerSseClient(sessionId: string, res: any): () => void {
+    if (!this.sseClients.has(sessionId)) {
+      this.sseClients.set(sessionId, new Set());
+    }
+    const clientSet = this.sseClients.get(sessionId)!;
+    clientSet.add(res);
+    console.log(`📡 [CopilotEngine] Podłączono klienta SSE do sesji: ${sessionId} (aktywnych: ${clientSet.size})`);
+
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      const snapshot = {
+        type: 'SESSION_SNAPSHOT',
+        sessionId: session.sessionId,
+        customerName: session.customerName,
+        customerPhone: session.customerPhone,
+        checklist: session.checklist,
+        activeBattlecard: session.activeBattlecard,
+        battlecards: session.battlecards || (session.activeBattlecard ? [session.activeBattlecard] : []),
+        isRepSpeaking: session.isRepSpeaking,
+        faqsCount: {
+          current: session.faqs.current.length,
+          permanent: session.faqs.permanent.length,
+          confidential: session.faqs.confidential.length
+        }
+      };
+      res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+    }
+
+    return () => {
+      clientSet.delete(res);
+      if (clientSet.size === 0) {
+        this.sseClients.delete(sessionId);
+      }
+      console.log(`📡 [CopilotEngine] Odłączono klienta SSE od sesji: ${sessionId}`);
+    };
+  }
+
+  /**
+   * Rozgłoszenie zdarzenia do wszystkich podłączonych kokpitów UI danej sesji (WebSocket + SSE)
    */
   public broadcastToUi(session: CopilotSession, payload: any) {
     const message = JSON.stringify(payload);
     for (const ws of session.uiSockets) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(message);
+      }
+    }
+    const sseSet = this.sseClients.get(session.sessionId);
+    if (sseSet) {
+      for (const res of sseSet) {
+        try {
+          res.write(`data: ${message}\n\n`);
+        } catch (_) {
+          sseSet.delete(res);
+        }
       }
     }
   }
@@ -354,7 +416,7 @@ export class CopilotEngineService {
       sumSquares += pcmInt16[i] * pcmInt16[i];
     }
     const rms = Math.sqrt(sumSquares / pcmInt16.length);
-    const hasVoiceEnergy = rms > 650; // próg mowy w 16-bit PCM (cisza: 0-200, mowa: 1000-8000)
+    const hasVoiceEnergy = session.mode === 'conference' ? (rms > 280) : (rms > 650); // w trybie konferencji GSM miks ma mniejszą amplitudę
 
     const now = Date.now();
 
@@ -377,16 +439,27 @@ export class CopilotEngineService {
         });
       }
     } else if (track === 'inbound') {
-      // Ścieżka Klienta (Klient mówi)
+      // Ścieżka Klienta (w konferencji: zintegrowany miks audio)
       if (hasVoiceEnergy) {
         session.lastInboundAudioTime = now;
-        // Trzymamy tylko ostatnie 4 sekundy w RAM dla analizy intencji (ZDR - Zero Data Retention)
         session.inboundAudioBuffer.push(audioChunk);
-        if (session.inboundAudioBuffer.length > 200) { // ok. 4 sekundy
-          session.inboundAudioBuffer.shift();
+
+        // Ciągły trigger mowy (Continuous Speech Trigger):
+        // Jeśli wypowiedź trwa dłużej niż 2.2 sekundy (110 ramek audio) i jeszcze nie nastąpiła pauza,
+        // nie czekamy w nieskończoność na ciszę - ewaluujemy intencję proaktywnie!
+        if (session.inboundAudioBuffer.length >= 110 && !session.evaluatingInbound) {
+          session.evaluatingInbound = true;
+          const bufferToEvaluate = Buffer.concat(session.inboundAudioBuffer);
+          // Zostawiamy ostatnie 15 ramek (300ms) dla zachowania kontekstu słów
+          session.inboundAudioBuffer = session.inboundAudioBuffer.slice(-15);
+
+          this.evaluateCustomerIntent(session, bufferToEvaluate)
+            .finally(() => {
+              session.evaluatingInbound = false;
+            });
         }
-      } else if (session.inboundAudioBuffer.length > 25 && (now - session.lastInboundAudioTime > 700)) {
-        // Klient właśnie skończył wypowiedź (cisza po mowie)
+      } else if (session.inboundAudioBuffer.length > 15 && (now - session.lastInboundAudioTime > 400)) {
+        // Skrócono czas oczekiwania na ciszę z 700ms do 400ms (natychmiastowa reakcja po pytaniu)
         if (!session.evaluatingInbound) {
           session.evaluatingInbound = true;
           const bufferToEvaluate = Buffer.concat(session.inboundAudioBuffer);
@@ -466,6 +539,12 @@ WYMOGI FORMATOWANIA:
 BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne hasła z twardymi liczbami.
 `;
 
+      // Pamięć ostatnich podpowiedzi (anty-powtórzeniowa)
+      const recentEmitted = (session.recentEmittedHints || []).slice(-6).map(h => `- ${h}`).join('\n');
+      const antiRepetitionSection = recentEmitted
+        ? `\n\nOSTATNIO WYGENEROWANE PODPOWIEDZI (Handlowiec prawdopodobnie właśnie je odczytuje lub przekazał klientowi):\n${recentEmitted}\n\nBEZWZGLĘDNA ZASADA ANTY-POWTÓRZENIOWA:\nJeśli w nagraniu słyszysz handlowca powtarzającego lub czytającego powyższe fakty, ALBO klienta potwierdzającego ('tak', 'rozumiem', 'dobrze', 'aha'):\nNIE GENERUJ PONOWNIE TYCH SAMYCH FAKTÓW ANI TEJ SAMEJ KARTY! Zwróć pusty obiekt JSON: {}\nWygeneruj nową podpowiedź TYLKO JEŚLI klient zadał NOWE pytanie, padła nowa obiekcja lub handlowiec poruszył kolejny temat/produkt.`
+        : '';
+
       const userParts: any[] = [{ text: systemPrompt }];
       if (wavBase64) {
         userParts.push({
@@ -476,7 +555,7 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
         });
       }
       userParts.push({
-        text: 'Odsłuchaj powyższe nagranie wypowiedzi klienta. Zidentyfikuj intencję, pytanie lub obiekcję i dopasuj telegraficzną odpowiedź opartą o bazę wiedzy i kontekst klienta:'
+        text: `Odsłuchaj nagranie wypowiedzi z rozmowy (może mówić klient lub handlowiec). Zidentyfikuj intencję, pytanie, ofertę lub obiekcję:\n- Jeśli mówi klient: podaj zbijanie obiekcji lub twarde fakty z bazy FAQ.\n- Jeśli mówi handlowiec (proponuje produkt/wariant): podaj proaktywnie twarde parametry, cenę, warianty i aktualny rabat z cennika/FAQ dla tego produktu.\n- Jeśli nagranie zawiera jedynie powtórzenie ostatnich faktów lub potakiwanie: ZWRÓĆ PUSTY OBIEKT JSON: {}\n- Jeśli pada deklaracja zakupu: podaj kolejny krok do domknięcia.${antiRepetitionSection}`
       });
 
       const response = await this.ai.models.generateContent({
@@ -495,13 +574,43 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
       const responseText = response.text?.trim() || '{}';
       const battlecard = JSON.parse(responseText);
 
-      if (battlecard && battlecard.heading && Array.isArray(battlecard.bullets)) {
-        session.activeBattlecard = battlecard;
+      if (battlecard && battlecard.heading && Array.isArray(battlecard.bullets) && battlecard.bullets.length > 0) {
+        // Sprawdź czy to nie jest duplikat ostatnio wyświetlonych faktów
+        const cleanHeading = battlecard.heading.trim().toLowerCase();
+        const isDuplicate = (session.recentEmittedHints || []).some(hint => {
+          const hLow = hint.trim().toLowerCase();
+          return hLow === cleanHeading || (cleanHeading.length > 8 && hLow.includes(cleanHeading));
+        });
+
+        if (isDuplicate) {
+          console.log(`[CopilotEngine] Pominięto duplikat karty: "${battlecard.heading}"`);
+          return;
+        }
+
+        const cardWithMeta: BattlecardPayload = {
+          ...battlecard,
+          id: `bc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+        };
+        session.activeBattlecard = cardWithMeta;
+        if (!session.battlecards) session.battlecards = [];
+        session.battlecards.push(cardWithMeta);
+        if (session.battlecards.length > 40) {
+          session.battlecards = session.battlecards.slice(-40);
+        }
+
+        if (!session.recentEmittedHints) session.recentEmittedHints = [];
+        session.recentEmittedHints.push(cardWithMeta.heading, ...cardWithMeta.bullets);
+        if (session.recentEmittedHints.length > 15) {
+          session.recentEmittedHints = session.recentEmittedHints.slice(-15);
+        }
+
         this.broadcastToUi(session, {
           type: 'BATTLECARD_UPDATE',
-          battlecard
+          battlecard: cardWithMeta,
+          battlecards: session.battlecards
         });
-        console.log(`🎯 [CopilotEngine] Wygenerowano kartę bojową: "${battlecard.heading}" (źródło: ${battlecard.faqSource || 'ogólne'})`);
+        console.log(`🎯 [CopilotEngine] Wygenerowano kartę bojową #${session.battlecards.length}: "${cardWithMeta.heading}" (źródło: ${cardWithMeta.faqSource || 'ogólne'})`);
       }
     } catch (err: any) {
       console.warn('[CopilotEngine] Błąd generowania karty bojowej:', err.message);
@@ -522,6 +631,16 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
     this.broadcastToUi(session, { type: 'CALL_ENDED' });
     for (const ws of session.uiSockets) {
       try { ws.close(); } catch (e) {}
+    }
+    const sseSet = this.sseClients.get(sessionId);
+    if (sseSet) {
+      for (const res of sseSet) {
+        try {
+          res.write(`data: ${JSON.stringify({ type: 'CALL_ENDED' })}\n\n`);
+          res.end();
+        } catch (_) {}
+      }
+      this.sseClients.delete(sessionId);
     }
     for (const [key, sess] of this.pendingConferenceByCaller.entries()) {
       if (sess.sessionId === sessionId) {

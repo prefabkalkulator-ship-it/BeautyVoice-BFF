@@ -973,6 +973,7 @@ export default function CallHistoryMessages() {
       <CopilotCockpitModal
         isOpen={copilotModal.isOpen}
         onClose={() => setCopilotModal({ isOpen: false, phone: '', name: '' })}
+        onSuccess={() => fetchLogs()}
         customerPhone={copilotModal.phone}
         customerName={copilotModal.name}
       />

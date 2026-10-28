@@ -497,14 +497,14 @@ export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
   const currentHour = parseInt(today.toLocaleTimeString('pl-PL', { hour: '2-digit', hour12: false, timeZone: 'Europe/Warsaw' }), 10);
   const timeGreeting = (currentHour >= 6 && currentHour < 18) ? 'Dzień dobry' : 'Dobry wieczór';
 
-  const isMale = ['Puck', 'Charon'].includes(voiceName);
+  const isMale = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(voiceName) || (typeof voiceName === 'string' && voiceName.toLowerCase().includes('male'));
   const hasCustomBotName = typeof botNameArg === 'string' && botNameArg.trim().length > 0;
   const botRole = isMale ? "wirtualny asystent" : "wirtualna asystentka";
   const botRoleTitle = isMale ? "Wirtualny Asystent" : "Wirtualna Asystentka";
   const botName = hasCustomBotName ? botNameArg.trim() : botRoleTitle;
   const grammarRule = isMale 
-    ? 'Zawsze używaj formy męskiej ("sprawdziłem", "znalazłem", "zablokowałem").'
-    : 'Zawsze używaj formy żeńskiej ("sprawdziłam", "znalazłam", "zablokowałam").';
+    ? 'PŁEĆ ASYSTENTA: MĘSKA. Jesteś mężczyzną. Zawsze bezwzględnie używaj form męskich czasu przeszłego ("sprawdziłem", "znalazłem", "zablokowałem", "odwołałem", "potwierdziłem", "chciałbym"). Kategoryczny zakaz form żeńskich ("sprawdziłam", "odwołałam")!'
+    : 'PŁEĆ ASYSTENTA: ŻEŃSKA. Jesteś kobietą. Zawsze używaj form żeńskich czasu przeszłego ("sprawdziłam", "znalazłam", "zablokowałam", "odwołałam", "potwierdziłam", "chciałabym").';
   const forcedEnding = isMale ? 'zmuszony' : 'zmuszona';
   const talkEnding = isMale ? 'porozmawiałbym' : 'porozmawiałabym';
 

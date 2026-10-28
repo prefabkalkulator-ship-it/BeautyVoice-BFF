@@ -679,6 +679,7 @@ export default function Customers() {
       <CopilotCockpitModal
         isOpen={copilotModal.isOpen}
         onClose={() => setCopilotModal({ isOpen: false, phone: '', name: '' })}
+        onSuccess={() => fetchCustomers()}
         customerPhone={copilotModal.phone}
         customerName={copilotModal.name}
         customerId={copilotModal.customerId}

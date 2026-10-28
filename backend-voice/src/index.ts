@@ -38,12 +38,23 @@ copilotVoiceWss.on('connection', (ws) => {
         const session = copilotEngineService.getSession(currentSessionId);
         if (session) {
           session.twilioStreamSid = data.start.streamSid;
-          copilotEngineService.broadcastToUi(session, {
-            type: 'CALL_CONNECTED',
-            sessionId: currentSessionId
-          });
+          if (session.mode === 'conference') {
+            // W trybie konferencji strumień centrali jest gotowy (cichy nasłuch aktywny),
+            // ale handlowiec musi jeszcze dodać klienta i scalić połączenie.
+            // NIE przełączamy modalu na in_call - dajemy handlowcowi czas na dodanie i scalenie rozmowy!
+            copilotEngineService.broadcastToUi(session, {
+              type: 'CENTRAL_STREAM_READY',
+              sessionId: currentSessionId
+            });
+          } else {
+            // W trybie mostka automatycznego 2-leg centrala od razu łączy oba kanały
+            copilotEngineService.broadcastToUi(session, {
+              type: 'CALL_CONNECTED',
+              sessionId: currentSessionId
+            });
+          }
         }
-        console.log(`🎙️ [CopilotVoice] Start forkowania audio dla sesji: ${currentSessionId}`);
+        console.log(`🎙️ [CopilotVoice] Start forkowania audio dla sesji: ${currentSessionId} (mode: ${session?.mode || 'bridge'})`);
       } else if (data.event === 'media' && currentSessionId) {
         const track = (data.media?.track === 'outbound' ? 'outbound' : 'inbound') as 'inbound' | 'outbound';
         copilotEngineService.handleMediaStream(currentSessionId, track, data.media.payload);

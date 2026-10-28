@@ -46,6 +46,7 @@ export class CallOrchestrator {
   private farewellStartTime: number = 0;
   private isWaitingForFarewellTurn: boolean = false;
   private currentTurnAudioDurationMs: number = 0;
+  private turnStartTime: number = 0;
   private isAwaitingUserAfterAction: boolean = false;
   private lastActionTimestamp: number = 0;
 
@@ -695,7 +696,7 @@ export class CallOrchestrator {
                      contextText = `UWAGA: To jest natychmiastowe połączenie zwrotne (Live Callback w 30 sekund) zamówione przez klienta (${payload.name || task.targetPhone}) na stronie internetowej! Klient właśnie odebrał telefon. Numer klienta: ${task.targetPhone}. MUSISZ NATYCHMIAST PRZEMÓWIĆ JAKO PIERWSZA, zanim rozmówca cokolwiek powie! Powiedz przyjaźnie i naturalnie dokładnie jedno zdanie powitalne: "${timeGreeting}! Dziękuję za zamówienie szybkiego kontaktu na naszej stronie. Z tej strony wirtualna asystentka ${assistantBrand}. W czym mogę dzisiaj pomóc?". Powitanie wypowiedz po polsku, bez dwujęzyczności. Prowadź płynną rozmowę po polsku (z obsługą języka angielskiego na wyraźną prośbę).`;
                      await prisma.outboundQueue.update({ where: { id: task.id }, data: { status: 'done', processedAt: new Date() } });
                    } else {
-                     const isMaleVoice = ['Puck', 'Charon'].includes(this.voiceName);
+                     const isMaleVoice = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(this.voiceName) || (typeof this.voiceName === 'string' && this.voiceName.toLowerCase().includes('male'));
                      const assistantTitleInstrumental = isMaleVoice ? 'wirtualnym asystentem' : 'wirtualną asystentką';
                      const assistantTitleNominative = isMaleVoice ? 'wirtualny asystent' : 'wirtualna asystentka';
                      const ownerDisplayName = this.ownerName || this.tenantName || 'właściciela';
@@ -733,7 +734,16 @@ export class CallOrchestrator {
 
                      const openingSentence = `${clientGreeting}. Jestem ${assistantTitleInstrumental} ${ownerPrefix} ${ownerFirstGenitive}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
 
+                     const cancelFarewell = isMaleVoice
+                       ? "Rozumiem, odwołałem spotkanie i zwolniłem termin. Dziękuję za informację i do usłyszenia."
+                       : "Rozumiem, odwołałam spotkanie i zwolniłam termin. Dziękuję za informację i do usłyszenia.";
+
+                     const genderDirective = isMaleVoice
+                       ? `PŁEĆ I FORMY GRAMATYCZNE ASYSTENTA: Jesteś MĘŻCZYZNĄ (${assistantTitleNominative}). Masz ABSOLUTNY OBOWIĄZEK używania wyłącznie form MĘSKICH czasu przeszłego (np. "odwołałem", "potwierdziłem", "zwolniłem", "zapisałem", "chciałbym"). Kategoryczny zakaz form żeńskich ("odwołałam", "zapisałam")!`
+                       : `PŁEĆ I FORMY GRAMATYCZNE ASYSTENTA: Jesteś KOBIETĄ (${assistantTitleNominative}). Używaj żeńskich form czasu przeszłego (np. "odwołałam", "potwierdziłam", "zwolniłam", "zapisałam", "chciałabym").`;
+
                      contextText = `TO JEST POŁĄCZENIE WYCHODZĄCE do klienta: ${rawCustomerName || task.targetPhone} w celu potwierdzenia ${eventWordAccusative} w dniu ${dateText} ${timeText}.
+${genderDirective}
 NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}".
 
 ŻELAZNE ZASADY DALSZEGO PROWADZENIA ROZMOWY:
@@ -751,7 +761,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 3. WARIANT C (Klient ODWOŁUJE spotkanie / rezygnuje: "muszę odwołać", "nie dam rady", "rezygnuję"):
    - ⛔ KATEGORYCZNY, BEZWZGLĘDNY ZAKAZ wywoływania narzędzia 'confirmAppointment'!
    - Wywołaj narzędzie 'cancelAppointment'.
-   - Powiedz uprzejmie dokładnie jedno zwięzłe zdanie: "Rozumiem, odwołałam spotkanie i zwolniłam termin. Dziękuję za informację i do usłyszenia." i wywołaj narzędzie 'endCall'. Po tym zdaniu natychmiast zamilknij.
+   - Powiedz uprzejmie dokładnie jedno zwięzłe zdanie: "${cancelFarewell}" i wywołaj narzędzie 'endCall'. Po tym zdaniu natychmiast zamilknij.
 4. WARIANT D (Klient prosi o kontakt z ${ownerDisplayName} lub pyta o szczegóły):
    - Odpowiedz na pytania merytoryczne narzędziem 'getFAQ'.
    - Jeśli klient prosi o oddzwonienie lub przekazanie wiadomości, zapisz to narzędziem 'save_call_message'.`;
@@ -762,7 +772,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               contextText = `Połączenie na linię testową EVA. Rozpocznij powitanie słowami: "${timeGreeting}, witamy na linii testowej platformy EasyVoiceAssistant, w skrócie EVA. Twój przyszły asystent głosowy. O czym chciałbyś porozmawiać – o tym, jak działam, czy wolisz poznać ceny naszych pakietów?". Mów ze świeżą energią, rześkim, uśmiechniętym głosem i nienaganną, wyraźną dykcją w pewnym, żwawym tempie (kategoryczny zakaz mówienia sennie czy powoli!). Domyślnym językiem rozmowy jest w 100% język polski (akcent rozmówcy oraz pojęcia techniczne o rdzeniach łacińskich to w 100% język polski, a nie rumuński!). Gdy rozmówca mówi w obcym języku, zastosuj Bramkę Weryfikacyjną (jedno pytanie weryfikacyjne i zamilknij). Kategoryczny zakaz samowolnej zmiany języka i kategoryczny zakaz makaronizmów.`;
             } else if (this.businessProfile === 'personal' && this.geminiClient && this.tenantId) {
               // INBOUND DLA ASYSTENTA OSOBISTEGO
-              const isMale = ['Puck', 'Charon'].includes(this.voiceName);
+              const isMale = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(this.voiceName) || (typeof this.voiceName === 'string' && this.voiceName.toLowerCase().includes('male'));
               const assistantTitleInstrumental = isMale ? 'wirtualnym asystentem' : 'wirtualną asystentką';
               const assistantTitleNominative = isMale ? 'wirtualny asystent' : 'wirtualna asystentka';
               const ownerDisplayName = this.ownerName || this.tenantName;
@@ -803,7 +813,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // PAKIET BIZNESOWY (Standard / Premium)
               const compName = this.companyName || this.tenantName;
-              const isMale = ['Puck', 'Charon'].includes(this.voiceName);
+              const isMale = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(this.voiceName) || (typeof this.voiceName === 'string' && this.voiceName.toLowerCase().includes('male'));
               const botRole = isMale ? "Wirtualny Asystent" : "Wirtualna Asystentka";
               const botDisplayName = this.botName || botRole;
 
@@ -887,6 +897,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
     if (!this.isTerminating) {
       this.currentTurnAudioDurationMs = 0;
+      this.turnStartTime = 0;
     }
 
     if (this.isWaitingForFarewellTurn) {
@@ -917,11 +928,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       }
 
       // Obliczamy ile audio pożegnalnego czeka jeszcze na fizyczne odegranie w słuchawce przez Twilio
-      const elapsedPlaybackMs = this.farewellStartTime ? (Date.now() - this.farewellStartTime) : 0;
-      const remainingAudioMs = Math.max(0, this.farewellAudioDurationMs - elapsedPlaybackMs);
-      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + 800ms naturalnej pauzy po pożegnaniu
-      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1500), 10000);
-      console.log(`⏱️ [EndCall] Wygenerowano ${Math.round(this.farewellAudioDurationMs)}ms mowy pożegnalnej. Pozostało ~${Math.round(remainingAudioMs)}ms w buforze Twilio. Odłożenie słuchawki za ${Math.round(finalHangupDelayMs)}ms.`);
+      const totalFarewellMs = this.farewellAudioDurationMs || this.currentTurnAudioDurationMs;
+      const elapsedPlaybackMs = this.turnStartTime ? (Date.now() - this.turnStartTime) : (this.farewellStartTime ? (Date.now() - this.farewellStartTime) : 0);
+      const remainingAudioMs = Math.max(0, totalFarewellMs - elapsedPlaybackMs);
+      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + 2000ms naturalnej pauzy po pożegnaniu
+      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 2000, 3500), 14000);
+      console.log(`⏱️ [EndCall] Wygenerowano ${Math.round(totalFarewellMs)}ms mowy pożegnalnej. Pozostało ~${Math.round(remainingAudioMs)}ms w buforze Twilio. Odłożenie słuchawki za ${Math.round(finalHangupDelayMs)}ms.`);
 
       this.hangupTimeout = setTimeout(() => {
         if (this.silenceWatchdogInterval) {
@@ -1363,26 +1375,15 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             this.shouldHangupAfterTurn = true;
             this.isWaitingForFarewellTurn = false;
             this.farewellAudioDurationMs = this.currentTurnAudioDurationMs;
-            this.farewellStartTime = Date.now() - this.currentTurnAudioDurationMs;
-          } else {
-            console.log('⏳ [EndCall] endCall wywołano bez wcześniejszego audio w tej turze. Oczekuję na osobną turę z mową pożegnalną od Gemini.');
-            this.isWaitingForFarewellTurn = true;
-            this.shouldHangupAfterTurn = false;
-            this.farewellAudioDurationMs = 0;
-            this.farewellStartTime = 0;
-          }
+            if (!this.turnStartTime) this.turnStartTime = Date.now() - 1000;
 
-          if (args?.callSummary) {
-            this.callSummaryFromAi = await ensurePolishSummary(args.callSummary);
-            console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
-          }
-          if (args?.callerName) {
-            this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
-          }
-          // Bezpieczny watchdog na wypadek braku turnComplete z Gemini (5 sekund)
-          if (!this.hangupTimeout) {
+            const elapsedPlaybackMs = Date.now() - this.turnStartTime;
+            const remainingAudioMs = Math.max(0, this.currentTurnAudioDurationMs - elapsedPlaybackMs);
+            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 2000, 4500), 14000);
+            console.log(`⏱️ [EndCall] Odłożenie słuchawki zaplanowane za ${Math.round(finalHangupDelayMs)}ms (w buforze Twilio pozostało: ~${Math.round(remainingAudioMs)}ms).`);
+
+            if (this.hangupTimeout) clearTimeout(this.hangupTimeout);
             this.hangupTimeout = setTimeout(() => {
-              console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout 5s po wywołaniu endCall).');
               this.isTurnCanceled = true;
               this.isTerminatedAudio = true;
               try {
@@ -1395,7 +1396,39 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 this.silenceWatchdogInterval = null;
               }
               this.twilioWs.close();
-            }, 5000);
+            }, finalHangupDelayMs);
+          } else {
+            console.log('⏳ [EndCall] endCall wywołano bez wcześniejszego audio w tej turze. Oczekuję na osobną turę z mową pożegnalną od Gemini.');
+            this.isWaitingForFarewellTurn = true;
+            this.shouldHangupAfterTurn = false;
+            this.farewellAudioDurationMs = 0;
+            this.farewellStartTime = 0;
+
+            if (!this.hangupTimeout) {
+              this.hangupTimeout = setTimeout(() => {
+                console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout po wywołaniu endCall).');
+                this.isTurnCanceled = true;
+                this.isTerminatedAudio = true;
+                try {
+                  this.geminiClient.close();
+                } catch (e) {
+                  console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
+                }
+                if (this.silenceWatchdogInterval) {
+                  clearInterval(this.silenceWatchdogInterval);
+                  this.silenceWatchdogInterval = null;
+                }
+                this.twilioWs.close();
+              }, 8000);
+            }
+          }
+
+          if (args?.callSummary) {
+            this.callSummaryFromAi = await ensurePolishSummary(args.callSummary);
+            console.log(`📝 [CallOrchestrator] Odebrano podsumowanie od AI: "${this.callSummaryFromAi}"`);
+          }
+          if (args?.callerName) {
+            this.callerNameFromAi = normalizePolishNameToNominative(args.callerName) || args.callerName;
           }
           return {
             status: "ok",
@@ -1458,6 +1491,9 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
       this.lastActivityTime = Math.max(this.lastActivityTime, Date.now() + durationMs); // Asystentka mówi - uwzględniamy czas rzeczywistego odtwarzania w Twilio
+      if (!this.agentSpeaking || this.turnStartTime === 0) {
+        this.turnStartTime = Date.now();
+      }
       this.agentSpeaking = true;
       this.currentTurnAudioDurationMs += durationMs;
 
@@ -1470,8 +1506,11 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         // Dynamiczne podtrzymanie watchdoga: dopóki Gemini aktywnie dosyła pakiety mowy pożegnalnej, nie zrywaj połączenia
         if (this.hangupTimeout) {
           clearTimeout(this.hangupTimeout);
+          const elapsed = Date.now() - (this.turnStartTime || Date.now());
+          const remaining = Math.max(0, this.farewellAudioDurationMs - elapsed);
+          const delay = Math.min(Math.max(remaining + 2000, 4500), 14000);
           this.hangupTimeout = setTimeout(() => {
-            console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (timeout po zakończeniu strumieniowania audio).');
+            console.log('⏱️ [EndCall] Zamknięcie połączenia po zakończeniu odtwarzania mowy pożegnalnej.');
             this.isTurnCanceled = true;
             this.isTerminatedAudio = true;
             try {
@@ -1484,7 +1523,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               this.silenceWatchdogInterval = null;
             }
             this.twilioWs.close();
-          }, 8000);
+          }, delay);
         }
       }
 
