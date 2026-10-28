@@ -310,4 +310,67 @@ export class VoiceOutboundService {
       return false;
     }
   }
+
+  /**
+   * Zleca telefoniczną weryfikację oficjalnego numeru stacjonarnego firmy (Outgoing Caller ID)
+   * System wykonuje automatyczne połączenie na numer stacjonarny i generuje 6-cyfrowy kod autoryzacyjny DTMF.
+   */
+  static async requestCallerIdValidation(phoneNumber: string, friendlyName?: string): Promise<{
+    success: boolean;
+    validationCode?: string;
+    callSid?: string;
+    phoneNumber?: string;
+    error?: string;
+  }> {
+    if (!this.twilioSid || !this.twilioToken) {
+      return { success: false, error: 'Brak konfiguracji operatora telekomunikacyjnego w systemie.' };
+    }
+
+    try {
+      const formatted = phoneNumber.trim().startsWith('+') ? phoneNumber.trim() : '+' + phoneNumber.trim();
+      const client = twilio(this.twilioSid, this.twilioToken);
+      console.log(`📞 [VoiceOutbound] Zlecanie weryfikacji Caller ID dla numeru stacjonarnego: ${formatted}...`);
+
+      const validation = await client.validationRequests.create({
+        phoneNumber: formatted,
+        friendlyName: friendlyName || `Firma: ${formatted}`
+      });
+
+      console.log(`✅ [VoiceOutbound] Kod weryfikacyjny wygenerowany pomyślnie: ${validation.validationCode} dla ${formatted}`);
+      return {
+        success: true,
+        validationCode: String(validation.validationCode),
+        callSid: validation.callSid,
+        phoneNumber: validation.phoneNumber
+      };
+    } catch (err: any) {
+      console.error(`❌ [VoiceOutbound] Błąd podczas żądania weryfikacji numeru stacjonarnego:`, err.message);
+      return {
+        success: false,
+        error: err.message || 'Nie udało się nawiązać połączenia weryfikacyjnego na podany numer stacjonarny.'
+      };
+    }
+  }
+
+  /**
+   * Sprawdza status weryfikacji numeru stacjonarnego (czy znajduje się na liście OutgoingCallerIds)
+   */
+  static async checkCallerIdVerificationStatus(phoneNumber: string): Promise<{
+    isVerified: boolean;
+  }> {
+    if (!this.twilioSid || !this.twilioToken) {
+      return { isVerified: false };
+    }
+
+    try {
+      const formatted = phoneNumber.trim().startsWith('+') ? phoneNumber.trim() : '+' + phoneNumber.trim();
+      const client = twilio(this.twilioSid, this.twilioToken);
+      const list = await client.outgoingCallerIds.list({ phoneNumber: formatted, limit: 1 });
+      const isVerified = Array.isArray(list) && list.length > 0;
+      return { isVerified };
+    } catch (err: any) {
+      console.warn(`[VoiceOutbound] Błąd sprawdzania statusu Caller ID dla ${phoneNumber}:`, err.message);
+      return { isVerified: false };
+    }
+  }
 }

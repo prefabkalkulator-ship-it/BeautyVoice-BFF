@@ -583,6 +583,9 @@ app.put('/api/tenant', async (req, res) => {
           : undefined,
         companyLandlinePhone: req.body.companyLandlinePhone !== undefined 
           ? (req.body.companyLandlinePhone ? String(req.body.companyLandlinePhone).trim() : null) 
+          : undefined,
+        companyLandlineVerified: req.body.companyLandlineVerified !== undefined
+          ? Boolean(req.body.companyLandlineVerified)
           : undefined
       }
     });
@@ -2799,6 +2802,105 @@ app.post('/api/admin/verify-caller-id', async (req, res) => {
 });
 
 // ==========================================
+// --- WERYFIKACJA NUMERU STACJONARNEGO FIRMY ---
+// ==========================================
+
+// 1. Zlecenie weryfikacji telefonicznej numeru stacjonarnego firmy (Pakiety Osobisty Ekspert & B2B Premium)
+app.post('/api/telecom/verify-landline/start', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    let phone = (req.body?.phoneNumber || tenant.companyLandlinePhone || '').trim();
+    if (!phone) {
+      return res.status(400).json({ error: 'Podaj numer stacjonarny do weryfikacji' });
+    }
+
+    // Normalizacja do formatu międzynarodowego +48...
+    const digitsOnly = phone.replace(/\D/g, '');
+    if (digitsOnly.length < 9) {
+      return res.status(400).json({ error: 'Podaj poprawny numer telefonu stacjonarnego (minimum 9 cyfr).' });
+    }
+    const formattedPhone = digitsOnly.length === 9 
+      ? `+48${digitsOnly}` 
+      : `+${digitsOnly}`;
+
+    if (formattedPhone === '+48343433088' || formattedPhone.includes('343433088')) {
+      return res.status(400).json({ error: 'Numer centrali demonstracyjnej nie może być numerem stacjonarnym Twojej firmy.' });
+    }
+
+    const result = await VoiceOutboundService.requestCallerIdValidation(
+      formattedPhone,
+      `Firma: ${tenant.companyName || tenant.name || formattedPhone}`
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || 'Nie udało się nawiązać połączenia weryfikacyjnego na podany numer stacjonarny.' });
+    }
+
+    // Zapisz numer w profilu tenanta jako oczekujący na autoryzację DTMF
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        companyLandlinePhone: formattedPhone,
+        companyLandlineVerified: false
+      }
+    });
+
+    return res.json({
+      success: true,
+      validationCode: result.validationCode,
+      phoneNumber: formattedPhone,
+      message: 'System realizuje połączenie na Twój numer stacjonarny w biurze. Podnieś słuchawkę i wprowadź 6-cyfrowy kod na klawiaturze telefonu.'
+    });
+  } catch (err: any) {
+    console.error('❌ [Telecom Verify] Błąd weryfikacji numeru stacjonarnego:', err);
+    return res.status(500).json({ error: err.message || 'Błąd serwera podczas weryfikacji numeru stacjonarnego.' });
+  }
+});
+
+// 2. Sprawdzenie statusu weryfikacji numeru stacjonarnego firmy (u operatora oraz w bazie)
+app.post('/api/telecom/verify-landline/status', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    let phone = (req.body?.phoneNumber || tenant.companyLandlinePhone || '').trim();
+    if (!phone) {
+      return res.json({ verified: false });
+    }
+
+    const digitsOnly = phone.replace(/\D/g, '');
+    const formattedPhone = digitsOnly.length === 9 
+      ? `+48${digitsOnly}` 
+      : `+${digitsOnly}`;
+
+    const status = await VoiceOutboundService.checkCallerIdVerificationStatus(formattedPhone);
+
+    if (status.isVerified) {
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          companyLandlineVerified: true,
+          companyLandlinePhone: formattedPhone
+        }
+      });
+      console.log(`✅ [Telecom Verify] Numer ${formattedPhone} został pomyślnie zweryfikowany dla tenanta ${tenant.name}`);
+      return res.json({ verified: true, phoneNumber: formattedPhone });
+    }
+
+    // Jeśli w bazie profilu był już oznaczony jako zweryfikowany
+    if (tenant.companyLandlineVerified && tenant.companyLandlinePhone === formattedPhone) {
+      return res.json({ verified: true, phoneNumber: formattedPhone });
+    }
+
+    return res.json({ verified: false, phoneNumber: formattedPhone });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
 // --- ASYSTENT INSTAGRAM (@asystent.ewa) ---
 // ==========================================
 import { instagramService } from './services/instagram/InstagramService';
@@ -2894,12 +2996,12 @@ app.post('/api/copilot/start-call', async (req, res) => {
       return res.status(400).json({ error: 'Pole customerPhone jest wymagane' });
     }
 
-    // Weryfikacja CLI: Ścieżka centrali automatycznej WYMAGA potwierdzonego numeru stacjonarnego firmy
+    // Weryfikacja CLI: Ścieżka centrali automatycznej WYMAGA potwierdzonego i zweryfikowanego numeru stacjonarnego firmy
     const cleanLandline = (tenant.companyLandlinePhone || '').replace(/[\s\-\+]/g, '');
-    const hasLandline = Boolean(cleanLandline && cleanLandline !== '48343433088' && !cleanLandline.includes('343433088'));
-    if (!hasLandline) {
+    const isConfirmed = Boolean(tenant.companyLandlineVerified && cleanLandline && cleanLandline !== '48343433088' && !cleanLandline.includes('343433088'));
+    if (!isConfirmed) {
       return res.status(400).json({ 
-        error: 'Ścieżka „Centrala automatyczna” jest zablokowana. Twoja firma nie posiada wprowadzonego numeru stacjonarnego. Skonfiguruj numer stacjonarny w Ustawieniach Asystenta (dostępny w pakietach Osobisty Ekspert i B2B Premium) lub skorzystaj z trybu Konferencji telefonicznej.' 
+        error: 'Ścieżka „Centrala automatyczna” jest zablokowana. Wprowadź i zweryfikuj numer stacjonarny firmy w Ustawieniach Asystenta (pakiety Osobisty Ekspert i B2B Premium) lub skorzystaj z trybu Konferencji telefonicznej.' 
       });
     }
 

@@ -2,7 +2,7 @@ import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight, Calendar } from 'lucide-react';
+import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight, Calendar, ShieldCheck, Loader2, PhoneForwarded, AlertCircle, Headphones } from 'lucide-react';
 
 const defaultSchedule = {
   "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
@@ -81,7 +81,103 @@ export default function Settings() {
   const [emailPublicForAi, setEmailPublicForAi] = useState(false);
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
   const [companyLandlinePhone, setCompanyLandlinePhone] = useState('');
+  const [companyLandlineVerified, setCompanyLandlineVerified] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Modale pomocy i weryfikacji numeru
+  const [sipHelpModalOpen, setSipHelpModalOpen] = useState(false);
+  const [landlineHelpModalOpen, setLandlineHelpModalOpen] = useState(false);
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [verifyPhoneInput, setVerifyPhoneInput] = useState('');
+  const [verifyStep, setVerifyStep] = useState<'input' | 'calling' | 'success'>('input');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifySuccessPhone, setVerifySuccessPhone] = useState('');
+  const [copiedMmi, setCopiedMmi] = useState<string | null>(null);
+
+  const handleCopyMmi = (codeToCopy: string) => {
+    navigator.clipboard.writeText(codeToCopy);
+    setCopiedMmi(codeToCopy);
+    setTimeout(() => setCopiedMmi(null), 2500);
+  };
+
+  const handleOpenVerifyModal = () => {
+    setVerifyPhoneInput(companyLandlinePhone || '');
+    setVerifyStep('input');
+    setVerificationCode('');
+    setVerifyError(null);
+    setVerifyModalOpen(true);
+  };
+
+  const handleStartVerification = async () => {
+    const rawDigits = (verifyPhoneInput || '').replace(/\D/g, '');
+    if (rawDigits.length < 9) {
+      setVerifyError('Wprowadź prawidłowy numer telefonu stacjonarnego (minimum 9 cyfr).');
+      return;
+    }
+    if (rawDigits === '48343433088' || rawDigits.includes('343433088')) {
+      setVerifyError('Numer centrali demonstracyjnej nie może być numerem stacjonarnym Twojej firmy.');
+      return;
+    }
+    setVerifyLoading(true);
+    setVerifyError(null);
+    try {
+      const res = await fetch('/api/telecom/verify-landline/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: verifyPhoneInput.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się nawiązać połączenia weryfikacyjnego.');
+      }
+      setVerificationCode(String(data.validationCode || ''));
+      const returnedPhone = data.phoneNumber || verifyPhoneInput.trim();
+      setVerifySuccessPhone(returnedPhone);
+      setCompanyLandlinePhone(returnedPhone);
+      setVerifyStep('calling');
+    } catch (err: any) {
+      setVerifyError(err.message || 'Wystąpił błąd podczas próby połączenia weryfikacyjnego.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  const handleCheckVerificationStatus = async (silent = false) => {
+    const phoneToCheck = verifySuccessPhone || verifyPhoneInput || companyLandlinePhone;
+    if (!phoneToCheck) return false;
+    try {
+      const res = await fetch('/api/telecom/verify-landline/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: phoneToCheck })
+      });
+      const data = await res.json();
+      if (data.verified) {
+        setCompanyLandlineVerified(true);
+        if (data.phoneNumber) {
+          setCompanyLandlinePhone(data.phoneNumber);
+          setVerifySuccessPhone(data.phoneNumber);
+        }
+        setVerifyStep('success');
+        return true;
+      } else if (!silent) {
+        setVerifyError('Numer nie został jeszcze zweryfikowany. Odbierz telefon stacjonarny w biurze i wprowadź kod na klawiaturze aparatu.');
+      }
+    } catch (err: any) {
+      if (!silent) setVerifyError(err.message || 'Błąd sprawdzania statusu.');
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!verifyModalOpen || verifyStep !== 'calling') return;
+    const interval = setInterval(async () => {
+      await handleCheckVerificationStatus(true);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [verifyModalOpen, verifyStep, verifySuccessPhone, verifyPhoneInput, companyLandlinePhone]);
 
   const subPlan = (tenant?.subscription?.planName || '').toLowerCase();
   const isPersonalExpert = 
@@ -178,6 +274,7 @@ export default function Settings() {
         setEmailPublicForAi(tData.emailPublicForAi || false);
         setAssignedPhoneNumber(tData.assignedPhoneNumber || '');
         setCompanyLandlinePhone(tData.companyLandlinePhone || '');
+        setCompanyLandlineVerified(Boolean(tData.companyLandlineVerified));
 
         setBookingExternalUrl(tData.bookingExternalUrl || '');
         setServiceAreaDescription(tData.serviceAreaDescription || '');
@@ -273,7 +370,8 @@ export default function Settings() {
           leadQuestion1,
           leadQuestion2,
           leadQuestion3,
-          companyLandlinePhone: companyLandlinePhone ? companyLandlinePhone.trim() : null
+          companyLandlinePhone: companyLandlinePhone ? companyLandlinePhone.trim() : null,
+          companyLandlineVerified
         })
       });
       alert('Zapisano ustawienia.');
@@ -619,26 +717,72 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Dedykowany numer stacjonarny firmy - widoczny WYŁĄCZNIE w pakiecie B2B Premium */}
+            {/* Dedykowany numer stacjonarny firmy - widoczny WYŁĄCZNIE w pakietach Osobisty Ekspert i B2B Premium */}
             {isEligibleForLandline && (
-              <div className="p-3.5 bg-indigo-50/40 border border-indigo-200 rounded-2xl space-y-1.5 animate-in fade-in">
+              <div className="p-4 bg-indigo-50/40 border border-indigo-200 rounded-2xl space-y-2 animate-in fade-in">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="block text-xs font-bold text-indigo-950 uppercase tracking-wider">
-                    ☎️ Numer Stacjonarny Firmy (Prezentacja Caller ID w Centrali Copilot)
-                  </label>
-                  <span className="text-[10px] font-bold text-indigo-700 bg-white border border-indigo-200 px-2.5 py-0.5 rounded-full">
-                    Pakiet B2B Premium
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <label className="block text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                      ☎️ Numer Stacjonarny Firmy (Prezentacja Caller ID w Centrali Copilot)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setLandlineHelpModalOpen(true)}
+                      className="w-5 h-5 rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-300 inline-flex items-center justify-center text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
+                      title="Dlaczego wymagana jest weryfikacja numeru?"
+                      aria-label="Dlaczego wymagana jest weryfikacja numeru?"
+                    >
+                      i
+                    </button>
+                  </div>
+                  <div>
+                    {companyLandlineVerified && companyLandlinePhone ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-2xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Numer zweryfikowany
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleOpenVerifyModal}
+                          className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+                        >
+                          Zweryfikuj ponownie
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleOpenVerifyModal}
+                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 active:scale-98"
+                      >
+                        <PhoneCall className="w-3.5 h-3.5" />
+                        Zweryfikuj numer stacjonarny
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <input 
                   type="text" 
                   value={companyLandlinePhone} 
-                  onChange={e => setCompanyLandlinePhone(e.target.value)}
+                  onChange={e => {
+                    setCompanyLandlinePhone(e.target.value);
+                    setCompanyLandlineVerified(false);
+                  }}
                   placeholder="np. +48 22 123 45 67 (oficjalny stacjonarny numer Twojej firmy)"
                   className="w-full rounded-xl border border-surface-200 p-2.5 bg-white outline-none focus:border-indigo-600 text-surface-900 font-mono text-sm shadow-2xs font-medium"
                 />
-                <p className="text-[11px] text-surface-600 leading-snug">
-                  Ten numer stacjonarny wyświetla się u klienta przy połączeniach przez Centralę automatyczną w module Live Copilot.
+                <p className="text-[11px] leading-snug">
+                  {companyLandlineVerified ? (
+                    <span className="text-emerald-700 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 inline text-emerald-600" />
+                      Numer jest autoryzowany w Systemie jako Twój oficjalny Caller ID przy połączeniach przez Centralę automatyczną w module Live Copilot.
+                    </span>
+                  ) : (
+                    <span className="text-amber-800 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 inline text-amber-600" />
+                      Przed wykonaniem pierwszego połączenia przez Centralę automatyczną, numer stacjonarny musi zostać zweryfikowany telefonicznie kodem DTMF.
+                    </span>
+                  )}
                 </p>
               </div>
             )}
@@ -701,24 +845,70 @@ export default function Settings() {
 
               {/* Numer stacjonarny biura - widoczny WYŁĄCZNIE w pakiecie Osobisty Ekspert */}
               {isEligibleForLandline && (
-                <div className="md:col-span-2 p-3.5 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-1.5 animate-in fade-in">
+                <div className="md:col-span-2 p-4 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-2 animate-in fade-in">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <label className="block text-xs font-bold text-purple-950 uppercase tracking-wider">
-                      ☎️ Numer Stacjonarny Biura / Kancelarii (Prezentacja Caller ID w Centrali Copilot)
-                    </label>
-                    <span className="text-[10px] font-bold text-purple-700 bg-white border border-purple-200 px-2.5 py-0.5 rounded-full">
-                      Pakiet Osobisty Ekspert
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <label className="block text-xs font-bold text-purple-950 uppercase tracking-wider">
+                        ☎️ Numer Stacjonarny Biura / Kancelarii (Prezentacja Caller ID w Centrali Copilot)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setLandlineHelpModalOpen(true)}
+                        className="w-5 h-5 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 inline-flex items-center justify-center text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
+                        title="Dlaczego wymagana jest weryfikacja numeru?"
+                        aria-label="Dlaczego wymagana jest weryfikacja numeru?"
+                      >
+                        i
+                      </button>
+                    </div>
+                    <div>
+                      {companyLandlineVerified && companyLandlinePhone ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-2xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Numer zweryfikowany
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleOpenVerifyModal}
+                            className="text-[11px] font-semibold text-purple-700 hover:text-purple-900 underline cursor-pointer"
+                          >
+                            Zweryfikuj ponownie
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleOpenVerifyModal}
+                          className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 active:scale-98"
+                        >
+                          <PhoneCall className="w-3.5 h-3.5" />
+                          Zweryfikuj numer biura
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <input 
                     type="text" 
                     value={companyLandlinePhone} 
-                    onChange={e => setCompanyLandlinePhone(e.target.value)}
+                    onChange={e => {
+                      setCompanyLandlinePhone(e.target.value);
+                      setCompanyLandlineVerified(false);
+                    }}
                     placeholder="np. +48 22 123 45 67 (stacjonarny numer Twojej kancelarii / biura)"
                     className="w-full rounded-xl border border-surface-200 p-2.5 bg-white outline-none focus:border-purple-600 text-surface-900 font-mono text-sm shadow-2xs font-medium"
                   />
-                  <p className="text-[11px] text-surface-600 leading-snug">
-                    Numer stacjonarny wyświetlany klientowi, gdy wykonujesz połączenie ze wspomaganiem Live Copilot przez Centralę automatyczną.
+                  <p className="text-[11px] leading-snug">
+                    {companyLandlineVerified ? (
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 inline text-emerald-600" />
+                        Numer jest zweryfikowany w Systemie i prezentowany odbiorcy przy połączeniu przez Centralę automatyczną w module Live Copilot.
+                      </span>
+                    ) : (
+                      <span className="text-amber-800 font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 inline text-amber-600" />
+                        Przed wykonaniem połączenia przez Centralę automatyczną, numer stacjonarny musi zostać autoryzowany telefonicznie kodem DTMF.
+                      </span>
+                    )}
                   </p>
                 </div>
               )}
@@ -1864,17 +2054,51 @@ export default function Settings() {
             </div>
 
             <div className="md:col-span-2 mt-2">
-              <label className="block text-sm font-medium text-surface-700 mb-1">Twój Wirtualny Numer Telefonu (SIP / SMS)</label>
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="block text-sm font-medium text-surface-800">
+                    Twój Wirtualny Numer Telefonu (SIP / SMS)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setSipHelpModalOpen(true)}
+                    className="w-5 h-5 rounded-full bg-gold-100 hover:bg-gold-200 text-gold-800 border border-gold-300 inline-flex items-center justify-center text-xs font-bold transition shadow-2xs cursor-pointer shrink-0"
+                    title="Instrukcja jak ustawić przekierowanie połączeń w telefonie"
+                    aria-label="Instrukcja jak ustawić przekierowanie połączeń w telefonie"
+                  >
+                    i
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSipHelpModalOpen(true)}
+                  className="text-xs font-semibold text-gold-700 hover:text-gold-900 flex items-center gap-1 cursor-pointer transition"
+                >
+                  <PhoneForwarded className="w-3.5 h-3.5" />
+                  Instrukcja przekierowań
+                </button>
+              </div>
               <input 
                 type="text" 
                 value={assignedPhoneNumber || 'Brak przypisanego numeru - Skontaktuj się z obsługą'} 
                 readOnly
-                className="w-full rounded-xl border border-surface-200 p-2.5 bg-surface-50 outline-none text-surface-500 font-mono text-sm"
+                className="w-full rounded-xl border border-surface-200 p-2.5 bg-surface-50 outline-none text-surface-700 font-mono text-sm font-medium"
               />
-              <div className="text-xs text-surface-500 mt-1 leading-relaxed">
-                {businessProfile === 'personal' 
-                  ? 'Na ten numer ustawiasz przekierowanie w telefonie (*21* lub *61*). Asystent odbierze połączenie, gdy nie możesz rozmawiać.'
-                  : 'Klienci firmy powinni dzwonić pod ten numer. Numery są przypisywane indywidualnie dla każdego najemcy.'}
+              <div className="text-xs text-surface-500 mt-1.5 leading-relaxed flex items-center justify-between flex-wrap gap-2">
+                <span>
+                  {businessProfile === 'personal' 
+                    ? 'Na ten numer ustawiasz przekierowanie w swoim telefonie (*61* lub *21*). Asystent odbierze rozmowę, gdy nie możesz odebrać.'
+                    : 'Klienci firmy mogą dzwonić bezpośrednio pod ten numer lub możesz ustawić na niego przekierowanie z obecnego telefonu firmowego.'}
+                </span>
+                {assignedPhoneNumber && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopyMmi(assignedPhoneNumber)}
+                    className="text-primary text-[11px] font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Copy className="w-3 h-3" /> Kopiuj numer
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2070,6 +2294,512 @@ export default function Settings() {
                   <button onClick={() => setIsStaffModalOpen(false)} className="flex-1 py-2 bg-surface-100 rounded-xl text-sm font-medium hover:bg-surface-200 cursor-pointer">Anuluj</button>
                   <button onClick={saveStaff} className="flex-1 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-surface-800 hover:text-white transition-colors cursor-pointer">Zapisz</button>
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ======================================================== */}
+      {/* 1. MODAL INSTRUKCJI PRZEKIEROWANIA NUMERU SIP (MMI / GSM) */}
+      {/* ======================================================== */}
+      {sipHelpModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSipHelpModalOpen(false);
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl border border-surface-200 relative max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
+              <div className="flex items-start justify-between gap-3 mb-4 shrink-0 pb-3 border-b border-surface-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-gold-400 to-amber-600 text-white flex items-center justify-center shadow-md shadow-gold-500/20 shrink-0">
+                    <PhoneForwarded className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-serif font-bold text-surface-900 leading-tight">
+                      Instrukcja konfiguracji przekierowań
+                    </h3>
+                    <p className="text-xs text-surface-500 mt-0.5">
+                      Jak przekierować połączenia na wirtualny numer Asystenta
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSipHelpModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-surface-100 hover:bg-surface-200 text-surface-600 flex items-center justify-center transition cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto space-y-4 pr-1 text-sm text-surface-700">
+                {/* Karta numeru */}
+                <div className="p-3.5 bg-gold-50/60 border border-gold-200 rounded-2xl flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider font-bold text-gold-950">
+                      Twój Wirtualny Numer Asystenta (SIP):
+                    </div>
+                    <div className="text-lg font-bold font-mono text-surface-900 mt-0.5">
+                      {assignedPhoneNumber || 'Brak numeru (skontaktuj się z obsługą)'}
+                    </div>
+                  </div>
+                  {assignedPhoneNumber && (
+                    <button
+                      type="button"
+                      onClick={() => handleCopyMmi(assignedPhoneNumber)}
+                      className="px-3 py-1.5 bg-white border border-gold-300 hover:bg-gold-100 text-gold-900 text-xs font-bold rounded-xl transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedMmi === assignedPhoneNumber ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Skopiowano!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Kopiuj numer</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-xs text-surface-600 leading-relaxed">
+                  Przekierowanie ustawiasz w telefonie komórkowym lub stacjonarnym. Gdy dzwoni klient, sieć operatora automatycznie przekazuje rozmowę do Twojego Asystenta AI. Najszybszy sposób to wpisanie poniższych kodów MMI na klawiaturze telefonu i naciśnięcie zielonej słuchawki.
+                </p>
+
+                {/* Szybkie kody MMI */}
+                <div className="space-y-2.5">
+                  <div className="text-xs font-bold uppercase tracking-wider text-surface-900">
+                    Szybkie kody MMI (kliknij, aby skopiować):
+                  </div>
+
+                  {(() => {
+                    const cleanPhone = (assignedPhoneNumber || '').replace(/[^0-9+]/g, '');
+                    const targetNum = cleanPhone || '+48XXXXXXXXX';
+                    const items = [
+                      {
+                        code: `*61*${targetNum}#`,
+                        label: 'Gdy nie odbierasz (Zalecane)',
+                        badge: 'Rekomendowane',
+                        desc: 'Twój telefon dzwoni u Ciebie normalnie przez kilkanaście sekund. Jeśli nie odbierzesz, rozmowę przejmuje Asystent.'
+                      },
+                      {
+                        code: `*67*${targetNum}#`,
+                        label: 'Gdy linia jest zajęta / odrzucisz',
+                        badge: null,
+                        desc: 'Gdy z kimś rozmawiasz lub odrzucisz połączenie czerwonym przyciskiem, klient natychmiast trafia do Asystenta.'
+                      },
+                      {
+                        code: `*62*${targetNum}#`,
+                        label: 'Gdy brak zasięgu lub wyłączony',
+                        badge: null,
+                        desc: 'Gdy rozładuje Ci się bateria lub jesteś poza zasięgiem sieci, klient nie usłyszy poczty, lecz porozmawia z Asystentem.'
+                      },
+                      {
+                        code: `*21*${targetNum}#`,
+                        label: 'Wszystkie połączenia bezwarunkowo',
+                        badge: 'Urlop / Czas Skupienia',
+                        desc: 'Wszystkie połączenia natychmiast trafiają do Asystenta (Twój telefon w ogóle nie dzwoni).'
+                      },
+                      {
+                        code: '##002#',
+                        label: 'Wyłączenie i reset przekierowań',
+                        badge: 'Anulowanie',
+                        desc: 'Kasuje wszystkie aktywne przekierowania i przywraca domyślne dzwonienie wyłącznie na Twój telefon.'
+                      }
+                    ];
+
+                    return items.map((it, idx) => {
+                      const isCopied = copiedMmi === it.code;
+                      return (
+                        <div
+                          key={idx}
+                          className="p-3 bg-surface-50 border border-surface-200 rounded-xl hover:border-gold-300 transition flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap"
+                        >
+                          <div className="space-y-0.5 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-xs text-surface-900">{it.label}</span>
+                              {it.badge && (
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                  it.badge === 'Rekomendowane' 
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                                }`}>
+                                  {it.badge}
+                                </span>
+                              )}
+                            </div>
+                            <div className="font-mono text-xs font-bold text-primary break-all">
+                              {it.code}
+                            </div>
+                            <p className="text-[11px] text-surface-500 leading-tight">
+                              {it.desc}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyMmi(it.code)}
+                            className="px-3 py-1.5 bg-white border border-surface-300 hover:bg-gold-50 text-surface-800 hover:text-gold-900 rounded-lg text-xs font-semibold transition shrink-0 flex items-center gap-1 cursor-pointer shadow-2xs"
+                          >
+                            {isCopied ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-700 font-bold">Skopiowano!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-surface-500" />
+                                <span>Kopiuj</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+
+                {/* Alternatywa w menu telefonu */}
+                <div className="p-3.5 bg-surface-50 border border-surface-200 rounded-2xl space-y-2">
+                  <div className="text-xs font-bold text-surface-900 uppercase tracking-wider">
+                    Alternatywa: Konfiguracja w menu telefonu
+                  </div>
+                  <div className="text-xs text-surface-600 space-y-1 leading-relaxed">
+                    <div>
+                      📱 <strong>Android:</strong> Otwórz aplikację Telefon → Ustawienia (trzy kropki) → Usługi dodatkowe / Konta połączeń → <em>Przekazywanie połączeń</em> → Połączenia głosowe → Wpisz numer wirtualny.
+                    </div>
+                    <div>
+                      🍏 <strong>iPhone (iOS):</strong> Wejdź w Ustawienia → Telefon → <em>Przekazywanie połączeń</em> → Włącz i wpisz powyższy numer Asystenta.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-surface-500 bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 leading-relaxed">
+                  💡 <strong>Wskazówka:</strong> Kody MMI są w 100% zgodne ze wszystkimi polskimi operatorami (Orange, Play, Plus, T-Mobile itp.). Przekierowanie jest rozliczane przez Twojego operatora tak samo jak zwykłe połączenie krajowe (najczęściej bezpłatnie w ramach nielimitowanych minut w abonamencie).
+                </div>
+              </div>
+
+              <div className="pt-3 mt-3 border-t border-surface-100 flex justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSipHelpModalOpen(false)}
+                  className="px-4 py-2 bg-primary text-primary-foreground hover:bg-surface-800 text-xs sm:text-sm font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Rozumiem, zamknij
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ======================================================== */}
+      {/* 2. MODAL INFORMACYJNY WERYFIKACJI NUMERU STACJONARNEGO (i) */}
+      {/* ======================================================== */}
+      {landlineHelpModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setLandlineHelpModalOpen(false);
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-surface-200 relative max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
+              <div className="flex items-start justify-between gap-3 mb-4 shrink-0 pb-3 border-b border-surface-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-serif font-bold text-surface-900 leading-tight">
+                      Weryfikacja Numeru Stacjonarnego (Caller ID)
+                    </h3>
+                    <p className="text-xs text-surface-500 mt-0.5">
+                      Zgodność z Prawem Komunikacji Elektronicznej (PKE) i ochrona przed spoofingiem
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLandlineHelpModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-surface-100 hover:bg-surface-200 text-surface-600 flex items-center justify-center transition cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto space-y-3.5 pr-1 text-xs sm:text-sm text-surface-700 leading-relaxed">
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-1">
+                  <div className="font-bold text-indigo-950 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                    Dlaczego System wymaga weryfikacji numeru?
+                  </div>
+                  <p className="text-xs text-indigo-900/90 leading-relaxed">
+                    Zgodnie z przepisami Prawa Komunikacji Elektronicznej (PKE) oraz regulacjami Urzędu Komunikacji Elektronicznej (UKE) dotyczącymi przeciwdziałania podszywaniu się pod cudze numery (tzw. spoofing telefoniczny), operator telekomunikacyjny jest zobowiązany do potwierdzenia, że Twoja firma ma fizyczny dostęp do wskazanego aparatu stacjonarnego.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="font-bold text-surface-900 text-xs uppercase tracking-wider">
+                    Jak przebiega procedura weryfikacji?
+                  </div>
+                  <ol className="space-y-2 list-decimal list-inside pl-1 text-surface-700 text-xs leading-relaxed">
+                    <li>
+                      <strong>Wpisujesz numer stacjonarny</strong> biura i klikasz <em>„Zweryfikuj numer stacjonarny”</em>.
+                    </li>
+                    <li>
+                      <strong>System wykonuje automatyczne połączenie</strong> na Twój stacjonarny telefon biurowy.
+                    </li>
+                    <li>
+                      <strong>Na ekranie komputera/telefonu wyświetla się 6-cyfrowy kod</strong> (np. 482 190).
+                    </li>
+                    <li>
+                      <strong>Pracownik w biurze podnosi słuchawkę stacjonarną</strong> i po usłyszeniu komunikatu wprowadza ten kod na klawiaturze aparatu (tonowo DTMF).
+                    </li>
+                    <li>
+                      <strong>Numer zostaje trwale zapisany w Systemie</strong> jako autoryzowany Caller ID Twojej firmy.
+                    </li>
+                  </ol>
+                </div>
+
+                <div className="p-3 bg-surface-50 border border-surface-200 rounded-xl space-y-1">
+                  <div className="font-bold text-surface-900 text-xs">
+                    Gdzie ten numer jest wykorzystywany?
+                  </div>
+                  <p className="text-xs text-surface-600 leading-relaxed">
+                    Wyłącznie w module <strong>Live Copilot</strong> przy wyborze ścieżki <em>„⚡ Centrala automatyczna”</em>. Podczas łączenia z klientem, na ekranie telefonu klienta wyświetla się Twój oficjalny numer stacjonarny firmy.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 text-xs leading-relaxed">
+                  💡 <strong>Nie masz numeru stacjonarnego?</strong><br/>
+                  W module Live Copilot możesz w każdej chwili skorzystać z rekomendowanego trybu <strong>„📞 Konferencja telefoniczna”</strong>. Wtedy dzwonisz bezpośrednio ze swojej komórki, a klient widzi Twój numer z karty SIM bez konieczności posiadania linii stacjonarnej.
+                </div>
+              </div>
+
+              <div className="pt-3 mt-3 border-t border-surface-100 flex items-center justify-between gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLandlineHelpModalOpen(false);
+                    handleOpenVerifyModal();
+                  }}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  Przejdź do weryfikacji
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLandlineHelpModalOpen(false)}
+                  className="px-4 py-2 bg-surface-100 hover:bg-surface-200 text-surface-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                >
+                  Zamknij
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ======================================================== */}
+      {/* 3. DEDYKOWANY MODAL TELEFONICZNEJ WERYFIKACJI NUMERU     */}
+      {/* ======================================================== */}
+      {verifyModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && verifyStep !== 'calling') {
+                setVerifyModalOpen(false);
+              }
+            }}
+          >
+            <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-surface-200 relative max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 mb-4 shrink-0 pb-3 border-b border-surface-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
+                    <PhoneCall className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-serif font-bold text-surface-900 leading-tight">
+                      Weryfikacja numeru stacjonarnego
+                    </h3>
+                    <p className="text-xs text-surface-500 mt-0.5">
+                      Autoryzacja Caller ID w Systemie
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVerifyModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-surface-100 hover:bg-surface-200 text-surface-600 flex items-center justify-center transition cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Error box */}
+              {verifyError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span className="leading-snug">{verifyError}</span>
+                </div>
+              )}
+
+              {/* Body depending on step */}
+              <div className="overflow-y-auto space-y-4">
+                {verifyStep === 'input' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-surface-600 leading-relaxed">
+                      Wpisz numer stacjonarny Twojej firmy lub biura. Po kliknięciu przycisku <strong>System wykona natychmiastowe połączenie</strong> na ten telefon i wyświetli 6-cyfrowy kod, który należy wprowadzić na klawiaturze aparatu stacjonarnego.
+                    </p>
+
+                    <div>
+                      <label className="block text-xs font-bold text-surface-800 uppercase tracking-wider mb-1.5">
+                        Numer stacjonarny do weryfikacji:
+                      </label>
+                      <input
+                        type="text"
+                        value={verifyPhoneInput}
+                        onChange={e => {
+                          setVerifyPhoneInput(e.target.value);
+                          setVerifyError(null);
+                        }}
+                        placeholder="np. +48 22 123 45 67 lub 221234567"
+                        className="w-full rounded-xl border border-surface-200 p-3 bg-surface-50 outline-none focus:border-indigo-600 focus:bg-white text-surface-900 font-mono text-base font-bold shadow-2xs transition"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
+                      ⚠️ <strong>Ważne:</strong> Upewnij się, że ktoś w biurze znajduje się w tej chwili w pobliżu telefonu stacjonarnego, aby odebrać połączenie weryfikacyjne i wbić kod.
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={verifyLoading}
+                      onClick={handleStartVerification}
+                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                    >
+                      {verifyLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Łączenie z operatorem telekomunikacyjnym...</span>
+                        </>
+                      ) : (
+                        <>
+                          <PhoneCall className="w-4 h-4" />
+                          <span>Zadzwoń do biura i podaj kod</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {verifyStep === 'calling' && (
+                  <div className="text-center space-y-4 py-2">
+                    <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 animate-pulse">
+                      <PhoneCall className="w-8 h-8" />
+                    </div>
+
+                    <div>
+                      <div className="text-xs uppercase tracking-wider font-bold text-indigo-900">
+                        Trwa połączenie weryfikacyjne z numerem:
+                      </div>
+                      <div className="text-lg font-mono font-bold text-surface-900 mt-0.5">
+                        {verifySuccessPhone}
+                      </div>
+                    </div>
+
+                    {/* Kod weryfikacyjny DTMF */}
+                    <div className="p-4 bg-indigo-50/90 border-2 border-indigo-300 rounded-2xl shadow-inner">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-950 mb-1">
+                        Twój 6-cyfrowy kod weryfikacyjny
+                      </div>
+                      <div className="text-3xl sm:text-4xl font-mono font-black tracking-[0.25em] text-indigo-900 select-all py-1">
+                        {verificationCode ? `${verificationCode.slice(0, 3)} ${verificationCode.slice(3)}` : '------'}
+                      </div>
+                      <div className="text-[11px] text-indigo-800 mt-1">
+                        Wprowadź powyższy kod na klawiaturze aparatu stacjonarnego
+                      </div>
+                    </div>
+
+                    {/* Instrukcja 3 kroków */}
+                    <div className="text-left bg-surface-50 border border-surface-200 rounded-xl p-3.5 space-y-2 text-xs text-surface-700">
+                      <div className="font-bold text-surface-900 text-xs">Instrukcja postępowania w biurze:</div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                        <span><strong>Podnieś słuchawkę</strong> dzwoniącego telefonu stacjonarnego w biurze.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                        <span>Wysłuchaj komunikatu automatu proszącego o wprowadzenie kodu autoryzacji.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
+                        <span><strong>Wbij powyższy 6-cyfrowy kod</strong> na klawiaturze telefonu stacjonarnego (tonowo DTMF).</span>
+                      </div>
+                    </div>
+
+                    {/* Live status check */}
+                    <div className="flex items-center justify-center gap-2 text-xs text-surface-500 pt-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                      <span>System automatycznie oczekuje na autoryzację...</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCheckVerificationStatus(false)}
+                        className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs"
+                      >
+                        Sprawdź status teraz
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVerifyStep('input')}
+                        className="px-3 py-2.5 bg-surface-100 hover:bg-surface-200 text-surface-700 font-semibold text-xs rounded-xl transition cursor-pointer"
+                      >
+                        Zmień numer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {verifyStep === 'success' && (
+                  <div className="text-center space-y-4 py-2">
+                    <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-md shadow-emerald-500/20">
+                      <CheckCircle2 className="w-10 h-10" />
+                    </div>
+
+                    <div>
+                      <h4 className="text-lg font-bold text-surface-900 font-serif">
+                        Numer zweryfikowany pomyślnie!
+                      </h4>
+                      <p className="text-xs text-emerald-700 font-medium mt-1">
+                        Numer {verifySuccessPhone} został pomyślnie zarejestrowany w Systemie.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-950 text-left leading-relaxed">
+                      ✅ <strong>Caller ID odblokowany:</strong> Od tej chwili podczas połączeń przez Centralę automatyczną w module Live Copilot, klient zobaczy na swoim ekranie Twój oficjalny numer stacjonarny biura.
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setVerifyModalOpen(false)}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-md cursor-pointer"
+                    >
+                      Gotowe, zakończ
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>,

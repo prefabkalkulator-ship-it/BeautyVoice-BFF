@@ -17,6 +17,7 @@ model Tenant {
   phoneNumber         String         @unique
   assignedPhoneNumber String?        @unique // Wirtualny numer SIP dla tego salonu
   companyLandlinePhone String?       // Numer stacjonarny firmy do prezentacji CLI w Centrali Copilot
+  companyLandlineVerified Boolean    @default(false) // Czy numer stacjonarny został zweryfikowany kodem DTMF
   businessProfile     String         @default("solo")
   bookingMode         String         @default("hourly")
   aiVoice             String         @default("Kore")

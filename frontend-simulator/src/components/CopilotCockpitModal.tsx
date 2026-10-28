@@ -153,15 +153,16 @@ export default function CopilotCockpitModal({
   const [ownerPhone, setOwnerPhone] = useState('');
   const [assignedPhone, setAssignedPhone] = useState('');
   const [companyLandlinePhone, setCompanyLandlinePhone] = useState('');
+  const [companyLandlineVerified, setCompanyLandlineVerified] = useState(false);
   const [quickFaqModalOpen, setQuickFaqModalOpen] = useState(false);
   const [faqTab, setFaqTab] = useState<'current' | 'permanent' | 'confidential'>('current');
   const [faqs, setFaqs] = useState<any[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isDraftLoading, setIsDraftLoading] = useState(false);
 
-  // Weryfikacja CLI: Centrala wymaga zarejestrowanego numeru stacjonarnego firmy (bez awaryjnego DEMO)
+  // Weryfikacja CLI: Centrala wymaga zarejestrowanego i zweryfikowanego numeru stacjonarnego firmy (bez awaryjnego DEMO)
   const cleanLandline = (companyLandlinePhone || '').replace(/[\s\-\+]/g, '');
-  const hasConfirmedLandline = Boolean(cleanLandline && cleanLandline !== '48343433088' && !cleanLandline.includes('343433088'));
+  const hasConfirmedLandline = Boolean(companyLandlineVerified && cleanLandline && cleanLandline !== '48343433088' && !cleanLandline.includes('343433088'));
 
   // Notatki powoławcze i zadanie CRM
   const [postCallNote, setPostCallNote] = useState('');
@@ -279,6 +280,7 @@ export default function CopilotCockpitModal({
           if (t?.phoneNumber) setOwnerPhone(t.phoneNumber);
           if (t?.assignedPhoneNumber) setAssignedPhone(t.assignedPhoneNumber);
           if (t?.companyLandlinePhone) setCompanyLandlinePhone(t.companyLandlinePhone);
+          if (t?.companyLandlineVerified !== undefined) setCompanyLandlineVerified(Boolean(t.companyLandlineVerified));
         })
         .catch(() => {});
 
@@ -749,7 +751,7 @@ export default function CopilotCockpitModal({
                     </span>
                   ) : (
                     <span className="text-[10px] md:text-xs bg-red-100 text-red-800 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Zablokowana (Brak stacjonarnego)
+                      <Lock className="w-3 h-3" /> Zablokowana (Brak weryfikacji)
                     </span>
                   )}
                 </span>
@@ -775,8 +777,8 @@ export default function CopilotCockpitModal({
                   <strong className="font-bold block mb-1 text-red-900">
                     🚫 Ścieżka centrali automatycznej jest zablokowana
                   </strong>
-                  Twoje konto nie posiada wprowadzonego numeru stacjonarnego firmy. Aby wykluczyć ryzyko wyświetlenia klientowi numeru centrali testowej DEMO (+48 34 343 30 88), realizacja połączeń przez centralę automatyczną została zablokowana.<br/>
-                  Dodaj numer stacjonarny w <strong>Ustawieniach Asystenta</strong> (funkcja dostępna w pakietach Osobisty Ekspert i B2B Premium) lub skorzystaj z rekomendowanego trybu Konferencji telefonicznej.<br/>
+                  Twoje konto nie posiada zweryfikowanego numeru stacjonarnego firmy. Zgodnie z Prawem Komunikacji Elektronicznej i zabezpieczeniami przed spoofingiem, aby realizować połączenia z poziomu Centrali automatycznej, numer stacjonarny musi zostać telefonicznie autoryzowany.<br/>
+                  Wprowadź i zweryfikuj numer stacjonarny w <strong>Ustawieniach Asystenta</strong> (funkcja dostępna w pakietach Osobisty Ekspert i B2B Premium) lub skorzystaj z rekomendowanego trybu Konferencji telefonicznej.<br/>
                   <span className="font-semibold text-emerald-950 mt-2 block">
                     👉 Skorzystaj z trybu <strong>„📞 Konferencja telefoniczna”</strong> — klient odbiera połączenie bezpośrednio z Twojego numeru komórkowego z karty SIM!
                   </span>
