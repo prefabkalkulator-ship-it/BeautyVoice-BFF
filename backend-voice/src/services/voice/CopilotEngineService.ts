@@ -26,6 +26,13 @@ export interface CopilotChecklistItem {
   checked: boolean;
 }
 
+export interface CopilotDraftSummary {
+  notes: string;
+  nextStepTask: string;
+  nextStepDate: string;
+  leadStage: 'IN_PROGRESS' | 'OFFER_SENT' | 'WON' | 'LOST';
+}
+
 export interface CopilotSession {
   sessionId: string;
   tenantId: string;
@@ -63,6 +70,7 @@ export class CopilotEngineService {
   private static instance: CopilotEngineService;
   private sessions = new Map<string, CopilotSession>();
   private pendingConferenceByCaller = new Map<string, CopilotSession>();
+  private recentDrafts = new Map<string, { draft: CopilotDraftSummary; createdAt: number }>();
   private ai: GoogleGenAI;
 
   private constructor() {
@@ -630,6 +638,112 @@ ZASADY MERYTORYCZNE:
   }
 
   /**
+   * Generuje zwięzły, profesjonalny szkic podsumowania CRM na podstawie faktów omówionych w trakcie rozmowy
+   */
+  public async generateDraftSummary(sessionId: string): Promise<CopilotDraftSummary> {
+    if (this.recentDrafts.has(sessionId)) {
+      return this.recentDrafts.get(sessionId)!.draft;
+    }
+
+    const session = this.sessions.get(sessionId);
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (!session) {
+      const fallback: CopilotDraftSummary = {
+        notes: 'Rozmowa z klientem. Brak zarejestrowanych nowych ustaleń.',
+        nextStepTask: 'Kontakt ponowny z klientem',
+        nextStepDate: tomorrow,
+        leadStage: 'IN_PROGRESS'
+      };
+      return fallback;
+    }
+
+    const liveCards = (session.battlecards || []).filter(b => b.id && !b.id.startsWith('bc_init'));
+    const cardsToUse = liveCards.length > 0 ? liveCards : (session.battlecards || []);
+
+    if (cardsToUse.length === 0) {
+      const fallback: CopilotDraftSummary = {
+        notes: `Krótka rozmowa wstępna z klientem ${session.customerName || session.customerPhone}.`,
+        nextStepTask: 'Kontakt ponowny z klientem',
+        nextStepDate: tomorrow,
+        leadStage: 'IN_PROGRESS'
+      };
+      this.recentDrafts.set(sessionId, { draft: fallback, createdAt: Date.now() });
+      return fallback;
+    }
+
+    const factsText = cardsToUse.map(b => `• ${b.heading}: ${b.bullets.join('; ')}`).join('\n');
+    const checkedChecklist = (session.checklist || []).filter(c => c.checked).map(c => c.text);
+
+    try {
+      const prompt = `Jesteś profesjonalnym polskim asystentem CRM i handlowym.
+Właśnie zakończyła się rozmowa telefoniczna z klientem.
+Twoim zadaniem jest sporządzenie zwięzłego, rzeczowego podsumowania CRM na podstawie faktów i tematów zarejestrowanych podczas rozmowy przez Copilota.
+
+Klient: ${session.customerName || 'Klient'} (${session.customerPhone})
+Tematy i fakty omówione podczas rozmowy:
+${factsText}
+
+Odhaczone cele rozmowy:
+${checkedChecklist.length > 0 ? checkedChecklist.join(', ') : 'Rozmowa bieżąca'}
+
+Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON w formacie:
+{
+  "notes": "2-3 konkretne zdania podsumowania w języku polskim. Skup się na twardych ustaleniach: jakie modele/produkty interesują klienta, jakie padły ceny, terminy, gwarancje lub wątpliwości oraz jak zakończyła się rozmowa. BEZ zbędnych ozdobników, czyste fakty dla handlowca.",
+  "nextStepTask": "Krótki, jednoznaczny opis kolejnego kroku (np. 'Oddzwonić jutro z wyceną MDM 74', 'Wysłać specyfikację techniczną i link do oferty')",
+  "nextStepDate": "YYYY-MM-DD (data kolejnego kontaktu - domyślnie ${tomorrow})",
+  "leadStage": "IN_PROGRESS" lub "OFFER_SENT" lub "WON" lub "LOST"
+}`;
+
+      const response = await this.ai.models.generateContent({
+        model: AI_MODELS.TEXT_FLASH,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 }
+        }
+      });
+
+      const parsed = JSON.parse(response.text?.trim() || '{}');
+      const draft: CopilotDraftSummary = {
+        notes: parsed.notes && typeof parsed.notes === 'string' && parsed.notes.trim().length > 5
+          ? parsed.notes.trim()
+          : `Rozmowa z klientem ${session.customerName}. Omówiono szczegóły oferty i dalsze kroki.`,
+        nextStepTask: parsed.nextStepTask && typeof parsed.nextStepTask === 'string'
+          ? parsed.nextStepTask.trim()
+          : 'Oddzwonić do klienta',
+        nextStepDate: parsed.nextStepDate && /^\d{4}-\d{2}-\d{2}$/.test(parsed.nextStepDate)
+          ? parsed.nextStepDate
+          : tomorrow,
+        leadStage: ['IN_PROGRESS', 'OFFER_SENT', 'WON', 'LOST'].includes(parsed.leadStage)
+          ? parsed.leadStage
+          : 'IN_PROGRESS'
+      };
+
+      this.recentDrafts.set(sessionId, { draft, createdAt: Date.now() });
+
+      // Czyść wpisy starsze niż 30 minut
+      const cutoff = Date.now() - 30 * 60 * 1000;
+      for (const [sId, item] of this.recentDrafts.entries()) {
+        if (item.createdAt < cutoff) this.recentDrafts.delete(sId);
+      }
+
+      console.log(`✨ [CopilotEngine] Wygenerowano AI Post-Call Draft dla sesji ${sessionId}: "${draft.notes.substring(0, 80)}..."`);
+      return draft;
+    } catch (err: any) {
+      console.warn('[CopilotEngine] Błąd generowania szkicu podsumowania Gemini:', err.message);
+      const fallback: CopilotDraftSummary = {
+        notes: `Rozmowa z klientem ${session.customerName}. Omówiono szczegóły oferty.`,
+        nextStepTask: 'Oddzwonić do klienta',
+        nextStepDate: tomorrow,
+        leadStage: 'IN_PROGRESS'
+      };
+      this.recentDrafts.set(sessionId, { draft: fallback, createdAt: Date.now() });
+      return fallback;
+    }
+  }
+
+  /**
    * Zakończenie sesji Copilota, rozłączenie centrali Twilio i czyszczenie pamięci
    */
   public async endSession(sessionId: string) {
@@ -640,7 +754,10 @@ ZASADY MERYTORYCZNE:
       await VoiceOutboundService.terminateCall(session.callSid);
     }
 
-    this.broadcastToUi(session, { type: 'CALL_ENDED' });
+    // Wygeneruj lub pobierz szkic podsumowania przed usunięciem sesji z pamięci
+    const draft = await this.generateDraftSummary(sessionId);
+
+    this.broadcastToUi(session, { type: 'CALL_ENDED', draft });
     for (const ws of session.uiSockets) {
       try { ws.close(); } catch (e) {}
     }
@@ -648,7 +765,7 @@ ZASADY MERYTORYCZNE:
     if (sseSet) {
       for (const res of sseSet) {
         try {
-          res.write(`data: ${JSON.stringify({ type: 'CALL_ENDED' })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'CALL_ENDED', draft })}\n\n`);
           res.end();
         } catch (_) {}
       }

@@ -577,7 +577,10 @@ app.put('/api/tenant', async (req, res) => {
         qualificationPrompt: req.body.qualificationPrompt !== undefined ? req.body.qualificationPrompt : undefined,
         leadQuestion1: req.body.leadQuestion1 !== undefined ? req.body.leadQuestion1 : undefined,
         leadQuestion2: req.body.leadQuestion2 !== undefined ? req.body.leadQuestion2 : undefined,
-        leadQuestion3: req.body.leadQuestion3 !== undefined ? req.body.leadQuestion3 : undefined
+        leadQuestion3: req.body.leadQuestion3 !== undefined ? req.body.leadQuestion3 : undefined,
+        assignedPhoneNumber: req.body.assignedPhoneNumber !== undefined 
+          ? (req.body.assignedPhoneNumber ? String(req.body.assignedPhoneNumber).trim() : null) 
+          : undefined
       }
     });
 
@@ -2888,6 +2891,15 @@ app.post('/api/copilot/start-call', async (req, res) => {
       return res.status(400).json({ error: 'Pole customerPhone jest wymagane' });
     }
 
+    // Weryfikacja CLI: Centrala wymaga zweryfikowanego dedykowanego numeru stacjonarnego firmy (ochrona przed spoofingiem UKE)
+    const cleanAssigned = (tenant.assignedPhoneNumber || '').replace(/[\s\-\+]/g, '');
+    const isDemoNumber = !cleanAssigned || cleanAssigned === '48343433088' || cleanAssigned.includes('343433088');
+    if (isDemoNumber) {
+      return res.status(400).json({ 
+        error: 'Brak dedykowanego numeru stacjonarnego firmy. W centrali automatycznej klient widziałby numer DEMO (+48 34 343 30 88). Podaj numer stacjonarny swojej firmy w Ustawieniach Asystenta lub skorzystaj z trybu Konferencji telefonicznej (gdzie klient widzi Twój bezpośredni numer komórkowy z karty SIM).' 
+      });
+    }
+
     // Utwórz sesję w CopilotEngineService z wczytaniem 3-poziomowej Bazy Wiedzy FAQ
     const session = await copilotEngineService.createSession({
       tenantId: tenant.id,
@@ -3017,14 +3029,16 @@ app.get('/api/copilot/events', (req, res) => {
   });
 });
 
-// 3. Zakończenie sesji Copilota (i natychmiastowe rozłączenie w Twilio)
+// 3. Zakończenie sesji Copilota (i natychmiastowe rozłączenie w Twilio z pobraniem szkicu AI)
 app.post('/api/copilot/end-call', async (req, res) => {
   try {
     const { sessionId } = req.body || {};
+    let draft = null;
     if (sessionId) {
+      draft = await copilotEngineService.generateDraftSummary(sessionId);
       await copilotEngineService.endSession(sessionId);
     }
-    return res.json({ success: true });
+    return res.json({ success: true, draft });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3081,9 +3095,11 @@ app.post('/api/copilot/save-summary', async (req, res) => {
 
     // 2. Utwórz oficjalny rekord w tabeli CallLog (Historia połączeń)
     const duration = Number(callDurationSeconds) || 60;
-    const summaryText = notes 
-      ? `[Rozmowa Copilot] ${notes}` 
-      : `[Rozmowa Copilot] Rozmowa z klientem ${customerName || customerPhone}. Status: ${leadStage || 'IN_PROGRESS'}.`;
+    const summaryText = notes && notes.trim()
+      ? `[Rozmowa Copilot] ${notes.trim()}` 
+      : (nextStepTask 
+          ? `[Rozmowa Copilot] Ustalenia: ${nextStepTask}` 
+          : `[Rozmowa Copilot] Rozmowa z klientem ${customerName || customerPhone}.`);
 
     try {
       const newCallLog = await prisma.callLog.create({

@@ -262,7 +262,8 @@ export default function Settings() {
           qualificationPrompt,
           leadQuestion1,
           leadQuestion2,
-          leadQuestion3
+          leadQuestion3,
+          assignedPhoneNumber: assignedPhoneNumber ? assignedPhoneNumber.trim() : null
         })
       });
       alert('Zapisano ustawienia.');
@@ -1804,18 +1805,38 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="md:col-span-2 mt-2">
-              <label className="block text-sm font-medium text-surface-700 mb-1">Twój Wirtualny Numer Telefonu (SIP / SMS)</label>
+            <div className="md:col-span-2 mt-2 bg-surface-50/70 p-4 rounded-2xl border border-surface-200/80 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <label className="block text-sm font-bold text-surface-800">
+                  Numer Stacjonarny Firmy / Wirtualny Numer SIP &amp; Caller ID
+                </label>
+                {assignedPhoneNumber && !assignedPhoneNumber.includes('343433088') ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Dedykowany numer stacjonarny aktywny
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full">
+                    Wspólny numer testowy DEMO (+48 34 343 30 88)
+                  </span>
+                )}
+              </div>
+
               <input 
                 type="text" 
-                value={assignedPhoneNumber || 'Brak przypisanego numeru - Skontaktuj się z obsługą'} 
-                readOnly
-                className="w-full rounded-xl border border-surface-200 p-2.5 bg-surface-50 outline-none text-surface-500 font-mono text-sm"
+                value={assignedPhoneNumber} 
+                onChange={e => setAssignedPhoneNumber(e.target.value)}
+                placeholder="np. +48 22 123 45 67 (lub numer SIP przypisany do konta)"
+                className="w-full rounded-xl border border-surface-200 p-2.5 bg-white outline-none focus:border-indigo-600 text-surface-900 font-mono text-sm shadow-2xs"
               />
-              <div className="text-xs text-surface-500 mt-1 leading-relaxed">
-                {businessProfile === 'personal' 
-                  ? 'Na ten numer ustawiasz przekierowanie w telefonie (*21* lub *61*). Asystent odbierze połączenie, gdy nie możesz rozmawiać.'
-                  : 'Klienci firmy powinni dzwonić pod ten numer. Numery są przypisywane indywidualnie dla każdego najemcy.'}
+
+              <div className="text-xs text-surface-600 leading-relaxed space-y-1">
+                <p>
+                  <strong>Prezentacja numeru (Caller ID) w trybie Centrali Automatycznej Copilota:</strong> Ten numer stacjonarny wyświetla się u klienta, gdy wykonujesz połączenie z poziomu panelu.
+                </p>
+                <p className="text-surface-500">
+                  ℹ️ Zgodnie z Prawem Komunikacji Elektronicznej (PKE) i przepisami UKE o zwalczaniu spoofingu, operator telekomunikacyjny wymaga, aby prezentowany numer stacjonarny był zarejestrowany na Twoją firmę lub przydzielony w pakiecie B2B Premium / Ekspert. Jeśli Twoje konto korzysta z numeru testowego DEMO, w module Live Copilot rekomendujemy korzystanie z trybu <strong>„📞 Konferencja telefoniczna”</strong>, w którym klient widzi Twój bezpośredni numer komórkowy z karty SIM.
+                </p>
               </div>
             </div>
           </div>

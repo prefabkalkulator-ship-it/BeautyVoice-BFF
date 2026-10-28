@@ -25,7 +25,8 @@ import {
   Copy,
   Check,
   PhoneCall,
-  Trash2
+  Trash2,
+  AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -155,6 +156,11 @@ export default function CopilotCockpitModal({
   const [faqTab, setFaqTab] = useState<'current' | 'permanent' | 'confidential'>('current');
   const [faqs, setFaqs] = useState<any[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isDraftLoading, setIsDraftLoading] = useState(false);
+
+  // Weryfikacja CLI: czy salon posiada dedykowany numer stacjonarny inny niż współdzielona centrala DEMO
+  const cleanAssigned = (assignedPhone || '').replace(/[\s\-\+]/g, '');
+  const hasCustomLandline = Boolean(cleanAssigned && cleanAssigned !== '48343433088' && !cleanAssigned.includes('343433088'));
 
   // Notatki powoławcze i zadanie CRM
   const [postCallNote, setPostCallNote] = useState('');
@@ -225,10 +231,12 @@ export default function CopilotCockpitModal({
     setCallPhase('setup');
     setCallDurationSeconds(0);
     setIsCentralConnected(false);
+    setIsDraftLoading(false);
     setConnectingCountdown(22);
     setPostCallNote('');
     setNextStepTask('');
     setNextStepDate('');
+    setLeadStage('IN_PROGRESS');
     setActiveSessionId(null);
     onClose();
   };
@@ -426,7 +434,10 @@ export default function CopilotCockpitModal({
         } else if (msg.type === 'REP_SPEAKING') {
           setIsRepSpeaking(Boolean(msg.isSpeaking));
         } else if (msg.type === 'CALL_ENDED') {
-          handleEndCall();
+          if (msg.draft) {
+            applyDraft(msg.draft);
+          }
+          handleEndCall(false);
         }
       } catch (err) {
         console.warn('[Copilot UI] Błąd obsługi komunikatu:', err);
@@ -539,7 +550,29 @@ export default function CopilotCockpitModal({
     }
   };
 
+  // Pomocnik aplikujący szkic AI do formularza podsumowania CRM
+  const applyDraft = (draft: any) => {
+    if (!draft) return;
+    if (draft.notes && typeof draft.notes === 'string') {
+      setPostCallNote(draft.notes);
+    }
+    if (draft.nextStepTask && typeof draft.nextStepTask === 'string') {
+      setNextStepTask(draft.nextStepTask);
+    }
+    if (draft.nextStepDate && typeof draft.nextStepDate === 'string') {
+      setNextStepDate(draft.nextStepDate);
+    }
+    if (draft.leadStage && ['IN_PROGRESS', 'OFFER_SENT', 'WON', 'LOST'].includes(draft.leadStage)) {
+      setLeadStage(draft.leadStage);
+    }
+  };
+
   const handleStartCopilotCall = async () => {
+    if (!hasCustomLandline) {
+      toast.error('Brak dedykowanego numeru stacjonarnego firmy. Podaj numer w Ustawieniach Asystenta lub skorzystaj z trybu Konferencji.', { duration: 5000 });
+      return;
+    }
+
     setCallPhase('connecting');
     try {
       const res = await fetch('/api/copilot/start-call', {
@@ -572,15 +605,29 @@ export default function CopilotCockpitModal({
     }
   };
 
-  const handleEndCall = () => {
+  const handleEndCall = async (triggerBackend = true) => {
     setCallPhase('summary');
     if (timerRef.current) clearInterval(timerRef.current);
-    if (activeSessionId) {
-      fetch('/api/copilot/end-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: activeSessionId })
-      }).catch(err => console.warn('[Copilot UI] Błąd kończenia sesji:', err));
+
+    if (activeSessionId && triggerBackend) {
+      setIsDraftLoading(true);
+      try {
+        const res = await fetch('/api/copilot/end-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: activeSessionId })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.draft) {
+            applyDraft(data.draft);
+          }
+        }
+      } catch (err) {
+        console.warn('[Copilot UI] Błąd kończenia sesji:', err);
+      } finally {
+        setIsDraftLoading(false);
+      }
     }
     disconnectRealtime();
   };
@@ -694,7 +741,15 @@ export default function CopilotCockpitModal({
                 <Headphones className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span className="flex items-center gap-1.5 flex-wrap justify-center">
                   <span>⚡ Centrala automatyczna</span>
-                  <span className="text-[10px] md:text-xs bg-surface-200 text-surface-700 font-medium px-2 py-0.5 rounded-full">Numer stacjonarny</span>
+                  {hasCustomLandline ? (
+                    <span className="text-[10px] md:text-xs bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
+                      {assignedPhone}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] md:text-xs bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Wymaga numeru stacjonarnego
+                    </span>
+                  )}
                 </span>
               </button>
             </div>
@@ -711,12 +766,34 @@ export default function CopilotCockpitModal({
                   3. Kliknij <strong>„Scal połączenia”</strong> (Konferencja GSM). EVA połączy się <strong>w 100% bezgłośnie</strong> i będzie podpowiadać na bieżąco w poniższym czacie!
                 </div>
               </div>
+            ) : !hasCustomLandline ? (
+              <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
+                <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm md:text-base text-amber-950 leading-relaxed">
+                  <strong className="font-bold block mb-1 text-amber-900">
+                    ⚠️ Brak zweryfikowanego numeru stacjonarnego firmy
+                  </strong>
+                  W trybie centrali automatycznej klient zobaczyłby numer współdzielonej centrali testowej DEMO (+48 34 343 30 88).<br/>
+                  Zgodnie z przepisami prawa telekomunikacyjnego o zwalczaniu nadużyć (ochrona przed spoofingiem), centrala może prezentować wyłącznie zweryfikowany numer stacjonarny Twojej firmy skonfigurowany w <strong>Ustawieniach Asystenta</strong> (Pakiet Premium / Ekspert).<br/>
+                  <span className="font-semibold text-amber-900 mt-2 block">
+                    👉 Rekomendujemy tryb <strong>„📞 Konferencja telefoniczna”</strong> — klient odbiera połączenie bezpośrednio z Twojego numeru komórkowego z karty SIM bez żadnego spoofingu!
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCallMode('conference')}
+                    className="mt-3 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    Przełącz na Konferencję telefoniczną (Zalecane)
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
                 <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 text-indigo-600 shrink-0 mt-0.5" />
                 <div className="text-xs sm:text-sm md:text-base text-indigo-950 leading-relaxed">
-                  <strong className="font-bold block mb-1 text-indigo-900">Połączenie przez Centralę automatyczną:</strong>
-                  Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system automatycznie połączy Cię z klientem. Copilot będzie w czasie rzeczywistym podpowiadał argumenty na tym ekranie!
+                  <strong className="font-bold block mb-1 text-indigo-900">Połączenie przez Centralę automatyczną ({assignedPhone}):</strong>
+                  Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system automatycznie połączy Cię z klientem, prezentując numer <strong>{assignedPhone}</strong>. Copilot będzie w czasie rzeczywistym podpowiadał fakty na ekranie!
                 </div>
               </div>
             )}
@@ -795,14 +872,25 @@ export default function CopilotCockpitModal({
                   <Headphones className="w-5 h-5 md:w-6 md:h-6" />
                   Zadzwoń z Copilotem (Mostek GSM)
                 </button>
-              ) : (
+              ) : hasCustomLandline ? (
                 <button
                   type="button"
                   onClick={handleStartCopilotCall}
                   className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm md:text-base transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 cursor-pointer"
                 >
                   <PhoneCall className="w-5 h-5 md:w-6 md:h-6" />
-                  Zadzwoń przez centralę automatyczną
+                  Zadzwoń przez centralę automatyczną ({assignedPhone})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.error('Brak dedykowanego numeru stacjonarnego firmy. Podaj numer w Ustawieniach Asystenta lub wybierz Konferencję telefoniczną.', { duration: 5000 });
+                  }}
+                  className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-surface-100 hover:bg-surface-200 text-surface-600 font-bold text-xs sm:text-sm md:text-base border border-surface-300 transition flex items-center justify-center gap-2.5 cursor-pointer shadow-2xs"
+                >
+                  <Lock className="w-4 h-4 md:w-5 md:h-5 text-amber-600 shrink-0" />
+                  <span>Wymagany numer stacjonarny firmy (Przejdź do Ustawień lub wybierz Konferencję)</span>
                 </button>
               )}
             </div>
@@ -1246,16 +1334,32 @@ export default function CopilotCockpitModal({
 
             {/* Ustalenia / Notatka */}
             <div>
-              <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-600 mb-1.5">
-                Kluczowe ustalenia z rozmowy:
-              </label>
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+                <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-600">
+                  Kluczowe ustalenia z rozmowy:
+                </label>
+                {isDraftLoading ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full animate-pulse">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-spin" />
+                    EVA analizuje fakty i przygotowuje notatkę...
+                  </span>
+                ) : postCallNote ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    Szkic AI wygenerowany z faktów rozmowy
+                  </span>
+                ) : null}
+              </div>
               <textarea
                 rows={3}
                 value={postCallNote}
                 onChange={e => setPostCallNote(e.target.value)}
-                placeholder="np. Klient zdecydowany na pakiet Osobisty Ekspert. Wymaga integracji z kalendarzem Google. Przesłać ofertę i link do płatności."
-                className="w-full bg-surface-50 border border-surface-200 rounded-xl p-3 md:p-3.5 text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"
+                placeholder={isDraftLoading ? "EVA generuje propozycję podsumowania..." : "np. Klient zdecydowany na pakiet Osobisty Ekspert. Wymaga integracji z kalendarzem Google. Przesłać ofertę i link do płatności."}
+                className="w-full bg-surface-50 border border-surface-200 rounded-xl p-3 md:p-3.5 text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed font-normal text-surface-900"
               />
+              <p className="text-[11px] text-surface-400 mt-1">
+                💡 Powyższa notatka została automatycznie zredagowana przez EVA na podstawie podpowiedzi i faktów z rozmowy. Możesz ją dowolnie zmodyfikować.
+              </p>
             </div>
 
             {/* Następny krok */}
