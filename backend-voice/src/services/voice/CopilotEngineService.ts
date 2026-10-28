@@ -374,7 +374,17 @@ export class CopilotEngineService {
       res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
     }
 
+    // Ping keepalive co 15s, by zapobiec timeoutom proxy CDN / Cloud Run / QUIC idle
+    const keepAliveTimer = setInterval(() => {
+      try {
+        res.write(': keepalive\n\n');
+      } catch (_) {
+        clearInterval(keepAliveTimer);
+      }
+    }, 15000);
+
     return () => {
+      clearInterval(keepAliveTimer);
       clientSet.delete(res);
       if (clientSet.size === 0) {
         this.sseClients.delete(sessionId);

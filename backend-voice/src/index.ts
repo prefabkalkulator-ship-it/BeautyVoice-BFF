@@ -60,6 +60,11 @@ copilotVoiceWss.on('connection', (ws) => {
         copilotEngineService.handleMediaStream(currentSessionId, track, data.media.payload);
       } else if (data.event === 'stop') {
         console.log(`🎙️ [CopilotVoice] Zatrzymanie strumienia dla sesji: ${currentSessionId}`);
+        if (currentSessionId) {
+          copilotEngineService.endSession(currentSessionId).catch((err) => {
+            console.warn(`[CopilotVoice] Błąd auto-zakończenia sesji po rozłączeniu Twilio:`, err.message);
+          });
+        }
       }
     } catch (e) {}
   });

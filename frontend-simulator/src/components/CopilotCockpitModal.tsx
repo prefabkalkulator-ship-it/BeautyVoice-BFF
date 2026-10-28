@@ -174,19 +174,40 @@ export default function CopilotCockpitModal({
   // Dynamiczna Checklista i Aktywna Karta Bojowa (zainicjalizowane z presetów)
   const [checklist, setChecklist] = useState<ChecklistItem[]>(SCENARIO_PRESETS.sales.checklist);
   const [activeBattlecard, setActiveBattlecard] = useState<Battlecard>(SCENARIO_PRESETS.sales.initialCard);
-  const [battlecards, setBattlecards] = useState<Battlecard[]>([
-    {
-      ...SCENARIO_PRESETS.sales.initialCard,
-      id: 'bc_init',
-      timestamp: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
-    }
-  ]);
+  const [battlecards, setBattlecards] = useState<Battlecard[]>([]);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const sseRef = useRef<EventSource | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Monitor poczenia sieciowego online/offline z auto-synchronizacj
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      if (activeSessionId) {
+        fetch(`/api/copilot/session/${activeSessionId}?cb=${Date.now()}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.battlecards?.length) {
+              setBattlecards(data.battlecards);
+              setActiveBattlecard(data.battlecards[data.battlecards.length - 1]);
+            }
+          })
+          .catch(() => {});
+      }
+    };
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [activeSessionId]);
 
   // Auto-scroll do najnowszej karty podpowiedzi na osi czasu
   useEffect(() => {
@@ -234,6 +255,7 @@ export default function CopilotCockpitModal({
     setCallDurationSeconds(0);
     setIsCentralConnected(false);
     setIsDraftLoading(false);
+    setBattlecards([]);
     setConnectingCountdown(22);
     setPostCallNote('');
     setNextStepTask('');
@@ -259,7 +281,7 @@ export default function CopilotCockpitModal({
         timestamp: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
       };
       setActiveBattlecard(cardWithMeta);
-      setBattlecards([cardWithMeta]);
+      setBattlecards([]);
     }
   };
 
@@ -269,6 +291,7 @@ export default function CopilotCockpitModal({
       setCallPhase('setup');
       setCallDurationSeconds(0);
       setIsCentralConnected(false);
+      setBattlecards([]);
       setPostCallNote('');
       setNextStepTask('');
       setNextStepDate('');
@@ -486,38 +509,32 @@ export default function CopilotCockpitModal({
       console.warn('[Copilot UI] Nie udało się otworzyć SSE:', sseErr);
     }
 
-    // 3. Fallback polling co 2 sekundy w celu synchronizacji kart bojowych
+    // 3. Fallback polling co 1.5 sekundy w celu synchronizacji kart bojowych (z zabezpieczeniem przed zerwaniem sieci)
     pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/copilot/session/${sessionId}`);
+        const res = await fetch(`/api/copilot/session/${sessionId}?cb=${Date.now()}`);
         if (res.ok) {
+          setIsOffline(false);
           const data = await res.json();
           if (data.battlecards && Array.isArray(data.battlecards) && data.battlecards.length > 0) {
-            setBattlecards(prev => {
-              if (prev.length !== data.battlecards.length || prev[prev.length - 1]?.id !== data.battlecards[data.battlecards.length - 1]?.id) {
-                return data.battlecards;
-              }
-              return prev;
-            });
+            setBattlecards(data.battlecards);
             setActiveBattlecard(data.battlecards[data.battlecards.length - 1]);
             const hasLiveSpeechCard = data.battlecards.some((b: any) => b.id && !b.id.startsWith('bc_init'));
             if (callMode !== 'conference' || hasLiveSpeechCard) {
               setCallPhase(prev => prev === 'connecting' ? 'in_call' : prev);
             }
           } else if (data.activeBattlecard) {
-            setActiveBattlecard(prev => {
-              if (prev.heading !== data.activeBattlecard.heading) {
-                return data.activeBattlecard;
-              }
-              return prev;
-            });
+            setActiveBattlecard(data.activeBattlecard);
           }
           if (data.isRepSpeaking !== undefined) {
             setIsRepSpeaking(Boolean(data.isRepSpeaking));
           }
         }
-      } catch (_) {}
-    }, 2000);
+      } catch (pollErr) {
+        // Wykrycie zerwania poczenia sieciowego (np. podczas rozmowy GSM / Hotspot)
+        setIsOffline(true);
+      }
+    }, 1500);
   };
 
   // Uruchomienie Copilota w trybie Odwróconej Konferencji (Mostek GSM)
@@ -1103,6 +1120,35 @@ export default function CopilotCockpitModal({
         {callPhase === 'in_call' && (
           <div className="p-3 sm:p-5 md:p-6 space-y-4 md:space-y-5 overflow-y-auto flex-1 flex flex-col">
             
+            {/* OSTRZEŻENIE O ZERWANIU INTERNETU */}
+            {isOffline && (
+              <div className="bg-amber-500/10 border-2 border-amber-500/40 text-amber-900 p-2.5 sm:p-3 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm animate-pulse shrink-0">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <span>
+                    <strong>Brak połączenia z internetem w urządzeniu</strong> (ERR_INTERNET_DISCONNECTED). Sprawdź Wi-Fi lub Hotspot. EVA na serwerze nadal słucha rozmowy i buforuje podpowiedzi.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeSessionId) {
+                      fetch(`/api/copilot/session/${activeSessionId}?cb=${Date.now()}`)
+                        .then(r => r.json())
+                        .then(data => {
+                          if (data.battlecards?.length) setBattlecards(data.battlecards);
+                          setIsOffline(false);
+                        })
+                        .catch(() => {});
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition cursor-pointer text-xs shrink-0"
+                >
+                  Połącz ponownie
+                </button>
+              </div>
+            )}
+
             {/* PASEK STANU MÓWCY I SYNCHRONIZACJI */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-surface-100/90 p-2.5 sm:p-3 md:p-3.5 rounded-2xl border border-surface-200 gap-2 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -1226,55 +1272,65 @@ export default function CopilotCockpitModal({
                   </div>
                 </div>
 
-                {/* SCROLLABLE FEED OF FACTS - CZYSTY TEKST WIERSZ ZA WIERSZEM */}
-                <div className="flex-1 overflow-y-auto pr-1 max-h-[420px] md:max-h-[580px] divide-y divide-surface-200/80">
-                  {battlecards.map((card, idx) => {
-                    const isLatest = idx === battlecards.length - 1;
-                    return (
-                      <div
-                        key={card.id || `bc_${idx}`}
-                        className={`text-left py-2.5 transition-colors ${
-                          isLatest ? 'bg-indigo-50/50 px-2.5 rounded-xl border border-indigo-200/70 shadow-2xs' : 'px-1'
-                        }`}
-                      >
-                        {/* WIERSZ NAGŁÓWKA: CZAS + ETYKIETA + TEMAT */}
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          {card.timestamp && (
-                            <span className="text-[11px] font-mono text-surface-400 font-semibold shrink-0">
-                              [{card.timestamp}]
-                            </span>
-                          )}
-
-                          <span className="font-bold text-xs sm:text-sm md:text-base text-surface-950 uppercase tracking-tight">
-                            {card.heading}
-                          </span>
-
-                          {card.faqSource && (
-                            <span className="text-[10px] font-medium text-surface-500">
-                              ({card.faqSource === 'current' ? 'Promocje' : card.faqSource === 'confidential' ? '🔒 Poufne' : 'Baza Stała'})
-                            </span>
-                          )}
-
-                          {isLatest && (
-                            <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping"></span>
-                              Nowe
-                            </span>
-                          )}
-                        </div>
-
-                        {/* WIERSZE Z FAKTAMI: ZWARTA LISTA BEZPOŚREDNIO WIERSZ PO WIERSZU */}
-                        <div className="space-y-1 pl-1">
-                          {card.bullets.map((bullet, bIdx) => (
-                            <div key={bIdx} className="text-xs sm:text-sm md:text-base text-surface-900 leading-snug flex items-start gap-2 font-medium">
-                              <span className="text-indigo-600 font-bold shrink-0 mt-0.5">•</span>
-                              <span className="break-words">{bullet}</span>
-                            </div>
-                          ))}
-                        </div>
+                {/* SCROLLABLE FEED OF FACTS - CZYSTY TEKST WIERSZ ZA WIERSZEM (BEZ KAFELKÓW) */}
+                <div className="flex-1 overflow-y-auto pr-1 max-h-[420px] md:max-h-[580px] divide-y divide-surface-200">
+                  {battlecards.length === 0 ? (
+                    <div className="py-10 px-4 text-center space-y-2.5">
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-semibold border border-emerald-200">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        EVA nasłuchuje w tle
                       </div>
-                    );
-                  })}
+                      <p className="text-xs sm:text-sm text-surface-500 max-w-sm mx-auto leading-relaxed">
+                        Fakty, ceny i parametry z Bazy Wiedzy pojawią się tutaj czystym tekstem natychmiast w miarę zadawania pytań przez klienta.
+                      </p>
+                    </div>
+                  ) : (
+                    battlecards.map((card, idx) => {
+                      const isLatest = idx === battlecards.length - 1;
+                      return (
+                        <div
+                          key={card.id || `bc_${idx}`}
+                          className="text-left py-2.5 first:pt-1 transition-colors"
+                        >
+                          {/* WIERSZ NAGŁÓWKA: CZAS + ETYKIETA + TEMAT */}
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            {card.timestamp && (
+                              <span className="text-[11px] font-mono text-surface-400 font-semibold shrink-0">
+                                [{card.timestamp}]
+                              </span>
+                            )}
+
+                            <span className="font-bold text-xs sm:text-sm md:text-base text-surface-950 uppercase tracking-tight">
+                              {card.heading}
+                            </span>
+
+                            {card.faqSource && (
+                              <span className="text-[10px] font-medium text-surface-500">
+                                ({card.faqSource === 'current' ? 'Promocje' : card.faqSource === 'confidential' ? '🔒 Poufne' : 'Baza Stała'})
+                              </span>
+                            )}
+
+                            {isLatest && (
+                              <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span>
+                                Najnowsze
+                              </span>
+                            )}
+                          </div>
+
+                          {/* WIERSZE Z FAKTAMI: CZYSTY TEKST WIERSZ PO WIERSZU */}
+                          <div className="space-y-1 pl-1">
+                            {card.bullets.map((bullet, bIdx) => (
+                              <div key={bIdx} className="text-xs sm:text-sm md:text-base text-surface-900 leading-snug flex items-start gap-2 font-medium">
+                                <span className="text-indigo-600 font-bold shrink-0 mt-0.5">•</span>
+                                <span className="break-words">{bullet}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                   <div ref={feedEndRef} />
                 </div>
 
