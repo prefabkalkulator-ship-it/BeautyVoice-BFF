@@ -24,7 +24,8 @@ import {
   UserCheck,
   Copy,
   Check,
-  PhoneCall
+  PhoneCall,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -142,6 +143,7 @@ export default function CopilotCockpitModal({
   const [callPhase, setCallPhase] = useState<'setup' | 'connecting' | 'in_call' | 'summary'>('setup');
   const [callMode, setCallMode] = useState<'conference' | 'bridge'>('conference'); // Konferencja z komórki jako domyślny tryb
   const [isCentralConnected, setIsCentralConnected] = useState(false);
+  const [connectingCountdown, setConnectingCountdown] = useState(22);
   const [conferenceAssistantNumber, setConferenceAssistantNumber] = useState('');
   const [copiedNumber, setCopiedNumber] = useState(false);
   const [scenario, setScenario] = useState<'sales' | 'complaint' | 'callback' | 'general'>('sales');
@@ -185,6 +187,24 @@ export default function CopilotCockpitModal({
     }
   }, [battlecards, callPhase]);
 
+  // Automatyczny timer 22 sekund dla fazy łączenia konferencji (bezpieczne przejście do podpowiedzi)
+  useEffect(() => {
+    if (callPhase === 'connecting') {
+      setConnectingCountdown(22);
+      const interval = setInterval(() => {
+        setConnectingCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setCallPhase('in_call');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [callPhase]);
+
   const disconnectRealtime = () => {
     if (wsRef.current) {
       try { wsRef.current.close(); } catch (_) {}
@@ -205,11 +225,16 @@ export default function CopilotCockpitModal({
     setCallPhase('setup');
     setCallDurationSeconds(0);
     setIsCentralConnected(false);
+    setConnectingCountdown(22);
     setPostCallNote('');
     setNextStepTask('');
     setNextStepDate('');
     setActiveSessionId(null);
     onClose();
+  };
+
+  const handleDeleteChecklistItem = (id: string) => {
+    setChecklist(prev => prev.filter(item => item.id !== id));
   };
 
   // Funkcja zmiany scenariusza z synchronizacją checklisty i karty startowej
@@ -593,72 +618,7 @@ export default function CopilotCockpitModal({
     }
   };
 
-  // Szybkie wstrzykiwanie kart podpowiedzi FAQ / Obiekcji
-  const triggerObjectionCard = (type: 'price' | 'time' | 'competitor' | 'promo') => {
-    const nowTime = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-    let card: Battlecard;
 
-    if (type === 'price') {
-      card = {
-        id: `bc_quick_${Date.now()}`,
-        timestamp: nowTime,
-        category: 'OBJECTION',
-        heading: 'Obiekcja cenowa („Za drogo” / Budżet)',
-        bullets: [
-          'Odliczenie płyty fundamentowej: oszczędność ~45-60 tys. zł',
-          'Odliczenie wentylacji / rekuperacji: oszczędność ~18-25 tys. zł',
-          'Możliwość realizacji fundamentu i wentylacji we własnym zakresie'
-        ],
-        faqSource: 'confidential',
-        urgency: 'high'
-      };
-    } else if (type === 'promo') {
-      card = {
-        id: `bc_quick_${Date.now()}`,
-        timestamp: nowTime,
-        category: 'BUYING_SIGNAL',
-        heading: '⚡ Aktywna Promocja i Gwarancja Ceny',
-        bullets: [
-          'Rabat wdrożeniowy: -10% na stan deweloperski do końca miesiąca',
-          'Gwarancja stałej ceny materiałów i montażu w umowie',
-          'Bezpłatna adaptacja projektu do warunków działki'
-        ],
-        faqSource: 'current',
-        urgency: 'medium'
-      };
-    } else if (type === 'time') {
-      card = {
-        id: `bc_quick_${Date.now()}`,
-        timestamp: nowTime,
-        category: 'OBJECTION',
-        heading: 'Czas realizacji i Harmonogram',
-        bullets: [
-          'Montaż ścian i konstrukcji na działce: 7-10 dni roboczych',
-          'Produkcja prefabrykatów równolegle z formalnościami w urzędzie',
-          'Precyzyjny harmonogram odbioru gwarantowany w umowie'
-        ],
-        faqSource: 'permanent',
-        urgency: 'medium'
-      };
-    } else {
-      card = {
-        id: `bc_quick_${Date.now()}`,
-        timestamp: nowTime,
-        category: 'FACT_QUERY',
-        heading: 'Przewagi Technologii Prefabrykowanej',
-        bullets: [
-          'Współczynnik przenikania U = 0,14 W/m²K (standard energooszczędny)',
-          'Ściany całkowicie suche – brak wilgoci technologicznej, start wykończenia od razu',
-          '30 lat gwarancji konstrukcyjnej na elementy prefabrykowane'
-        ],
-        faqSource: 'permanent',
-        urgency: 'low'
-      };
-    }
-
-    setActiveBattlecard(card);
-    setBattlecards(prev => [...prev, card]);
-  };
 
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-2 sm:p-4 bg-surface-950/70 backdrop-blur-sm animate-fade-in">
@@ -761,35 +721,7 @@ export default function CopilotCockpitModal({
               </div>
             )}
 
-            <div>
-              <label className="block text-xs md:text-sm font-bold uppercase tracking-wider text-surface-500 mb-2">
-                Cel / Scenariusz rozmowy:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-                {[
-                  { id: 'sales', label: '💼 Rozmowa handlowa / Oferta', desc: 'Prezentacja wartości, zbijanie obiekcji' },
-                  { id: 'callback', label: '🔄 Oddzwonienie / Reaktywacja', desc: 'Klient prosił o kontakt lub powraca' },
-                  { id: 'complaint', label: '🛡️ Reklamacja / Trudny klient', desc: 'Deeskalacja, empatia, rozwiązanie' },
-                  { id: 'general', label: '📋 Konsultacja ogólna', desc: 'Wywiad potrzeb, ustalenie szczegółów' }
-                ].map(item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelectScenario(item.id as any)}
-                    className={`p-3 md:p-4 rounded-2xl border text-left transition cursor-pointer ${
-                      scenario === item.id 
-                        ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/20' 
-                        : 'border-surface-200 bg-surface-50 hover:bg-surface-100'
-                    }`}
-                  >
-                    <div className="font-bold text-xs md:text-sm text-surface-900">{item.label}</div>
-                    <div className="text-[11px] md:text-xs text-surface-500 mt-0.5">{item.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Checklista celów - w pełni interaktywna i edytowalna */}
+            {/* Checklista celów - w pełni interaktywna, edytowalna i z możliwością usuwania */}
             <div className="bg-surface-50 rounded-2xl p-3.5 sm:p-4 md:p-6 border border-surface-200 space-y-3">
               <div className="flex items-center justify-between text-xs md:text-base font-bold text-surface-800">
                 <span>Checklista celów rozmowy:</span>
@@ -799,25 +731,35 @@ export default function CopilotCockpitModal({
               </div>
               <div className="space-y-2">
                 {checklist.map(item => (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
-                    onClick={() => handleToggleChecklist(item.id)}
-                    className={`w-full flex items-center justify-between p-2.5 md:p-3.5 rounded-xl text-left text-xs md:text-base transition cursor-pointer ${
+                    className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl transition ${
                       item.checked 
                         ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200' 
                         : 'bg-white text-surface-800 font-medium border border-surface-200 shadow-2xs hover:bg-surface-50'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleChecklist(item.id)}
+                      className="flex-1 flex items-center gap-2.5 text-left text-xs md:text-sm cursor-pointer"
+                    >
                       {item.checked ? (
                         <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
                       ) : (
                         <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
                       )}
                       <span className="break-words text-wrap leading-relaxed">{item.text}</span>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteChecklistItem(item.id)}
+                      className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-100 transition cursor-pointer shrink-0 ml-2"
+                      title="Usuń cel z listy"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 ))}
               </div>
 
@@ -877,9 +819,15 @@ export default function CopilotCockpitModal({
                 
                 {/* NAGŁÓWEK FAZY ZESTAWIANIA */}
                 <div className="text-center space-y-2">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs md:text-sm font-bold animate-pulse">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                    Centrala zestawia bezpieczny mostek konferencyjny
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs md:text-sm font-bold animate-pulse">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      Centrala zestawia bezpieczny mostek konferencyjny
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-100 text-surface-800 border border-surface-200 text-xs md:text-sm font-semibold">
+                      <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Auto-przejście za: <strong className="font-mono text-indigo-600 font-bold">{connectingCountdown}s</strong></span>
+                    </div>
                   </div>
                   <h4 className="text-xl sm:text-2xl md:text-3xl font-serif font-bold text-surface-900 tracking-tight">
                     Zestawienie połączenia w 3 prostych krokach
@@ -1016,10 +964,11 @@ export default function CopilotCockpitModal({
                     <button
                       type="button"
                       onClick={() => setCallPhase('in_call')}
-                      className="flex-1 sm:flex-initial py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs sm:text-sm font-bold transition cursor-pointer shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2"
+                      className="flex-1 sm:flex-initial py-3.5 px-6 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs sm:text-sm md:text-base font-bold transition cursor-pointer shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 animate-pulse"
                     >
-                      <span>🟢 Połączenia scalone — przejdź do podpowiedzi</span>
-                      <ChevronRight className="w-4 h-4" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span>
+                      <span>🔴 POŁĄCZENIA SCALONE — PRZEJDŹ DO PODPOWIEDZI</span>
+                      <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
                     <button
                       type="button"
@@ -1076,11 +1025,8 @@ export default function CopilotCockpitModal({
               </div>
 
               <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                <span className="text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200/80">
-                  {scenario === 'sales' ? '💼 Rozmowa handlowa' : scenario === 'callback' ? '🔄 Oddzwonienie' : scenario === 'complaint' ? '🛡️ Reklamacja' : '📋 Konsultacja'}
-                </span>
                 <span className="text-[10px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200/80">
-                  Karty: {battlecards.length}
+                  Podpowiedzi: {battlecards.length}
                 </span>
               </div>
             </div>
@@ -1088,12 +1034,12 @@ export default function CopilotCockpitModal({
             {/* DWA PANELE NA DESKTOPIE (GRID 12 KOLUMN) / JEDNA KOLUMNA NA TELEFONIE */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 flex-1 min-h-0">
               
-              {/* LEWA KOLUMNA: CHECKLISTA + SZYBKIE WSTRZYKIWANIE + ZAKOŃCZENIE */}
-              <div className="md:col-span-5 flex flex-col gap-4">
+              {/* LEWA KOLUMNA: CHECKLISTA CELÓW (PEŁNA WYSOKOŚĆ) + ZAKOŃCZENIE */}
+              <div className="md:col-span-5 flex flex-col justify-between gap-4 min-h-0">
                 
                 {/* CHECKLISTA CELÓW */}
-                <div className="bg-white rounded-2xl border border-surface-200 p-3.5 sm:p-4 md:p-5 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between text-xs sm:text-sm md:text-base font-bold text-surface-800">
+                <div className="bg-white rounded-2xl border border-surface-200 p-3.5 sm:p-4 md:p-5 shadow-xs space-y-3 flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between text-xs sm:text-sm md:text-base font-bold text-surface-800 shrink-0">
                     <span className="flex items-center gap-2">
                       <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-indigo-600" />
                       Kroki rozmowy (Checklista):
@@ -1103,30 +1049,42 @@ export default function CopilotCockpitModal({
                     </span>
                   </div>
 
-                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-0">
                     {checklist.map(item => (
-                      <button
+                      <div
                         key={item.id}
-                        type="button"
-                        onClick={() => handleToggleChecklist(item.id)}
-                        className={`w-full flex items-center gap-2.5 p-2.5 md:p-3 rounded-xl text-left text-xs sm:text-sm md:text-base transition cursor-pointer ${
+                        className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl transition ${
                           item.checked 
                             ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200/60' 
                             : 'bg-surface-50 hover:bg-surface-100 text-surface-800 font-medium border border-surface-200/80'
                         }`}
                       >
-                        {item.checked ? (
-                          <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
-                        )}
-                        <span className="break-words text-wrap leading-relaxed">{item.text}</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleChecklist(item.id)}
+                          className="flex-1 flex items-center gap-2 text-left text-xs sm:text-sm md:text-base cursor-pointer"
+                        >
+                          {item.checked ? (
+                            <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
+                          )}
+                          <span className="break-words text-wrap leading-relaxed">{item.text}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteChecklistItem(item.id)}
+                          className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-200 transition cursor-pointer shrink-0 ml-1.5"
+                          title="Usuń cel z listy"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                        </button>
+                      </div>
                     ))}
                   </div>
 
                   {/* Dodawanie własnego punktu */}
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2 pt-2 border-t border-surface-100 shrink-0">
                     <input
                       type="text"
                       placeholder="+ Wpisz własny punkt..."
@@ -1147,53 +1105,12 @@ export default function CopilotCockpitModal({
                   </div>
                 </div>
 
-                {/* SZYBKIE PRZYCISKI WSTRZYKIWANIA ARGUMENTÓW (1-TAP) */}
-                <div className="bg-surface-50/70 border border-surface-200 rounded-2xl p-3 sm:p-4 space-y-2">
-                  <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-surface-500">
-                    Szybkie karty argumentów (1-tap):
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => triggerObjectionCard('price')}
-                      className="p-2 sm:p-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <AlertTriangle className="w-3.5 h-3.5 md:w-4 md:h-4 text-amber-600 shrink-0" />
-                      <span>Za drogo</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => triggerObjectionCard('promo')}
-                      className="p-2 sm:p-2.5 rounded-xl border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900 text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <Zap className="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-600 shrink-0" />
-                      <span>Promocje (Czasowa)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => triggerObjectionCard('time')}
-                      className="p-2 sm:p-2.5 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600 shrink-0" />
-                      <span>Harmonogram</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => triggerObjectionCard('competitor')}
-                      className="p-2 sm:p-2.5 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 md:w-4 md:h-4 text-indigo-600 shrink-0" />
-                      <span>Parametry FAQ</span>
-                    </button>
-                  </div>
-                </div>
-
                 {/* ZAKOŃCZENIE POŁĄCZENIA */}
-                <div className="pt-1">
+                <div className="shrink-0">
                   <button
                     type="button"
                     onClick={handleEndCall}
-                    className="w-full py-3 md:py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm md:text-base transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                    className="w-full py-3.5 px-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm md:text-base transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-red-600/20"
                   >
                     <PhoneOff className="w-4 h-4 md:w-5 md:h-5" />
                     Zakończ rozmowę i przejdź do podsumowania
@@ -1202,78 +1119,64 @@ export default function CopilotCockpitModal({
 
               </div>
 
-              {/* PRAWA KOLUMNA: CZAT PODPOWIEDZI AI / OŚ CZASU (LIVE FEED) */}
-              <div className="md:col-span-7 flex flex-col min-h-0 bg-surface-50/80 border border-surface-200 rounded-3xl p-3 sm:p-4 md:p-5 shadow-xs">
+              {/* PRAWA KOLUMNA: STRUMIEŃ PODPOWIEDZI AI / FAKTY WIERSZ ZA WIERSZEM */}
+              <div className="md:col-span-7 flex flex-col min-h-0 bg-surface-50/90 border border-surface-200 rounded-3xl p-3 sm:p-4 md:p-5 shadow-xs">
                 
-                <div className="flex items-center justify-between pb-3 border-b border-surface-200/80 mb-3 shrink-0">
+                <div className="flex items-center justify-between pb-2.5 border-b border-surface-200/80 mb-2 shrink-0">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-indigo-600" />
-                    <h4 className="font-bold text-xs sm:text-sm md:text-base uppercase tracking-wider text-surface-800">
-                      Czat podpowiedzi AI na żywo (Oś czasu)
+                    <h4 className="font-bold text-xs sm:text-sm md:text-base uppercase tracking-wider text-surface-900">
+                      Podpowiedzi faktów na żywo
                     </h4>
                   </div>
                   <div className="text-[11px] sm:text-xs text-surface-400 font-medium">
-                    Przewijaj w górę do historii
+                    Strumień automatyczny
                   </div>
                 </div>
 
-                {/* SCROLLABLE FEED OF BATTLECARDS - CZYSTY TEKST WIERSZ ZA WIERSZEM */}
-                <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[380px] md:max-h-[500px]">
+                {/* SCROLLABLE FEED OF FACTS - CZYSTY TEKST WIERSZ ZA WIERSZEM */}
+                <div className="flex-1 overflow-y-auto pr-1 max-h-[420px] md:max-h-[580px] divide-y divide-surface-200/80">
                   {battlecards.map((card, idx) => {
                     const isLatest = idx === battlecards.length - 1;
                     return (
                       <div
                         key={card.id || `bc_${idx}`}
-                        className={`text-left transition-all duration-150 py-2.5 px-3 rounded-xl border ${
-                          isLatest
-                            ? 'bg-indigo-50/70 border-indigo-200/90 shadow-2xs'
-                            : 'bg-white/80 border-surface-200/70 hover:bg-white'
+                        className={`text-left py-2.5 transition-colors ${
+                          isLatest ? 'bg-indigo-50/50 px-2.5 rounded-xl border border-indigo-200/70 shadow-2xs' : 'px-1'
                         }`}
                       >
                         {/* WIERSZ NAGŁÓWKA: CZAS + ETYKIETA + TEMAT */}
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           {card.timestamp && (
-                            <span className="text-[11px] font-mono text-surface-400 font-medium shrink-0">
+                            <span className="text-[11px] font-mono text-surface-400 font-semibold shrink-0">
                               [{card.timestamp}]
                             </span>
                           )}
 
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                            card.category === 'OBJECTION'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                              : card.category === 'BUYING_SIGNAL'
-                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                : card.category === 'DEESCALATION'
-                                  ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                                  : 'bg-blue-100 text-blue-900 border border-blue-300'
-                          }`}>
-                            {card.category === 'OBJECTION' ? '⚠️ Obiekcja' : card.category === 'BUYING_SIGNAL' ? '⚡ Szansa' : card.category === 'DEESCALATION' ? '🛡️ Deeskalacja' : '📋 Fakty/Cennik'}
-                          </span>
-
-                          {card.faqSource && (
-                            <span className="text-[10px] font-semibold text-surface-500">
-                              ({card.faqSource === 'current' ? 'Promocje' : card.faqSource === 'confidential' ? '🔒 Baza Poufna' : 'Baza Stała'})
-                            </span>
-                          )}
-
-                          <span className="font-bold text-xs sm:text-sm md:text-base text-surface-900">
+                          <span className="font-bold text-xs sm:text-sm md:text-base text-surface-950 uppercase tracking-tight">
                             {card.heading}
                           </span>
 
+                          {card.faqSource && (
+                            <span className="text-[10px] font-medium text-surface-500">
+                              ({card.faqSource === 'current' ? 'Promocje' : card.faqSource === 'confidential' ? '🔒 Poufne' : 'Baza Stała'})
+                            </span>
+                          )}
+
                           {isLatest && (
-                            <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-full">
+                            <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
                               <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping"></span>
                               Nowe
                             </span>
                           )}
                         </div>
 
-                        {/* WIERSZE Z ARGUMENTAMI - ZWARTA LISTA WIERSZ ZA WIERSZEM */}
-                        <div className="pl-3 sm:pl-5 space-y-0.5 border-l-2 border-indigo-200/60 my-1">
+                        {/* WIERSZE Z FAKTAMI: ZWARTA LISTA BEZPOŚREDNIO WIERSZ PO WIERSZU */}
+                        <div className="space-y-1 pl-1">
                           {card.bullets.map((bullet, bIdx) => (
-                            <div key={bIdx} className="text-xs sm:text-sm md:text-base text-surface-800 leading-snug flex items-start gap-1.5">
-                              <span className="text-indigo-500 font-bold shrink-0">•</span>
-                              <span className="break-words font-medium">{bullet}</span>
+                            <div key={bIdx} className="text-xs sm:text-sm md:text-base text-surface-900 leading-snug flex items-start gap-2 font-medium">
+                              <span className="text-indigo-600 font-bold shrink-0 mt-0.5">•</span>
+                              <span className="break-words">{bullet}</span>
                             </div>
                           ))}
                         </div>
@@ -1284,7 +1187,7 @@ export default function CopilotCockpitModal({
                 </div>
 
                 <div className="pt-2 text-center text-[10px] sm:text-xs text-surface-400 border-t border-surface-200/60 mt-2 shrink-0">
-                  💡 EVA słucha w tle. Każde pytanie lub wypowiedź dopisuje nową kartę na dole osi czasu.
+                  💡 EVA słucha w tle i na bieżąco dopisuje fakty, ceny i parametry w powyższym oknie.
                 </div>
 
               </div>

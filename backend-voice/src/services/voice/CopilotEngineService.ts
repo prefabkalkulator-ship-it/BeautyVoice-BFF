@@ -445,12 +445,12 @@ export class CopilotEngineService {
         session.inboundAudioBuffer.push(audioChunk);
 
         // Ciągły trigger mowy (Continuous Speech Trigger):
-        // Jeśli wypowiedź trwa dłużej niż 2.2 sekundy (110 ramek audio) i jeszcze nie nastąpiła pauza,
+        // Jeśli wypowiedź trwa dłużej niż 1.3 sekundy (65 ramek audio) i jeszcze nie nastąpiła pauza,
         // nie czekamy w nieskończoność na ciszę - ewaluujemy intencję proaktywnie!
-        if (session.inboundAudioBuffer.length >= 110 && !session.evaluatingInbound) {
+        if (session.inboundAudioBuffer.length >= 65 && !session.evaluatingInbound) {
           session.evaluatingInbound = true;
           const bufferToEvaluate = Buffer.concat(session.inboundAudioBuffer);
-          // Zostawiamy ostatnie 15 ramek (300ms) dla zachowania kontekstu słów
+          // Zostawiamy ostatnie 15 ramek (300ms) dla zachowania płynnego kontekstu słów
           session.inboundAudioBuffer = session.inboundAudioBuffer.slice(-15);
 
           this.evaluateCustomerIntent(session, bufferToEvaluate)
@@ -458,8 +458,8 @@ export class CopilotEngineService {
               session.evaluatingInbound = false;
             });
         }
-      } else if (session.inboundAudioBuffer.length > 15 && (now - session.lastInboundAudioTime > 400)) {
-        // Skrócono czas oczekiwania na ciszę z 700ms do 400ms (natychmiastowa reakcja po pytaniu)
+      } else if (session.inboundAudioBuffer.length > 12 && (now - session.lastInboundAudioTime > 300)) {
+        // Skrócono czas oczekiwania na pauzę do 300ms dla natychmiastowej reakcji po pytaniu
         if (!session.evaluatingInbound) {
           session.evaluatingInbound = true;
           const bufferToEvaluate = Buffer.concat(session.inboundAudioBuffer);
@@ -504,11 +504,10 @@ export class CopilotEngineService {
         : 'Pierwsza rozmowa z klientem.';
 
       const systemPrompt = `
-Jesteś ultranowoczesnym asystentem czasu rzeczywistego (Live Call Copilot) wspomagającym handlowca podczas rozmowy telefonicznej.
-Twoim celem jest wygenerowanie TELEGRAFICZNEJ KARTY BOJOWEJ (Glanceable Battlecard) do odczytania w ułamku sekundy (<400ms scan time).
+Jesteś asystentem czasu rzeczywistego (Live Call Copilot) wspomagającym handlowca podczas rozmowy telefonicznej.
+Twoim celem jest natychmiastowe podpowiadanie TWARDYCH FAKTÓW (ceny, terminy, warianty, specyfikacja, rabaty) na ekranie handlowca.
 
 ROZMÓWCA: ${session.customerName} (${session.customerPhone})
-SCENARIUSZ ROZMOWY: ${session.scenario}
 ${historyContext}
 
 CENNIK PRODUKTÓW I USŁUG FIRMY:
@@ -524,25 +523,26 @@ BAZA WIEDZY POUFNA (Maksymalny rabat, koszty, próg negocjacyjny):
 ${confidentialLimits || 'Brak poufnych progów.'}
 
 WYMOGI FORMATOWANIA:
-- Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON:
+- Odpowiedz WYŁĄCZNIE obiektem JSON:
 {
-  "category": "OBJECTION" | "FACT_QUERY" | "BUYING_SIGNAL" | "DEESCALATION",
-  "heading": "Zwięzły tytuł sytuacji (maks. 5 słów)",
+  "heading": "Krótki temat pytania/sytuacji (maks. 5 słów, np. CENA DOMU MDM 58)",
   "bullets": [
-    "Pierwszy konkretny argument (3-5 słów)",
-    "Drugi argument (3-5 słów z konkretną liczbą/ceną/terminem)",
-    "Trzeci argument (3-5 słów z propozycją kolejnego kroku)"
+    "Pierwszy twardy fakt / liczba / cena / parametr",
+    "Kolejny fakt (tyle linii ile wymaga temat - od 1 do 8 linijek, bez lania wody)"
   ],
-  "faqSource": "current" | "permanent" | "confidential" | null,
-  "urgency": "high" | "medium" | "low"
+  "category": "OBJECTION" | "FACT_QUERY" | "BUYING_SIGNAL" | "DEESCALATION",
+  "faqSource": "current" | "permanent" | "confidential" | null
 }
-BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne hasła z twardymi liczbami.
+ZASADY MERYTORYCZNE:
+1. BRAK SZTYWNEGO LIMITU WIERSZY: Jeśli pytanie wymaga 1 faktu (np. gwarancja), daj 1 wiersz. Jeśli klient pyta o zakres lub ofertę, podaj 4-8 konkretnych punktów specyfikacji.
+2. Zwięzłe, wyczerpujące fakty z twardymi liczbami, cenami brutto/netto i terminami.
+3. BEZWZGLĘDNY ZAKAZ lania wody, wstępów i ogólników.
 `;
 
       // Pamięć ostatnich podpowiedzi (anty-powtórzeniowa)
-      const recentEmitted = (session.recentEmittedHints || []).slice(-6).map(h => `- ${h}`).join('\n');
+      const recentEmitted = (session.recentEmittedHints || []).slice(-8).map(h => `- ${h}`).join('\n');
       const antiRepetitionSection = recentEmitted
-        ? `\n\nOSTATNIO WYGENEROWANE PODPOWIEDZI (Handlowiec prawdopodobnie właśnie je odczytuje lub przekazał klientowi):\n${recentEmitted}\n\nBEZWZGLĘDNA ZASADA ANTY-POWTÓRZENIOWA:\nJeśli w nagraniu słyszysz handlowca powtarzającego lub czytającego powyższe fakty, ALBO klienta potwierdzającego ('tak', 'rozumiem', 'dobrze', 'aha'):\nNIE GENERUJ PONOWNIE TYCH SAMYCH FAKTÓW ANI TEJ SAMEJ KARTY! Zwróć pusty obiekt JSON: {}\nWygeneruj nową podpowiedź TYLKO JEŚLI klient zadał NOWE pytanie, padła nowa obiekcja lub handlowiec poruszył kolejny temat/produkt.`
+        ? `\n\nOSTATNIO WYGENEROWANE PODPOWIEDZI (Handlowiec prawdopodobnie właśnie je odczytuje lub przekazał klientowi):\n${recentEmitted}\n\nBEZWZGLĘDNA ZASADA ANTY-POWTÓRZENIOWA:\nJeśli w nagraniu słyszysz handlowca powtarzającego lub czytającego powyższe fakty, ALBO klienta potwierdzającego ('tak', 'rozumiem', 'dobrze', 'aha'):\nNIE GENERUJ PONOWNIE TYCH SAMYCH FAKTÓW! Zwróć pusty obiekt JSON: {}\nWygeneruj nową podpowiedź TYLKO JEŚLI klient zadał NOWE pytanie, padła nowa obiekcja lub poruszono kolejny temat.`
         : '';
 
       const userParts: any[] = [{ text: systemPrompt }];
@@ -555,7 +555,7 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
         });
       }
       userParts.push({
-        text: `Odsłuchaj nagranie wypowiedzi z rozmowy (może mówić klient lub handlowiec). Zidentyfikuj intencję, pytanie, ofertę lub obiekcję:\n- Jeśli mówi klient: podaj zbijanie obiekcji lub twarde fakty z bazy FAQ.\n- Jeśli mówi handlowiec (proponuje produkt/wariant): podaj proaktywnie twarde parametry, cenę, warianty i aktualny rabat z cennika/FAQ dla tego produktu.\n- Jeśli nagranie zawiera jedynie powtórzenie ostatnich faktów lub potakiwanie: ZWRÓĆ PUSTY OBIEKT JSON: {}\n- Jeśli pada deklaracja zakupu: podaj kolejny krok do domknięcia.${antiRepetitionSection}`
+        text: `Odsłuchaj nagranie wypowiedzi z rozmowy (klient lub handlowiec). Zidentyfikuj intencję, pytanie, ofertę lub obiekcję:\n- Jeśli mówi klient: podaj natychmiast twarde fakty, ceny, terminy lub zbijanie obiekcji z bazy FAQ/cennika.\n- Jeśli mówi handlowiec: podaj proaktywnie twarde parametry, specyfikację, warianty i aktualny rabat z bazy wiedzy dla omawianego produktu.\n- Jeśli nagranie zawiera jedynie powtórzenie ostatnich faktów lub potakiwanie: ZWRÓĆ PUSTY OBIEKT JSON: {}\n- Jeśli pada deklaracja zakupu: podaj kolejny krok do domknięcia.${antiRepetitionSection}`
       });
 
       const response = await this.ai.models.generateContent({
@@ -567,28 +567,40 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
           }
         ],
         config: {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingBudget: 0
+          }
         }
       });
 
       const responseText = response.text?.trim() || '{}';
       const battlecard = JSON.parse(responseText);
 
-      if (battlecard && battlecard.heading && Array.isArray(battlecard.bullets) && battlecard.bullets.length > 0) {
+      const heading = (battlecard.heading || battlecard.topic || '').trim();
+      const bullets: string[] = Array.isArray(battlecard.bullets) 
+        ? battlecard.bullets 
+        : (Array.isArray(battlecard.facts) ? battlecard.facts : []);
+
+      if (heading && bullets.length > 0) {
         // Sprawdź czy to nie jest duplikat ostatnio wyświetlonych faktów
-        const cleanHeading = battlecard.heading.trim().toLowerCase();
+        const cleanHeading = heading.toLowerCase();
         const isDuplicate = (session.recentEmittedHints || []).some(hint => {
           const hLow = hint.trim().toLowerCase();
           return hLow === cleanHeading || (cleanHeading.length > 8 && hLow.includes(cleanHeading));
         });
 
         if (isDuplicate) {
-          console.log(`[CopilotEngine] Pominięto duplikat karty: "${battlecard.heading}"`);
+          console.log(`[CopilotEngine] Pominięto duplikat karty: "${heading}"`);
           return;
         }
 
         const cardWithMeta: BattlecardPayload = {
-          ...battlecard,
+          category: battlecard.category || 'FACT_QUERY',
+          heading,
+          bullets: bullets.map((b: any) => String(b).trim()).filter(Boolean),
+          faqSource: battlecard.faqSource || null,
+          urgency: battlecard.urgency || 'medium',
           id: `bc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           timestamp: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
         };
@@ -601,8 +613,8 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
 
         if (!session.recentEmittedHints) session.recentEmittedHints = [];
         session.recentEmittedHints.push(cardWithMeta.heading, ...cardWithMeta.bullets);
-        if (session.recentEmittedHints.length > 15) {
-          session.recentEmittedHints = session.recentEmittedHints.slice(-15);
+        if (session.recentEmittedHints.length > 25) {
+          session.recentEmittedHints = session.recentEmittedHints.slice(-25);
         }
 
         this.broadcastToUi(session, {
@@ -610,7 +622,7 @@ BEZWZGLĘDNY ZAKAZ ścian tekstu i pełnych zdań. Wyłącznie telegraficzne has
           battlecard: cardWithMeta,
           battlecards: session.battlecards
         });
-        console.log(`🎯 [CopilotEngine] Wygenerowano kartę bojową #${session.battlecards.length}: "${cardWithMeta.heading}" (źródło: ${cardWithMeta.faqSource || 'ogólne'})`);
+        console.log(`🎯 [CopilotEngine] Wygenerowano podpowiedź #${session.battlecards.length}: "${cardWithMeta.heading}" (${cardWithMeta.bullets.length} faktów, źródło: ${cardWithMeta.faqSource || 'ogólne'})`);
       }
     } catch (err: any) {
       console.warn('[CopilotEngine] Błąd generowania karty bojowej:', err.message);
