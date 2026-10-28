@@ -89,6 +89,14 @@ export default function Settings() {
     subPlan.includes('expert') ||
     ((subPlan === 'beta_pilot' || subPlan === 'pilot') && tenant?.betaNotes?.includes('Osobisty Ekspert'));
 
+  const isB2BPremium = 
+    subPlan === 'premium' || 
+    ((subPlan === 'beta_pilot' || subPlan === 'pilot') && !tenant?.betaNotes?.includes('Osobisty')) ||
+    Boolean(tenant?.betaNotes?.includes('Premium'));
+
+  // Prezentacja numeru stacjonarnego tylko w pakietach: Osobisty Ekspert i B2B Premium
+  const isEligibleForLandline = isPersonalExpert || isB2BPremium;
+
   // Nowo dodane pola: ścieżka hybrydowa, zasięg, odmowa SMS, kwalifikacja
   const [bookingExternalUrl, setBookingExternalUrl] = useState('');
   const [serviceAreaDescription, setServiceAreaDescription] = useState('');
