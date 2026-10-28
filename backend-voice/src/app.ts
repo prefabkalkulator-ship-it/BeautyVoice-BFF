@@ -580,6 +580,9 @@ app.put('/api/tenant', async (req, res) => {
         leadQuestion3: req.body.leadQuestion3 !== undefined ? req.body.leadQuestion3 : undefined,
         assignedPhoneNumber: req.body.assignedPhoneNumber !== undefined 
           ? (req.body.assignedPhoneNumber ? String(req.body.assignedPhoneNumber).trim() : null) 
+          : undefined,
+        companyLandlinePhone: req.body.companyLandlinePhone !== undefined 
+          ? (req.body.companyLandlinePhone ? String(req.body.companyLandlinePhone).trim() : null) 
           : undefined
       }
     });
@@ -2891,12 +2894,12 @@ app.post('/api/copilot/start-call', async (req, res) => {
       return res.status(400).json({ error: 'Pole customerPhone jest wymagane' });
     }
 
-    // Weryfikacja CLI: Centrala wymaga zweryfikowanego dedykowanego numeru stacjonarnego firmy (ochrona przed spoofingiem UKE)
-    const cleanAssigned = (tenant.assignedPhoneNumber || '').replace(/[\s\-\+]/g, '');
-    const isDemoNumber = !cleanAssigned || cleanAssigned === '48343433088' || cleanAssigned.includes('343433088');
-    if (isDemoNumber) {
+    // Weryfikacja CLI: Ścieżka centrali automatycznej WYMAGA potwierdzonego numeru stacjonarnego firmy
+    const cleanLandline = (tenant.companyLandlinePhone || '').replace(/[\s\-\+]/g, '');
+    const hasLandline = Boolean(cleanLandline && cleanLandline !== '48343433088' && !cleanLandline.includes('343433088'));
+    if (!hasLandline) {
       return res.status(400).json({ 
-        error: 'Brak dedykowanego numeru stacjonarnego firmy. W centrali automatycznej klient widziałby numer DEMO (+48 34 343 30 88). Podaj numer stacjonarny swojej firmy w Ustawieniach Asystenta lub skorzystaj z trybu Konferencji telefonicznej (gdzie klient widzi Twój bezpośredni numer komórkowy z karty SIM).' 
+        error: 'Ścieżka „Centrala automatyczna” jest zablokowana. Twoja firma nie posiada wprowadzonego numeru stacjonarnego. Skonfiguruj numer stacjonarny w Ustawieniach Asystenta (dostępny w pakietach Osobisty Ekspert i B2B Premium) lub skorzystaj z trybu Konferencji telefonicznej.' 
       });
     }
 

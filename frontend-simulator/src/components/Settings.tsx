@@ -80,6 +80,7 @@ export default function Settings() {
   const [contactEmail, setContactEmail] = useState('');
   const [emailPublicForAi, setEmailPublicForAi] = useState(false);
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState('');
+  const [companyLandlinePhone, setCompanyLandlinePhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const subPlan = (tenant?.subscription?.planName || '').toLowerCase();
@@ -168,6 +169,7 @@ export default function Settings() {
         setContactEmail(tData.contactEmail || '');
         setEmailPublicForAi(tData.emailPublicForAi || false);
         setAssignedPhoneNumber(tData.assignedPhoneNumber || '');
+        setCompanyLandlinePhone(tData.companyLandlinePhone || '');
 
         setBookingExternalUrl(tData.bookingExternalUrl || '');
         setServiceAreaDescription(tData.serviceAreaDescription || '');
@@ -263,7 +265,7 @@ export default function Settings() {
           leadQuestion1,
           leadQuestion2,
           leadQuestion3,
-          assignedPhoneNumber: assignedPhoneNumber ? assignedPhoneNumber.trim() : null
+          companyLandlinePhone: companyLandlinePhone ? companyLandlinePhone.trim() : null
         })
       });
       alert('Zapisano ustawienia.');
@@ -608,6 +610,30 @@ export default function Settings() {
                 />
               </div>
             </div>
+
+            {/* Dedykowany numer stacjonarny firmy - widoczny WYŁĄCZNIE w pakiecie B2B Premium */}
+            {isEligibleForLandline && (
+              <div className="p-3.5 bg-indigo-50/40 border border-indigo-200 rounded-2xl space-y-1.5 animate-in fade-in">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="block text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                    ☎️ Numer Stacjonarny Firmy (Prezentacja Caller ID w Centrali Copilot)
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-700 bg-white border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                    Pakiet B2B Premium
+                  </span>
+                </div>
+                <input 
+                  type="text" 
+                  value={companyLandlinePhone} 
+                  onChange={e => setCompanyLandlinePhone(e.target.value)}
+                  placeholder="np. +48 22 123 45 67 (oficjalny stacjonarny numer Twojej firmy)"
+                  className="w-full rounded-xl border border-surface-200 p-2.5 bg-white outline-none focus:border-indigo-600 text-surface-900 font-mono text-sm shadow-2xs font-medium"
+                />
+                <p className="text-[11px] text-surface-600 leading-snug">
+                  Ten numer stacjonarny wyświetla się u klienta przy połączeniach przez Centralę automatyczną w module Live Copilot.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { id: 'solo', title: 'Solo (Przedsiębiorca)', desc: 'Jeden kalendarz główny, jeden usługodawca.' },
@@ -664,6 +690,30 @@ export default function Settings() {
                   <option value="FEMALE">Kobieta (pani Anna, jej działalności)</option>
                 </select>
               </div>
+
+              {/* Numer stacjonarny biura - widoczny WYŁĄCZNIE w pakiecie Osobisty Ekspert */}
+              {isEligibleForLandline && (
+                <div className="md:col-span-2 p-3.5 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-1.5 animate-in fade-in">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <label className="block text-xs font-bold text-purple-950 uppercase tracking-wider">
+                      ☎️ Numer Stacjonarny Biura / Kancelarii (Prezentacja Caller ID w Centrali Copilot)
+                    </label>
+                    <span className="text-[10px] font-bold text-purple-700 bg-white border border-purple-200 px-2.5 py-0.5 rounded-full">
+                      Pakiet Osobisty Ekspert
+                    </span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={companyLandlinePhone} 
+                    onChange={e => setCompanyLandlinePhone(e.target.value)}
+                    placeholder="np. +48 22 123 45 67 (stacjonarny numer Twojej kancelarii / biura)"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 bg-white outline-none focus:border-purple-600 text-surface-900 font-mono text-sm shadow-2xs font-medium"
+                  />
+                  <p className="text-[11px] text-surface-600 leading-snug">
+                    Numer stacjonarny wyświetlany klientowi, gdy wykonujesz połączenie ze wspomaganiem Live Copilot przez Centralę automatyczną.
+                  </p>
+                </div>
+              )}
 
               <div className="md:col-span-2">
                 <div className="text-sm sm:text-[16.5px] text-surface-800 bg-amber-50/90 p-4 sm:p-5 rounded-2xl border-2 border-amber-300/80 space-y-2.5 break-words shadow-2xs">
@@ -1805,38 +1855,18 @@ export default function Settings() {
               </div>
             </div>
 
-            <div className="md:col-span-2 mt-2 bg-surface-50/70 p-4 rounded-2xl border border-surface-200/80 space-y-2">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <label className="block text-sm font-bold text-surface-800">
-                  Numer Stacjonarny Firmy / Wirtualny Numer SIP &amp; Caller ID
-                </label>
-                {assignedPhoneNumber && !assignedPhoneNumber.includes('343433088') ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Dedykowany numer stacjonarny aktywny
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full">
-                    Wspólny numer testowy DEMO (+48 34 343 30 88)
-                  </span>
-                )}
-              </div>
-
+            <div className="md:col-span-2 mt-2">
+              <label className="block text-sm font-medium text-surface-700 mb-1">Twój Wirtualny Numer Telefonu (SIP / SMS)</label>
               <input 
                 type="text" 
-                value={assignedPhoneNumber} 
-                onChange={e => setAssignedPhoneNumber(e.target.value)}
-                placeholder="np. +48 22 123 45 67 (lub numer SIP przypisany do konta)"
-                className="w-full rounded-xl border border-surface-200 p-2.5 bg-white outline-none focus:border-indigo-600 text-surface-900 font-mono text-sm shadow-2xs"
+                value={assignedPhoneNumber || 'Brak przypisanego numeru - Skontaktuj się z obsługą'} 
+                readOnly
+                className="w-full rounded-xl border border-surface-200 p-2.5 bg-surface-50 outline-none text-surface-500 font-mono text-sm"
               />
-
-              <div className="text-xs text-surface-600 leading-relaxed space-y-1">
-                <p>
-                  <strong>Prezentacja numeru (Caller ID) w trybie Centrali Automatycznej Copilota:</strong> Ten numer stacjonarny wyświetla się u klienta, gdy wykonujesz połączenie z poziomu panelu.
-                </p>
-                <p className="text-surface-500">
-                  ℹ️ Zgodnie z Prawem Komunikacji Elektronicznej (PKE) i przepisami UKE o zwalczaniu spoofingu, operator telekomunikacyjny wymaga, aby prezentowany numer stacjonarny był zarejestrowany na Twoją firmę lub przydzielony w pakiecie B2B Premium / Ekspert. Jeśli Twoje konto korzysta z numeru testowego DEMO, w module Live Copilot rekomendujemy korzystanie z trybu <strong>„📞 Konferencja telefoniczna”</strong>, w którym klient widzi Twój bezpośredni numer komórkowy z karty SIM.
-                </p>
+              <div className="text-xs text-surface-500 mt-1 leading-relaxed">
+                {businessProfile === 'personal' 
+                  ? 'Na ten numer ustawiasz przekierowanie w telefonie (*21* lub *61*). Asystent odbierze połączenie, gdy nie możesz rozmawiać.'
+                  : 'Klienci firmy powinni dzwonić pod ten numer. Numery są przypisywane indywidualnie dla każdego najemcy.'}
               </div>
             </div>
           </div>

@@ -16,6 +16,7 @@ model Tenant {
   name                String
   phoneNumber         String         @unique
   assignedPhoneNumber String?        @unique // Wirtualny numer SIP dla tego salonu
+  companyLandlinePhone String?       // Numer stacjonarny firmy do prezentacji CLI w Centrali Copilot
   businessProfile     String         @default("solo")
   bookingMode         String         @default("hourly")
   aiVoice             String         @default("Kore")

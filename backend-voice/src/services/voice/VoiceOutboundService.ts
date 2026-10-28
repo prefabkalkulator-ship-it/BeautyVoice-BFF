@@ -158,13 +158,21 @@ export class VoiceOutboundService {
       const to = repPhone.startsWith('+') ? repPhone : '+' + repPhone;
       const custTo = customerPhone.startsWith('+') ? customerPhone : '+' + customerPhone;
 
-      // 1. Numer Centrali Twilio (oficjalna zweryfikowana linia Twilio)
+      // 1. Numer Centrali Twilio (oficjalna zweryfikowana linia Twilio do połączenia z Handlowcem)
       const centralaCallerId = process.env.TWILIO_CALLER_ID || '+48343433088';
 
       // 2. Caller ID prezentowany KLIENTOWI na Leg 2:
-      // Używamy dedykowanego wirtualnego numeru technicznego tenanta (tenant.assignedPhoneNumber),
-      // a w przypadku jego braku - domyślnego numeru centrali (centralaCallerId).
-      const customerLegCallerId = tenant.assignedPhoneNumber || centralaCallerId;
+      // Musi być zarejestrowanym numerem stacjonarnym firmy (tenant.companyLandlinePhone).
+      // Zgodnie z wytycznymi: jeśli brak numeru stacjonarnego firmy, ścieżka jest bezwzględnie zablokowana i NIE MA awaryjnego przełączania na DEMO (+48343433088).
+      const landlineRaw = (tenant.companyLandlinePhone || '').trim();
+      const cleanLandline = landlineRaw.replace(/[\s\-\+]/g, '');
+      if (!cleanLandline || cleanLandline === '48343433088' || cleanLandline.includes('343433088')) {
+        return { 
+          success: false, 
+          error: 'Brak zweryfikowanego numeru stacjonarnego firmy. Połączenie przez centralę automatyczną jest zablokowane.' 
+        };
+      }
+      const customerLegCallerId = landlineRaw.startsWith('+') ? landlineRaw : '+' + landlineRaw;
 
       const client = twilio(this.twilioSid, this.twilioToken);
 
@@ -177,14 +185,7 @@ export class VoiceOutboundService {
         tenant.assignedPhoneNumber
       ].filter((n): n is string => Boolean(n) && (n.startsWith('+') ? n : '+' + n) !== to)));
 
-      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Handlowca (${to}) z CallerID centrali, Leg 2 do Klienta (${custTo}) z CallerID: ${customerLegCallerId}`);
-
-      // Fallback w TwiML na wypadek problemów z połączeniem z numeru wirtualnego:
-      const fallbackDial = (customerLegCallerId !== centralaCallerId && centralaCallerId !== custTo) ? `
-              <Say language="pl-PL">Przełączam na linię rezerwową centrali.</Say>
-              <Dial callerId="${centralaCallerId}" timeout="35">
-                <Number>${custTo}</Number>
-              </Dial>` : '';
+      console.log(`[VoiceOutbound] Inicjowanie 2-Leg Copilot Bridge: Leg 1 do Handlowca (${to}) z CallerID centrali, Leg 2 do Klienta (${custTo}) z oficjalnym CallerID stacjonarnym: ${customerLegCallerId}`);
 
       const twiml = `
         <Response>
@@ -196,10 +197,9 @@ export class VoiceOutboundService {
             </Stream>
           </Start>
           <Say language="pl-PL">Łączę z klientem. Copilot na żywo jest aktywny.</Say>
-          <Dial callerId="${customerLegCallerId}" timeout="30">
+          <Dial callerId="${customerLegCallerId}" timeout="35">
             <Number>${custTo}</Number>
           </Dial>
-          ${fallbackDial}
           <Say language="pl-PL">Nie udało się połączyć z klientem. Linia jest zajęta lub nie odpowiada.</Say>
         </Response>
       `;

@@ -152,15 +152,16 @@ export default function CopilotCockpitModal({
   const [isRepSpeaking, setIsRepSpeaking] = useState(false);
   const [ownerPhone, setOwnerPhone] = useState('');
   const [assignedPhone, setAssignedPhone] = useState('');
+  const [companyLandlinePhone, setCompanyLandlinePhone] = useState('');
   const [quickFaqModalOpen, setQuickFaqModalOpen] = useState(false);
   const [faqTab, setFaqTab] = useState<'current' | 'permanent' | 'confidential'>('current');
   const [faqs, setFaqs] = useState<any[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isDraftLoading, setIsDraftLoading] = useState(false);
 
-  // Weryfikacja CLI: czy salon posiada dedykowany numer stacjonarny inny niż współdzielona centrala DEMO
-  const cleanAssigned = (assignedPhone || '').replace(/[\s\-\+]/g, '');
-  const hasCustomLandline = Boolean(cleanAssigned && cleanAssigned !== '48343433088' && !cleanAssigned.includes('343433088'));
+  // Weryfikacja CLI: Centrala wymaga zarejestrowanego numeru stacjonarnego firmy (bez awaryjnego DEMO)
+  const cleanLandline = (companyLandlinePhone || '').replace(/[\s\-\+]/g, '');
+  const hasConfirmedLandline = Boolean(cleanLandline && cleanLandline !== '48343433088' && !cleanLandline.includes('343433088'));
 
   // Notatki powoławcze i zadanie CRM
   const [postCallNote, setPostCallNote] = useState('');
@@ -277,6 +278,7 @@ export default function CopilotCockpitModal({
         .then(t => {
           if (t?.phoneNumber) setOwnerPhone(t.phoneNumber);
           if (t?.assignedPhoneNumber) setAssignedPhone(t.assignedPhoneNumber);
+          if (t?.companyLandlinePhone) setCompanyLandlinePhone(t.companyLandlinePhone);
         })
         .catch(() => {});
 
@@ -568,8 +570,8 @@ export default function CopilotCockpitModal({
   };
 
   const handleStartCopilotCall = async () => {
-    if (!hasCustomLandline) {
-      toast.error('Brak dedykowanego numeru stacjonarnego firmy. Podaj numer w Ustawieniach Asystenta lub skorzystaj z trybu Konferencji.', { duration: 5000 });
+    if (!hasConfirmedLandline) {
+      toast.error('Ścieżka centrali automatycznej jest zablokowana. Wprowadź numer stacjonarny firmy w Ustawieniach Asystenta lub skorzystaj z Konferencji.', { duration: 6000 });
       return;
     }
 
@@ -741,13 +743,13 @@ export default function CopilotCockpitModal({
                 <Headphones className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span className="flex items-center gap-1.5 flex-wrap justify-center">
                   <span>⚡ Centrala automatyczna</span>
-                  {hasCustomLandline ? (
+                  {hasConfirmedLandline ? (
                     <span className="text-[10px] md:text-xs bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
-                      {assignedPhone}
+                      {companyLandlinePhone}
                     </span>
                   ) : (
-                    <span className="text-[10px] md:text-xs bg-amber-100 text-amber-800 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Wymaga numeru stacjonarnego
+                    <span className="text-[10px] md:text-xs bg-red-100 text-red-800 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Zablokowana (Brak stacjonarnego)
                     </span>
                   )}
                 </span>
@@ -766,17 +768,17 @@ export default function CopilotCockpitModal({
                   3. Kliknij <strong>„Scal połączenia”</strong> (Konferencja GSM). EVA połączy się <strong>w 100% bezgłośnie</strong> i będzie podpowiadać na bieżąco w poniższym czacie!
                 </div>
               </div>
-            ) : !hasCustomLandline ? (
-              <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
-                <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-amber-600 shrink-0 mt-0.5" />
-                <div className="text-xs sm:text-sm md:text-base text-amber-950 leading-relaxed">
-                  <strong className="font-bold block mb-1 text-amber-900">
-                    ⚠️ Brak zweryfikowanego numeru stacjonarnego firmy
+            ) : !hasConfirmedLandline ? (
+              <div className="bg-red-50/90 border border-red-200 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
+                <AlertCircle className="w-5 h-5 md:w-6 md:h-6 text-red-600 shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm md:text-base text-red-950 leading-relaxed">
+                  <strong className="font-bold block mb-1 text-red-900">
+                    🚫 Ścieżka centrali automatycznej jest zablokowana
                   </strong>
-                  W trybie centrali automatycznej klient zobaczyłby numer współdzielonej centrali testowej DEMO (+48 34 343 30 88).<br/>
-                  Zgodnie z przepisami prawa telekomunikacyjnego o zwalczaniu nadużyć (ochrona przed spoofingiem), centrala może prezentować wyłącznie zweryfikowany numer stacjonarny Twojej firmy skonfigurowany w <strong>Ustawieniach Asystenta</strong> (Pakiet Premium / Ekspert).<br/>
-                  <span className="font-semibold text-amber-900 mt-2 block">
-                    👉 Rekomendujemy tryb <strong>„📞 Konferencja telefoniczna”</strong> — klient odbiera połączenie bezpośrednio z Twojego numeru komórkowego z karty SIM bez żadnego spoofingu!
+                  Twoje konto nie posiada wprowadzonego numeru stacjonarnego firmy. Aby wykluczyć ryzyko wyświetlenia klientowi numeru centrali testowej DEMO (+48 34 343 30 88), realizacja połączeń przez centralę automatyczną została zablokowana.<br/>
+                  Dodaj numer stacjonarny w <strong>Ustawieniach Asystenta</strong> (funkcja dostępna w pakietach Osobisty Ekspert i B2B Premium) lub skorzystaj z rekomendowanego trybu Konferencji telefonicznej.<br/>
+                  <span className="font-semibold text-emerald-950 mt-2 block">
+                    👉 Skorzystaj z trybu <strong>„📞 Konferencja telefoniczna”</strong> — klient odbiera połączenie bezpośrednio z Twojego numeru komórkowego z karty SIM!
                   </span>
                   <button
                     type="button"
@@ -792,8 +794,8 @@ export default function CopilotCockpitModal({
               <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5">
                 <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 text-indigo-600 shrink-0 mt-0.5" />
                 <div className="text-xs sm:text-sm md:text-base text-indigo-950 leading-relaxed">
-                  <strong className="font-bold block mb-1 text-indigo-900">Połączenie przez Centralę automatyczną ({assignedPhone}):</strong>
-                  Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system automatycznie połączy Cię z klientem, prezentując numer <strong>{assignedPhone}</strong>. Copilot będzie w czasie rzeczywistym podpowiadał fakty na ekranie!
+                  <strong className="font-bold block mb-1 text-indigo-900">Połączenie przez Centralę automatyczną ({companyLandlinePhone}):</strong>
+                  Gdy klikniesz poniższy przycisk, centrala najpierw zadzwoni na Twój telefon firmowy (<strong>{ownerPhone || 'Twój numer'}</strong>). Odbierz rozmowę, a system automatycznie połączy Cię z klientem, prezentując oficjalny numer stacjonarny Twojej firmy: <strong>{companyLandlinePhone}</strong>. Copilot będzie w czasie rzeczywistym podpowiadał fakty na ekranie!
                 </div>
               </div>
             )}
@@ -872,25 +874,25 @@ export default function CopilotCockpitModal({
                   <Headphones className="w-5 h-5 md:w-6 md:h-6" />
                   Zadzwoń z Copilotem (Mostek GSM)
                 </button>
-              ) : hasCustomLandline ? (
+              ) : hasConfirmedLandline ? (
                 <button
                   type="button"
                   onClick={handleStartCopilotCall}
                   className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-sm md:text-base transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-3 cursor-pointer"
                 >
                   <PhoneCall className="w-5 h-5 md:w-6 md:h-6" />
-                  Zadzwoń przez centralę automatyczną ({assignedPhone})
+                  Zadzwoń przez centralę automatyczną ({companyLandlinePhone})
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => {
-                    toast.error('Brak dedykowanego numeru stacjonarnego firmy. Podaj numer w Ustawieniach Asystenta lub wybierz Konferencję telefoniczną.', { duration: 5000 });
+                    toast.error('Ścieżka centrali automatycznej jest zablokowana. Wprowadź numer stacjonarny firmy w Ustawieniach Asystenta lub wybierz Konferencję telefoniczną.', { duration: 6000 });
                   }}
-                  className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-surface-100 hover:bg-surface-200 text-surface-600 font-bold text-xs sm:text-sm md:text-base border border-surface-300 transition flex items-center justify-center gap-2.5 cursor-pointer shadow-2xs"
+                  className="w-full py-4 md:py-4.5 px-6 rounded-2xl bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs sm:text-sm md:text-base border border-red-200 transition flex items-center justify-center gap-2.5 cursor-not-allowed shadow-2xs"
                 >
-                  <Lock className="w-4 h-4 md:w-5 md:h-5 text-amber-600 shrink-0" />
-                  <span>Wymagany numer stacjonarny firmy (Przejdź do Ustawień lub wybierz Konferencję)</span>
+                  <Lock className="w-4 h-4 md:w-5 md:h-5 text-red-600 shrink-0" />
+                  <span>Ścieżka zablokowana • Wymagany numer stacjonarny firmy</span>
                 </button>
               )}
             </div>
