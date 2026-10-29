@@ -654,6 +654,7 @@ export default function Guide() {
               </p>
               <ul className="text-xs text-gold-900 space-y-1.5">
                 <li>• <strong>Aż 300 darmowych minut</strong> (preferencyjna stawka <strong>0,50 zł/min</strong>).</li>
+                <li>• <strong>⚡ Live Call Copilot (Cichy Sufler w Czasie Rzeczywistym):</strong> asystent na żywo podczas rozmów handlowych. Podpowiada ceny, wiedzę i argumenty linijka po linijce, prowadzi checklistę celów i generuje notatkę AI do CRM.</li>
                 <li>• <strong>💼 Inteligentna Kwalifikacja Sprawy i Budżetu:</strong> asystent wypytuje o profil sprawy, zakres prac, budżet i informuje o opłatach (np. bezpłatna analiza dokumentów vs 200 zł za wizję w terenie).</li>
                 <li>• <strong>📍 Kontrola Rejonu Obsługi:</strong> żelazne pilnowanie zasięgu dojazdów (np. Częstochowa + 100 km) z przyciskiem <strong>„Odwołaj (SMS)”</strong> w historii rozmów.</li>
                 <li>• <strong>🎓 Audyt Rozmów i Doszkalanie (1-klik do FAQ):</strong> błyskawiczne przenoszenie nowych wniosków i ustaleń z rozmów do Bazy Wiedzy.</li>
@@ -813,34 +814,63 @@ export default function Guide() {
     {
       id: 'personal-copilot-guide',
       category: 'expert',
-      question: 'Jak działa Copilot Rozmów na żywo i prezentacja numeru telefonu?',
-      summary: 'Dzwonisz jednym kliknięciem z komputera lub telefonu. Centrala łączy Cię z klientem, prezentując numer techniczny Twojej firmy, a oddzwonienia trafiają na Twój numer firmowy.',
+      question: 'Jak działa Copilot Rozmów na żywo (Cichy Sufler) i dwa tryby połączeń?',
+      summary: 'Dwa tryby pracy: Konferencja telefoniczna z Twojego numeru komórkowego SIM lub Centrala automatyczna z prezentacją firmowego numeru stacjonarnego. Podpowiedzi linijka po linijce, checklista celów i notatka AI do CRM.',
       actionPath: '/dashboard/customers',
       actionLabel: 'Przejdź do Kartoteki i Copilota',
       answer: (
-        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
           <p>
-            <strong>EVA Live Call Copilot</strong> to inteligentny asystent wspierający Cię w trakcie rozmowy telefonicznej z klientem. Działa w modelu bezpiecznego mostka centrali:
+            <strong>EVA Live Call Copilot</strong> to Twój cichy asystent wspierający Cię w czasie rzeczywistym podczas rozmowy handlowej z klientem. <strong>0% głosu AI do klienta</strong> – asystent jedynie nasłuchuje na dedykowanej linii i wyświetla na Twoim ekranie (laptop, tablet, smartfon) gotowe fakty, ceny i argumenty.
           </p>
+
           <div className="grid sm:grid-cols-2 gap-3 pt-1">
-            <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200 text-xs">
-              <strong className="text-indigo-950 block mb-1">📞 Inicjalizacja połączenia:</strong>
-              Klikasz <em>„Zadzwoń z Copilotem”</em> w karcie klienta (najwygodniej na komputerze). Centrala najpierw dzwoni na Twój telefon firmowy, a po podniesieniu słuchawki natychmiast łączy Cię z klientem.
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs">
+              <strong className="text-indigo-950 block mb-1.5 flex items-center gap-1.5">
+                📞 Tryb 1: Konferencja telefoniczna (Twój numer komórkowy SIM)
+              </strong>
+              <p className="text-surface-700 mb-2">
+                Idealny w podróży i pracy mobilnej. <strong>Klient widzi Twój własny numer telefonu komórkowego</strong> (100% zaufania i zero blokad antyspamowych).
+              </p>
+              <ol className="list-decimal pl-4 space-y-1 text-surface-600">
+                <li>System dzwoni na Twój telefon komórkowy – odbierasz.</li>
+                <li>Na telefonie klikasz <em>„+ Dodaj połączenie”</em> i wybierasz klienta.</li>
+                <li>Po odebraniu przez klienta klikasz <em>„Scal połączenia”</em> (konferencja trójstronna).</li>
+              </ol>
             </div>
-            <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 text-xs">
-              <strong className="text-purple-950 block mb-1">📱 Jaki numer widzi klient?</strong>
-              Klient widzi na ekranie dedykowany numer techniczny Twojej firmy <code className="font-mono font-bold text-surface-900">{assignedPhone || 'przypisany do konta'}</code> (certyfikowany numer komórkowy/VoIP, który nie jest blokowany przez filtry antyspoofingowe operatorów GSM).
+
+            <div className="p-3.5 bg-purple-50/70 rounded-2xl border border-purple-200 text-xs">
+              <strong className="text-purple-950 block mb-1.5 flex items-center gap-1.5">
+                ⚡ Tryb 2: Centrala automatyczna (Numer stacjonarny firmy)
+              </strong>
+              <p className="text-surface-700 mb-2">
+                Wygodne połączenie z biura bez konieczności scalania na telefonie komórkowym. Centrala łączy Cię z klientem automatycznie.
+              </p>
+              <div className="space-y-1.5 text-surface-600">
+                <p>
+                  <strong>Prezentacja Caller ID:</strong> Klient widzi na ekranie oficjalny numer stacjonarny Twojej firmy, który został zweryfikowany kodem DTMF w Ustawieniach Asystenta (zgodność z przepisami UKE i ochroną przed spoofingiem).
+                </p>
+                <p className="text-[11px] text-purple-900 bg-purple-100/60 p-1.5 rounded-lg">
+                  Wymaga autoryzacji numeru stacjonarnego w Ustawieniach Asystenta.
+                </p>
+              </div>
             </div>
           </div>
-          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs space-y-2">
-            <strong className="text-surface-900 block">🔄 Co się dzieje, gdy klient oddzwania na ten numer?</strong>
-            <p className="text-surface-600">
-              Gdy klient oddzwania na numer techniczny, centrala automatycznie łączy go z Twoim telefonem firmowym. Jeśli w tym czasie jesteś na spotkaniu lub w salonie (i masz włączone przekierowanie na telefonie), połączenie płynnie przejmuje Asystent EVA. Dzięki automatycznemu wykrywaniu nagłówka Diversion centrala zapobiega powstawaniu pętli połączeń.
-            </p>
+
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-2">
+            <strong className="text-surface-900 block">🖥️ Co widzisz w Czarnym Kokpicie Bojowym w trakcie rozmowy?</strong>
+            <ul className="list-disc pl-4 space-y-1.5 text-surface-600">
+              <li><strong>Czysty tekst linijka po linijce:</strong> Fakty, cenniki, terminy i odpowiedzi na trudne pytania bez rozpraszających kafelków i bez zbędnej wody.</li>
+              <li><strong>Interaktywna checklista celów:</strong> Cele rozmowy są podpowiadane automatycznie. Możesz odhaczać je na żywo lub natychmiast usuwać krzyżykiem ✕ cele zbędne.</li>
+              <li><strong>Automatyczny szkic notatki AI:</strong> Po zakończeniu rozmowy EVA natychmiast generuje zwięzłe podsumowanie ustaleń gotowe do edycji i 1-kliknięciowego zapisu do CRM.</li>
+            </ul>
           </div>
-          <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 text-xs">
-            <strong className="text-emerald-950 block mb-1">💡 Co widzisz na ekranie w trakcie rozmowy?</strong>
-            Copilot w ułamku sekundy analizuje wypowiedzi klienta i wyświetla telegraficzne karty podpowiedzi z Bazy Wiedzy FAQ, cennika produktów i historii wcześniejszych kontaktów. Po rozmowie jednym kliknięciem zapisujesz ustalenia i kolejne zadanie do CRM.
+
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start gap-2">
+            <span className="shrink-0 text-base leading-none">💡</span>
+            <div>
+              <strong>Wskazówka techniczna (VoLTE / Wi-Fi Calling):</strong> Jeśli dzwonisz ze smartfona udostępniającego internet (hotspot), upewnij się, że masz włączoną w telefonie usługę <strong>VoLTE</strong> lub <strong>Wi-Fi Calling</strong>. W starszych trybach GSM telefon potrafi zawiesić transmisję danych komórkowych na czas trwania rozmowy głosowej.
+            </div>
           </div>
         </div>
       )
@@ -976,34 +1006,63 @@ export default function Guide() {
     {
       id: 'business-copilot-guide',
       category: 'forwarding',
-      question: 'Jak działa Copilot Rozmów na żywo i prezentacja numeru telefonu?',
-      summary: 'Dzwonisz jednym kliknięciem z komputera lub telefonu. Centrala łączy Cię z klientem, prezentując numer techniczny Twojej firmy, a oddzwonienia trafiają na Twój numer firmowy.',
+      question: 'Jak działa Copilot Rozmów na żywo (Cichy Sufler) dla Firm i prezentacja numeru?',
+      summary: 'Dwa tryby połączeń: Konferencja telefoniczna z komórki SIM handlowca lub Centrala automatyczna z prezentacją oficjalnego numeru stacjonarnego firmy. Fakturowy podgląd na żywo, dynamiczna checklista celów i notatka AI do CRM.',
       actionPath: '/dashboard/customers',
       actionLabel: 'Przejdź do Kartoteki Klientów',
       answer: (
-        <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
           <p>
-            <strong>EVA Live Call Copilot</strong> to inteligentny asystent wspierający handlowca w trakcie rozmowy telefonicznej z klientem. Działa w modelu bezpiecznego mostka centrali:
+            <strong>EVA Live Call Copilot</strong> to inteligentny, cichy asystent wspierający handlowców i kadrę menedżerską w trakcie rozmów telefonicznych. <strong>Asystent nie odzywa się do klienta (0% głosu AI)</strong> – w czasie rzeczywistym analizuje słowa rozmówcy i wyświetla na ekranie fakty, ceny i argumenty. Dostępny w <strong>Pakiecie B2B Premium (399 zł/mc)</strong> oraz <strong>Pakiecie Osobisty Ekspert (349 zł/mc)</strong>.
           </p>
+
           <div className="grid sm:grid-cols-2 gap-3 pt-1">
-            <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200 text-xs">
-              <strong className="text-indigo-950 block mb-1">📞 Inicjalizacja rozmowy (1 kliknięcie):</strong>
-              W Kartotece Klientów klikasz <em>„Zadzwoń z Copilotem”</em> (najwygodniej z laptopa). Centrala najpierw dzwoni na Twój telefon firmowy, a po odebraniu w słuchawce natychmiast łączy z klientem.
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs">
+              <strong className="text-indigo-950 block mb-1.5 flex items-center gap-1.5">
+                📞 Tryb 1: Konferencja telefoniczna (Twój numer komórkowy SIM)
+              </strong>
+              <p className="text-surface-700 mb-2">
+                Handlowiec dzwoni ze swojego telefonu. <strong>Klient widzi bezpośredni numer komórkowy handlowca</strong>, co gwarantuje najwyższą odbieralność połączeń.
+              </p>
+              <ol className="list-decimal pl-4 space-y-1 text-surface-600">
+                <li>System łączy się z telefonem handlowca – handlowiec odbiera.</li>
+                <li>W telefonie klika <em>„+ Dodaj połączenie”</em> i wybiera klienta z CRM.</li>
+                <li>Po odebraniu przez klienta klika <em>„Scal połączenia”</em> (konferencja trójstronna).</li>
+              </ol>
             </div>
-            <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 text-xs">
-              <strong className="text-purple-950 block mb-1">📱 Prezentacja numeru (Caller ID):</strong>
-              Klient widzi na ekranie dedykowany numer komórkowy/VoIP Twojej firmy <code className="font-mono font-bold text-surface-900">{assignedPhone || 'przypisany do konta'}</code>. Jest to w 100% legalny numer biznesowy, który nie jest blokowany przez filtry antyspoofingowe operatorów GSM.
+
+            <div className="p-3.5 bg-purple-50/70 rounded-2xl border border-purple-200 text-xs">
+              <strong className="text-purple-950 block mb-1.5 flex items-center gap-1.5">
+                ⚡ Tryb 2: Centrala automatyczna (Numer stacjonarny firmy)
+              </strong>
+              <p className="text-surface-700 mb-2">
+                Idealne rozwiązanie biurowe. Centrala automatycznie zestawia połączenie pomiędzy handlowcem a klientem.
+              </p>
+              <div className="space-y-1.5 text-surface-600">
+                <p>
+                  <strong>Prezentacja Caller ID:</strong> Klient widzi oficjalny numer stacjonarny Twojej firmy (np. warszawski, krakowski lub lokalny numer stacjonarny biura), który został zweryfikowany tonowo (DTMF) w Ustawieniach Asystenta zgodnie z ustawą telekomunikacyjną (UKE).
+                </p>
+                <p className="text-[11px] text-purple-900 bg-purple-100/60 p-1.5 rounded-lg">
+                  Wymaga wcześniejszej autoryzacji numeru stacjonarnego w Ustawieniach Asystenta.
+                </p>
+              </div>
             </div>
           </div>
-          <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 text-xs space-y-2">
-            <strong className="text-surface-900 block">🔄 Co się dzieje, gdy klient oddzwania?</strong>
-            <p className="text-surface-600 leading-relaxed">
-              Gdy klient oddzwania na numer techniczny, centrala automatycznie łączy go z Twoim telefonem firmowym. Jeśli w tym czasie jesteś na spotkaniu lub w salonie (i masz włączone przekierowanie na telefonie), połączenie płynnie przejmuje Asystent EVA. Dzięki automatycznemu wykrywaniu nagłówka Diversion centrala zapobiega powstawaniu pętli połączeń.
-            </p>
+
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-2">
+            <strong className="text-surface-900 block">🖥️ Funkcje Czarnego Kokpitu Bojowego w trakcie rozmowy:</strong>
+            <ul className="list-disc pl-4 space-y-1.5 text-surface-600">
+              <li><strong>Czysty tekst linijka po linijce:</strong> Telegraficzne fakty z Bazy Wiedzy, rabaty, specyfikacje i argumenty bez zbędnych kafelków rozpraszających uwagę.</li>
+              <li><strong>Dynamiczna checklista celów rozmowy:</strong> Propozycje celów generowane na starcie. Handlowiec może odhaczać punkty lub usuwać zbędne cele jednym kliknięciem krzyżyka ✕.</li>
+              <li><strong>Automatyczny szkic notatki AI do CRM:</strong> Po odłożeniu słuchawki EVA generuje gotowy szkic ustaleń (kto, co ustalił, jakie pytania padły) do natychmiastowej edycji i zatwierdzenia.</li>
+            </ul>
           </div>
-          <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200 text-xs">
-            <strong className="text-emerald-950 block mb-1">💡 Asystent na żywo podczas rozmowy:</strong>
-            Copilot w czasie rzeczywistym analizuje pytania klienta i wyświetla na ekranie komputera konkretne odpowiedzi: pozycje z cennika, rabaty z Bazy Czasowej, parametry techniczne i checklistę ustaleń. Po rozmowie notatka i zadanie zapisują się automatycznie w CRM.
+
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start gap-2">
+            <span className="shrink-0 text-base leading-none">💡</span>
+            <div>
+              <strong>Zalecenie dotyczące VoLTE / Wi-Fi Calling:</strong> W przypadku korzystania z trybu Konferencji SIM zalecamy włączenie funkcji <strong>VoLTE</strong> lub <strong>Wi-Fi Calling</strong> w ustawieniach telefonu. Zapobiega to przełączaniu się telefonu w tryb 2G/3G, w którym operatorzy mogą wstrzymywać przesyłanie danych internetowych podczas trwania rozmowy głosowej.
+            </div>
           </div>
         </div>
       )
@@ -1208,6 +1267,54 @@ export default function Guide() {
             <li>W zakładce <strong>Subskrypcja</strong> zawsze widzisz bieżący stan zużycia minut w formacie <code className="font-mono font-bold">minuty_użyte / minuty_w_pakiecie</code>.</li>
             <li>W dowolnym momencie możesz <strong>Zawiesić konto na 30 dni</strong> (np. podczas przestoju lub dłuższego urlopu) bez utraty zgromadzonych danych.</li>
           </ul>
+        </div>
+      )
+    },
+    {
+      id: 'business-packages-comparison',
+      category: 'subscription',
+      question: 'Czym różni się Pakiet B2B Standard (199 zł) od Pakietu B2B Premium (399 zł)?',
+      summary: 'Pakiet B2B Standard (199 zł) zapewnia pełną recepcję AI dla zespołu (100 min). Pakiet B2B Premium (399 zł) dodaje 300 min, moduł Live Call Copilot z prezentacją numeru stacjonarnego firmy, notatki AI do CRM i zaawansowaną analitykę.',
+      actionPath: '/dashboard/subscription',
+      actionLabel: 'Porównaj Pakiety Firmowe',
+      answer: (
+        <div className="space-y-4 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Dla firm, salonów i zespołów handlowo-usługowych oferujemy dwa elastyczne pakiety:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="p-4 bg-surface-50 rounded-2xl border border-surface-200">
+              <div className="font-bold text-surface-900 text-xs uppercase text-surface-600 mb-1">
+                Pakiet B2B Standard – 199 zł / mc
+              </div>
+              <ul className="text-xs text-surface-600 space-y-1.5 mt-2">
+                <li>• <strong>100 minut</strong> w cenie na rozmowy asystenta z klientami.</li>
+                <li>• <strong>Inteligentna recepcja AI:</strong> umawianie wizyt, odpowiedzi na pytania o ofertę i cennik 24/7.</li>
+                <li>• <strong>Wieloosobowy grafik zespołu:</strong> zarządzanie pracownikami, usługami i dniami wolnymi.</li>
+                <li>• <strong>Potwierdzenia i przypomnienia SMS:</strong> linki z dojazdem, anulacje i ochrona przed no-show.</li>
+                <li>• <strong>Wirtualny numer techniczny:</strong> dedykowany numer do przekierowań połączeń.</li>
+              </ul>
+            </div>
+
+            <div className="p-4 bg-gold-50/70 rounded-2xl border border-gold-300 relative overflow-hidden">
+              <span className="absolute top-2 right-2 px-2 py-0.5 bg-gold-500 text-white font-bold text-[10px] rounded-full uppercase tracking-wider">
+                Polecany dla Zespołów
+              </span>
+              <div className="font-bold text-gold-950 text-xs uppercase mb-1">
+                Pakiet B2B Premium – 399 zł / mc
+              </div>
+              <p className="text-xs text-gold-800 font-medium mb-2">
+                Wszystko co w Standardzie, plus zaawansowane narzędzia wsparcia sprzedaży:
+              </p>
+              <ul className="text-xs text-gold-900 space-y-1.5">
+                <li>• <strong>300 minut w pakiecie</strong> na rozmowy przychodzące i wychodzące.</li>
+                <li>• <strong>⚡ Pełny moduł Live Call Copilot:</strong> cichy sufler na żywo podczas rozmów handlowców z klientami (podpowiedzi wiersz po wierszu).</li>
+                <li>• <strong>☎️ Prezentacja Numeru Stacjonarnego Firmy:</strong> autoryzowany Caller ID centrali (weryfikacja kodem DTMF).</li>
+                <li>• <strong>📋 Dynamiczna Checklista Celów i Notatki AI do CRM:</strong> automatyczny szkic podsumowania każdej rozmowy handlowej.</li>
+                <li>• <strong>📊 Zaawansowana analityka i raporty menedżerskie:</strong> audyt rozmów i automatyczne doszkalanie Bazy Wiedzy.</li>
+              </ul>
+            </div>
+          </div>
         </div>
       )
     },

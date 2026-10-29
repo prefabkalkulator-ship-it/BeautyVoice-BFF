@@ -106,15 +106,18 @@ export default function Customers() {
     planName === 'personal_expert' || 
     planName.includes('expert') ||
     ((planName === 'beta_pilot' || planName === 'pilot') && (tenant?.betaNotes || '').includes('Osobisty Ekspert'));
-  const isB2B = !isPersonalProfile;
-  const canAccessCopilot = isB2B || isPersonalExpert;
+  const isB2BPremium = 
+    planName === 'premium' || 
+    ((planName === 'beta_pilot' || planName === 'pilot') && !(tenant?.betaNotes || '').includes('Osobisty')) ||
+    Boolean((tenant?.betaNotes || '').includes('Premium'));
+  const canAccessCopilot = isPersonalProfile ? isPersonalExpert : isB2BPremium;
 
   const handleOpenCopilot = (phone: string, name: string, customerId?: string) => {
     if (!canAccessCopilot) {
       setUpgradeModal({
         isOpen: true,
         title: 'Moduł: Copilot Rozmów na Żywo',
-        description: 'Inteligentny pomocnik konwersacyjny (podpowiedzi w uchu/na ekranie w trakcie rozmowy telefonicznej, dynamiczna checklista i dostęp do Bazy Wiedzy FAQ) jest dostępny w Pakiecie Osobisty Ekspert oraz pakietach biznesowych B2B.',
+        description: 'Inteligentny pomocnik konwersacyjny Copilot (dyskretny nasłuch rozmowy, podpowiedzi faktów i cen z Bazy Wiedzy wiersz po wierszu, dynamiczna checklista celów oraz automatyczny szkic podsumowania CRM) jest dostępny w Pakiecie Osobisty Ekspert oraz Pakiecie B2B Premium.',
         targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
       });
       return;

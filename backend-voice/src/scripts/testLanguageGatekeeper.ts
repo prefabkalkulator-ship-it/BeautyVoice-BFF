@@ -41,15 +41,17 @@ function runTests() {
   );
 
   assert(
-    personalGuestPrompt.includes('Bună ziua! Ați dori să vorbiți în română?'),
-    'Test 1.3: Wzorzec Bramki Weryfikacyjnej dla języka rumuńskiego'
+    !personalGuestPrompt.includes('ŚCISŁE WZORCE PYTAŃ WERYFIKACYJNYCH DLA POSZCZEGÓLNYCH JĘZYKÓW') &&
+    personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ ZADAWANIA PYTAŃ WERYFIKACYJNYCH I ZAKAZ INICJOWANIA MOWY OBCEJ') &&
+    personalGuestPrompt.includes('TARCZA PRZED POWITANIAMI, SŁOWAMI POTOCZNYMI I ZAKŁÓCENIAMI (HALO / HALO HALO / SCHWEIGEN)'),
+    'Test 1.3: Usunięto wzorce pytań weryfikacyjnych i dodano zakaz pytań weryfikacyjnych oraz tarczę przed halo/halo halo'
   );
 
   assert(
     personalGuestPrompt.includes('ŻELAZNA REGUŁA: SKRÓT INTENCJI (INTENT SHORTCUTS)') &&
     personalGuestPrompt.includes('Jest w 100% PODPORZĄDKOWANA PROTOKOŁOWI JĘZYKOWEMU!') &&
     personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ używania języka rumuńskiego lub innych języków obcych!'),
-    'Test 1.4: Skrót intencji (Intent Shortcuts) jest podporządkowany bramce językowej'
+    'Test 1.4: Skrót intencji (Intent Shortcuts) jest podporządkowany regule językowej'
   );
 
   assert(
@@ -62,6 +64,14 @@ function runTests() {
     !personalGuestPrompt.includes('Biegłą znajomość ponad 140 języków aktywujesz') &&
     !personalGuestPrompt.includes('(Jeśli zapyta w innym języku, przetłumacz tę odpowiedź na jego język)'),
     'Test 1.6: Usunięto zwroty promujące pochopne przełączanie języka (140 języków / automatyczne tłumaczenie tożsamości)'
+  );
+
+  assert(
+    personalGuestPrompt.includes('ŚCIEŻKA BEZPOŚREDNIEJ PROŚBY (DIRECT REQUEST) – JEDYNA DROGA PRZEŁĄCZENIA JĘZYKA') &&
+    personalGuestPrompt.includes('Do you speak English?') &&
+    personalGuestPrompt.includes('Чи можна українською?') &&
+    personalGuestPrompt.includes('Sprechen Sie Deutsch?'),
+    'Test 1.7: Jedyna ścieżka przełączenia języka to bezpośrednia prośba rozmówcy (Direct Request)'
   );
 
   // 2. Test profilu DEMO
@@ -102,8 +112,9 @@ function runTests() {
 
   assert(
     getFaqTool &&
-    getFaqTool.description.includes('Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku'),
-    'Test 3.3: getFAQ nakazuje odpowiedź po polsku dopóki bramka nie zatwierdzi języka obcego'
+    getFaqTool.description.includes('Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku') &&
+    getFaqTool.description.includes('Direct Request'),
+    'Test 3.3: getFAQ nakazuje odpowiedź po polsku i tłumaczenie w locie wyłącznie po Direct Request'
   );
 
   // 4. Test modułu wykrywania obcego języka (LanguageSafetyService)

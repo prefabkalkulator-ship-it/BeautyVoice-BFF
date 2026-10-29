@@ -98,7 +98,7 @@ export default function CallHistoryMessages() {
       setUpgradeModal({
         isOpen: true,
         title: 'Moduł: Copilot Rozmów na Żywo',
-        description: 'Inteligentny pomocnik konwersacyjny (podpowiedzi na ekranie w trakcie rozmowy, dynamiczna checklista i dostęp do Bazy Wiedzy FAQ) jest dostępny w Pakiecie Osobisty Ekspert oraz pakietach biznesowych B2B.',
+        description: 'Inteligentny pomocnik konwersacyjny Copilot (dyskretny nasłuch rozmowy, podpowiedzi faktów i cen z Bazy Wiedzy wiersz po wierszu, dynamiczna checklista celów oraz automatyczny szkic podsumowania CRM) jest dostępny w Pakiecie Osobisty Ekspert oraz Pakiecie B2B Premium.',
         targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
       });
       return;

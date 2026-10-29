@@ -225,7 +225,7 @@ export class BookingService {
         },
         {
           name: 'getFAQ',
-          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca formalnie potwierdzi zmianę języka w Bramce Weryfikacyjnej, przetłumacz odpowiedzi na ten potwierdzony język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
+          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca wprost poprosi o rozmowę w obcym języku (Direct Request), przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
           parameters: { type: 'OBJECT', properties: {} }
         },
         {
@@ -440,7 +440,7 @@ export class BookingService {
       },
       {
         name: 'getFAQ',
-        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca formalnie potwierdzi zmianę języka w Bramce Weryfikacyjnej, przetłumacz odpowiedzi na ten potwierdzony język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
+        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca wprost poprosi o rozmowę w obcym języku (Direct Request), przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
