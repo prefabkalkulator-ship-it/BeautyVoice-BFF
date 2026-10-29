@@ -26,7 +26,8 @@ import {
   Check,
   PhoneCall,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  ArrowDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -177,13 +178,30 @@ export default function CopilotCockpitModal({
   const [battlecards, setBattlecards] = useState<Battlecard[]>([]);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
+  // Inteligentny auto-scroll: nie przerywa czytania, gdy użytkownik przewinął w górę
+  const [hasNewCardsBelow, setHasNewCardsBelow] = useState(false);
+  const isAtBottomRef = useRef(true);
+  const feedContainerRef = useRef<HTMLDivElement | null>(null);
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const sseRef = useRef<EventSource | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const feedEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Monitor poczenia sieciowego online/offline z auto-synchronizacj
+  // Wykrywanie pozycji przewijania przez użytkownika
+  const handleFeedScroll = () => {
+    if (!feedContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = feedContainerRef.current;
+    const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
+    const isAtBottom = distanceToBottom < 45;
+    isAtBottomRef.current = isAtBottom;
+    if (isAtBottom) {
+      setHasNewCardsBelow(false);
+    }
+  };
+
+  // Monitor połączenia sieciowego online/offline z auto-synchronizacją
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
@@ -209,10 +227,19 @@ export default function CopilotCockpitModal({
     };
   }, [activeSessionId]);
 
-  // Auto-scroll do najnowszej karty podpowiedzi na osi czasu
+  // Inteligentny auto-scroll: przewija na dół tylko, gdy użytkownik jest na dole;
+  // jeśli użytkownik przewinął w górę, nie przeszkadza w czytaniu i sygnalizuje nowe fakty
   useEffect(() => {
-    if (callPhase === 'in_call' && feedEndRef.current) {
-      feedEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (callPhase !== 'in_call' || !feedContainerRef.current) return;
+    if (isAtBottomRef.current) {
+      feedContainerRef.current.scrollTo({
+        top: feedContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+      setHasNewCardsBelow(false);
+    } else {
+      // Użytkownik celowo przewinął w górę - nie przewijamy na siłę!
+      setHasNewCardsBelow(true);
     }
   }, [battlecards, callPhase]);
 
@@ -441,7 +468,9 @@ export default function CopilotCockpitModal({
             setActiveBattlecard(msg.activeBattlecard);
             setBattlecards([msg.activeBattlecard]);
           }
-          if (msg.checklist && msg.checklist.length > 0) setChecklist(msg.checklist);
+          if (msg.checklist !== undefined && Array.isArray(msg.checklist)) {
+            setChecklist(msg.checklist);
+          }
         } else if (msg.type === 'BATTLECARD_UPDATE') {
           if (msg.battlecards && Array.isArray(msg.battlecards)) {
             setBattlecards(msg.battlecards);
@@ -547,7 +576,8 @@ export default function CopilotCockpitModal({
         body: JSON.stringify({
           customerPhone,
           customerName,
-          scenario
+          scenario,
+          checklist
         })
       });
 
@@ -602,7 +632,8 @@ export default function CopilotCockpitModal({
         body: JSON.stringify({
           customerPhone,
           customerName,
-          scenario
+          scenario,
+          checklist
         })
       });
 
@@ -828,37 +859,43 @@ export default function CopilotCockpitModal({
                 </span>
               </div>
               <div className="space-y-2">
-                {checklist.map(item => (
-                  <div
-                    key={item.id}
-                    className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl transition ${
-                      item.checked 
-                        ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200' 
-                        : 'bg-white text-surface-800 font-medium border border-surface-200 shadow-2xs hover:bg-surface-50'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleToggleChecklist(item.id)}
-                      className="flex-1 flex items-center gap-2.5 text-left text-xs md:text-sm cursor-pointer"
-                    >
-                      {item.checked ? (
-                        <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
-                      ) : (
-                        <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
-                      )}
-                      <span className="break-words text-wrap leading-relaxed">{item.text}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteChecklistItem(item.id)}
-                      className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-100 transition cursor-pointer shrink-0 ml-2"
-                      title="Usuń cel z listy"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                {checklist.length === 0 ? (
+                  <div className="py-3 px-4 text-center text-xs text-surface-400 italic bg-white rounded-xl border border-dashed border-surface-200">
+                    Brak zdefiniowanych celów rozmowy (cele usunięte). Możesz wpisać własny punkt poniżej lub przejść od razu do rozmowy.
                   </div>
-                ))}
+                ) : (
+                  checklist.map(item => (
+                    <div
+                      key={item.id}
+                      className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl transition ${
+                        item.checked 
+                          ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200' 
+                          : 'bg-white text-surface-800 font-medium border border-surface-200 shadow-2xs hover:bg-surface-50'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleToggleChecklist(item.id)}
+                        className="flex-1 flex items-center gap-2.5 text-left text-xs md:text-sm cursor-pointer"
+                      >
+                        {item.checked ? (
+                          <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
+                        )}
+                        <span className="break-words text-wrap leading-relaxed">{item.text}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteChecklistItem(item.id)}
+                        className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-100 transition cursor-pointer shrink-0 ml-2"
+                        title="Usuń cel z listy"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Dodawanie własnego punktu checklisty */}
@@ -1188,37 +1225,43 @@ export default function CopilotCockpitModal({
                   </div>
 
                   <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-0">
-                    {checklist.map(item => (
-                      <div
-                        key={item.id}
-                        className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl transition ${
-                          item.checked 
-                            ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200/60' 
-                            : 'bg-surface-50 hover:bg-surface-100 text-surface-800 font-medium border border-surface-200/80'
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleToggleChecklist(item.id)}
-                          className="flex-1 flex items-center gap-2 text-left text-xs sm:text-sm md:text-base cursor-pointer"
-                        >
-                          {item.checked ? (
-                            <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
-                          ) : (
-                            <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
-                          )}
-                          <span className="break-words text-wrap leading-relaxed">{item.text}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteChecklistItem(item.id)}
-                          className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-200 transition cursor-pointer shrink-0 ml-1.5"
-                          title="Usuń cel z listy"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                        </button>
+                    {checklist.length === 0 ? (
+                      <div className="py-6 px-3 text-center text-xs text-surface-400 italic bg-surface-50 rounded-xl border border-dashed border-surface-200">
+                        Brak zdefiniowanych celów rozmowy (cele usunięte). Możesz wpisać własny cel poniżej.
                       </div>
-                    ))}
+                    ) : (
+                      checklist.map(item => (
+                        <div
+                          key={item.id}
+                          className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-xl transition ${
+                            item.checked 
+                              ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200/60' 
+                              : 'bg-surface-50 hover:bg-surface-100 text-surface-800 font-medium border border-surface-200/80'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleToggleChecklist(item.id)}
+                            className="flex-1 flex items-center gap-2 text-left text-xs sm:text-sm md:text-base cursor-pointer"
+                          >
+                            {item.checked ? (
+                              <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Square className="w-4 h-4 md:w-5 md:h-5 text-surface-400 shrink-0" />
+                            )}
+                            <span className="break-words text-wrap leading-relaxed">{item.text}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteChecklistItem(item.id)}
+                            className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-200 transition cursor-pointer shrink-0 ml-1.5"
+                            title="Usuń cel z listy"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   {/* Dodawanie własnego punktu */}
@@ -1258,7 +1301,7 @@ export default function CopilotCockpitModal({
               </div>
 
               {/* PRAWA KOLUMNA: STRUMIEŃ PODPOWIEDZI AI / FAKTY WIERSZ ZA WIERSZEM */}
-              <div className="md:col-span-7 flex flex-col min-h-0 bg-surface-50/90 border border-surface-200 rounded-3xl p-3 sm:p-4 md:p-5 shadow-xs">
+              <div className="md:col-span-7 flex flex-col min-h-0 bg-surface-50/90 border border-surface-200 rounded-3xl p-3 sm:p-4 md:p-5 shadow-xs relative">
                 
                 <div className="flex items-center justify-between pb-2.5 border-b border-surface-200/80 mb-2 shrink-0">
                   <div className="flex items-center gap-2">
@@ -1273,7 +1316,11 @@ export default function CopilotCockpitModal({
                 </div>
 
                 {/* SCROLLABLE FEED OF FACTS - CZYSTY TEKST WIERSZ ZA WIERSZEM (BEZ KAFELKÓW) */}
-                <div className="flex-1 overflow-y-auto pr-1 max-h-[420px] md:max-h-[580px] divide-y divide-surface-200">
+                <div 
+                  ref={feedContainerRef}
+                  onScroll={handleFeedScroll}
+                  className="flex-1 overflow-y-auto pr-1 max-h-[420px] md:max-h-[580px] divide-y divide-surface-200 scroll-smooth"
+                >
                   {battlecards.length === 0 ? (
                     <div className="py-10 px-4 text-center space-y-2.5">
                       <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-semibold border border-emerald-200">
@@ -1333,6 +1380,27 @@ export default function CopilotCockpitModal({
                   )}
                   <div ref={feedEndRef} />
                 </div>
+
+                {/* Pływający przycisk przewinięcia na dół, gdy użytkownik przewinął w górę i czyta wcześniejsze fakty */}
+                {hasNewCardsBelow && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (feedContainerRef.current) {
+                        feedContainerRef.current.scrollTo({
+                          top: feedContainerRef.current.scrollHeight,
+                          behavior: 'smooth'
+                        });
+                        isAtBottomRef.current = true;
+                        setHasNewCardsBelow(false);
+                      }
+                    }}
+                    className="absolute bottom-11 right-6 z-20 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full text-xs font-bold shadow-lg flex items-center gap-1.5 transition-all animate-bounce cursor-pointer border border-indigo-400"
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                    Nowe podpowiedzi na dole
+                  </button>
+                )}
 
                 <div className="pt-2 text-center text-[10px] sm:text-xs text-surface-400 border-t border-surface-200/60 mt-2 shrink-0">
                   💡 EVA słucha w tle i na bieżąco dopisuje fakty, ceny i parametry w powyższym oknie.

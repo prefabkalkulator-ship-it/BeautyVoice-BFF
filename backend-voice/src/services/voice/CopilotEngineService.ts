@@ -104,6 +104,7 @@ export class CopilotEngineService {
     customerName?: string;
     scenario?: string;
     mode?: 'bridge' | 'conference';
+    checklist?: CopilotChecklistItem[];
   }): Promise<CopilotSession> {
     const sessionId = `copilot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     
@@ -166,9 +167,11 @@ export class CopilotEngineService {
     const cleanLastSummary = lastCallSummary.replace(/^\[[^\]]+\]\s*/, '').trim();
     const scenario = options.scenario || (lastCallSummary ? 'callback' : 'sales');
 
-    // Dynamiczna checklista bazująca na wybranym scenariuszu i historii kontaktu
-    const checklist: CopilotChecklistItem[] = [];
-    if (scenario === 'callback' && cleanLastSummary) {
+    // Dynamiczna checklista bazująca na przekazanej liście użytkownika lub wybranym scenariuszu
+    let checklist: CopilotChecklistItem[] = [];
+    if (Array.isArray(options.checklist)) {
+      checklist = options.checklist;
+    } else if (scenario === 'callback' && cleanLastSummary) {
       checklist.push(
         { id: '1', text: `Nawiąż do ostatniej rozmowy (${cleanLastSummary.slice(0, 38)}...)`, checked: false },
         { id: '2', text: 'Przedstaw skorygowaną kalkulację i warunki cenowe', checked: false },

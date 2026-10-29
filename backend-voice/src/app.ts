@@ -3079,6 +3079,7 @@ app.post('/api/copilot/start-call', async (req, res) => {
       customerPhone,
       customerName,
       scenario,
+      checklist: req.body?.checklist,
       mode: 'bridge'
     });
 
@@ -3117,7 +3118,7 @@ app.post('/api/copilot/start-conference', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
-    const { customerPhone, customerName, scenario } = req.body || {};
+    const { customerPhone, customerName, scenario, checklist } = req.body || {};
     if (!customerPhone) {
       return res.status(400).json({ error: 'Pole customerPhone jest wymagane' });
     }
@@ -3127,6 +3128,7 @@ app.post('/api/copilot/start-conference', async (req, res) => {
       customerPhone,
       customerName,
       scenario,
+      checklist,
       mode: 'conference'
     });
 
