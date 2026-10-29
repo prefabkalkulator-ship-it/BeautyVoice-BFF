@@ -114,6 +114,7 @@ export default function DashboardLayout() {
     { id: 'appointments', path: '/dashboard/appointments', label: 'Rezerwacje', icon: Calendar },
     { id: 'services', path: '/dashboard/services', label: 'Usługi', icon: ClipboardList },
     { id: 'customers', path: '/dashboard/customers', label: 'Klienci', icon: Users },
+    { id: 'vip-contacts', path: '/dashboard/vip-contacts', label: 'Kontakty VIP & Partnerzy', icon: Star },
     { id: 'faq', path: '/dashboard/faq', label: 'Baza Wiedzy', icon: HelpCircle },
     { id: 'simulator', path: '/dashboard/simulator', label: 'Marketing AI', icon: MessageSquare },
     { id: 'settings', path: '/dashboard/settings', label: 'Ustawienia Firmy', icon: Settings },

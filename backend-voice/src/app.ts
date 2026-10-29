@@ -2279,6 +2279,74 @@ app.post('/api/vip-contacts', async (req, res) => {
   }
 });
 
+app.post('/api/vip-contacts/batch', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { contacts } = req.body;
+    if (!Array.isArray(contacts) || contacts.length === 0) {
+      return res.status(400).json({ error: 'Lista kontaktów jest pusta lub nieprawidłowa.' });
+    }
+
+    const validContacts = contacts.slice(0, 500);
+    const operations = [];
+
+    for (const item of validContacts) {
+      const { phoneNumber, contactName, category, customNotes, allowPrioritySlots, formalityLevel } = item;
+      if (!phoneNumber || !contactName) continue;
+
+      let cleaned = String(phoneNumber).replace(/[\s-()]/g, '');
+      if (!cleaned.startsWith('+')) {
+        if (cleaned.length === 9) cleaned = '+48' + cleaned;
+        else cleaned = '+' + cleaned;
+      }
+      if (cleaned.length < 8) continue;
+
+      operations.push(
+        prisma.vipContact.upsert({
+          where: {
+            tenantId_phoneNumber: {
+              tenantId: tenant.id,
+              phoneNumber: cleaned
+            }
+          },
+          update: {
+            contactName: String(contactName).trim(),
+            category: category || 'VIP',
+            customNotes: customNotes ?? null,
+            allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true,
+            formalityLevel: formalityLevel !== undefined ? formalityLevel : undefined
+          },
+          create: {
+            tenantId: tenant.id,
+            phoneNumber: cleaned,
+            contactName: String(contactName).trim(),
+            category: category || 'VIP',
+            customNotes: customNotes ?? null,
+            allowPrioritySlots: allowPrioritySlots !== undefined ? Boolean(allowPrioritySlots) : true,
+            formalityLevel: formalityLevel || 'default'
+          }
+        })
+      );
+    }
+
+    if (operations.length === 0) {
+      return res.status(400).json({ error: 'Żaden z przekazanych kontaktów nie posiadał poprawnego numeru telefonu lub nazwy.' });
+    }
+
+    const saved = await prisma.$transaction(operations);
+
+    res.json({
+      success: true,
+      count: saved.length,
+      imported: saved
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put('/api/vip-contacts/:id', async (req, res) => {
   try {
     const tenant = await getContextTenant(req);

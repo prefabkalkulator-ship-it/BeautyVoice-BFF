@@ -72,8 +72,8 @@ W zakładce **Ustawienia Asystenta** znajdziesz swój dedykowany numer wirtualny
    Wraz z SMS-em potwierdzającym wizytę klient otrzymuje informację: *„Jeśli plany ulegną zmianie, odpisz ANULUJ”*. Gdy klient to zrobi, system sam zwolni termin w kalendarzu.
 5. **Czas Skupienia (Deep Work) & Dyskrecja**:
    Możesz zdefiniować godziny, w których asystentka chroni Cię przed jakimikolwiek telefonami, informując dzwoniących, że jesteś na spotkaniu i zbierając szczegółowe notatki.
-6. **Kontakty z Dostępem Priorytetowym (VIP)**:
-   Numery rodziny i kluczowych kontrahentów mogą omijać asystenta lub otrzymywać dostęp do dedykowanych terminów priorytetowych.
+6. **Kontakty z Dostępem Priorytetowym (VIP) & Błyskawiczny Import z Telefonu**:
+   Numery rodziny i kluczowych kontrahentów mogą omijać asystenta lub otrzymywać dostęp do dedykowanych terminów priorytetowych. Nie musisz przepisywać ich ręcznie – funkcja **„Pobierz z telefonu”** pozwala pobrać kontakty bezpośrednio ze smartfona (Android) lub wgrać plik wizytówek `.vcf` (iPhone/Android). Przed zapisem masz podgląd i możesz zatwierdzić całą listę jednym kliknięciem.
 
 ---
 

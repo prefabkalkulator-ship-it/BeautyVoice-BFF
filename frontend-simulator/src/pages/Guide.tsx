@@ -381,6 +381,54 @@ export default function Guide() {
       )
     },
     {
+      id: 'personal-vip-phone-import',
+      category: 'contacts',
+      question: 'Jak szybko zaimportować kontakty z telefonu (Android, iPhone, plik .vcf) bez ręcznego przepisywania?',
+      summary: 'Jednym kliknięciem pobierz kontakty bezpośrednio ze swojego smartfona lub wgraj plik wizytówek .vcf (vCard). Podgląd i kwalifikacja w 3 sekundy.',
+      actionPath: '/dashboard/vip-contacts',
+      actionLabel: 'Otwórz Kontakty VIP i Import',
+      answer: (
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
+          <p>
+            Nie musisz ręcznie przepisywać numerów bliskich ani kluczowych partnerów. Moduł <strong>Kontakty VIP & Baza Bliskich</strong> oferuje natychmiastowy import ze smartfona:
+          </p>
+
+          <div className="grid sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs">
+              <strong className="text-amber-950 block mb-1.5 flex items-center gap-1.5">
+                📱 Na telefonach Android:
+              </strong>
+              <p className="text-surface-700 mb-1.5">
+                W zakładce Kontakty VIP kliknij <em>„Pobierz z telefonu” → „Wybierz z książki telefonu”</em>.
+              </p>
+              <p className="text-surface-600">
+                System Android otworzy systemowe okno z listą kontaktów. Zaznacz wybrane osoby lub całą grupę i kliknij „Gotowe”. Kontakty natychmiast trafią do okna podglądu w aplikacji EVA.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs">
+              <strong className="text-indigo-950 block mb-1.5 flex items-center gap-1.5">
+                🍏 Na telefonach iPhone (Apple iOS):
+              </strong>
+              <p className="text-surface-700 mb-1.5">
+                W aplikacji systemowej <em>Kontakty</em> na iPhone zaznacz wybrane osoby (lub grupę) i kliknij <em>„Udostępnij kontakty”</em> → zapisz jako plik .vcf w Plikach lub iCloud.
+              </p>
+              <p className="text-surface-600">
+                W EVA kliknij <em>„Pobierz z telefonu” → „Wgraj plik kontaktów (.vcf)”</em>. System w ułamku sekundy odczyta wszystkie wizytówki.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-2">
+            <strong className="text-surface-900 block">🛡️ Bezpieczna Kwalifikacja Przed Zapisem (Ekran Podglądu):</strong>
+            <p className="text-surface-600">
+              Aby zapobiec przypadkowemu nadaniu uprawnień VIP nieznanym numerom (np. kurierom czy pizzeriom), EVA wyświetla przed zapisem zwięzły ekran podglądu. Możesz przypisać domyślną kategorię (VIP, Rodzina, Praca, Kluczowy partner), jednym kliknięciem odznaczyć niechciane kontakty i zatwierdzić import całej listy w 3 sekundy.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
       id: 'personal-call-transfer',
       category: 'contacts',
       question: 'Jak działa funkcja „Przełączanie aktywnego połączenia” (Live Call Transfer)?',
