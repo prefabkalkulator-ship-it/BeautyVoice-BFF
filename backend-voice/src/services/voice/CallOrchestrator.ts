@@ -36,6 +36,7 @@ export class CallOrchestrator {
   // Inactivity / Silence Watchdog (30s) & EndCall state
   private lastActivityTime: number = Date.now();
   private silencePromptSent: boolean = false;
+  private silenceFarewellSent: boolean = false;
   private silenceWatchdogInterval: NodeJS.Timeout | null = null;
   private readonly SILENCE_TIMEOUT_MS: number = 30000; // 30 sekund ciszy / szumu w tle
   private shouldHangupAfterTurn: boolean = false;
@@ -420,31 +421,33 @@ export class CallOrchestrator {
     const now = Date.now();
     const silentDuration = now - this.lastActivityTime;
 
-    // 1. Zabezpieczenie po wykonaniu akcji (save_call_message / rezerwacja):
-    // Jeśli akcja biznesowa została zarejestrowana i asystent potwierdził jej przyjęcie, to po 7 sekundach ciszy rozmówcy (np. po pożegnaniu) automatycznie rozłączamy!
-    const isPostActionDone = (this.isMessageLeft || this.callActionJournal.length > 0) && !this.isAwaitingUserAfterAction;
-    if (isPostActionDone && silentDuration >= 7000 && !this.isTerminating && !this.agentSpeaking) {
-      console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy po zrealizowaniu sprawy biznesowej. Automatyczne, kulturalne zakończenie połączenia.`);
-      if (this.silenceWatchdogInterval) {
-        clearInterval(this.silenceWatchdogInterval);
-        this.silenceWatchdogInterval = null;
-      }
-      this.terminateTwilioCall();
-      return;
-    }
-
-    // 2. Po 18 sekundach ciszy (gdy asystent nie mówi i nie kończy rozmowy) - jednorazowe podtrzymanie kontaktu:
-    // WYŁĄCZNIE wtedy, gdy sprawa nie została jeszcze załatwiona:
-    if (silentDuration >= 18000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking && !this.isMessageLeft && this.callActionJournal.length === 0) {
+    // Etap 1 (14-16s ciszy): Uprzejme pytanie sprawdzające łączność
+    // Zapobiega przedwczesnemu ucięciu rozmowy, gdy rozmówca robi naturalną pauzę w wypowiedzi
+    if (silentDuration >= 15000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
       this.silencePromptSent = true;
-      console.log('⏱️ [Silence Watchdog] Minęło 18s ciszy. Asystent wysyła pytanie sprawdzające łączność.');
+      const isPostActionDone = (this.isMessageLeft || this.callActionJournal.length > 0) && !this.isAwaitingUserAfterAction;
+      console.log(`⏱️ [Silence Watchdog] Minęło 15s ciszy (isPostActionDone: ${isPostActionDone}). Wysyłam pytanie sprawdzające.`);
       if (this.geminiClient && this.geminiClient.isLive()) {
-        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż i wykonaj odpowiednie narzędzie! Jeśli rozmówca po prostu milczy, upewnij się łagodnie: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]");
+        if (isPostActionDone) {
+          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 15 sekund po zapisaniu sprawy. Upewnij się łagodnie: 'Czy ma Pan / Pani jeszcze jakieś pytania, czy na dzisiaj to wszystko?']");
+        } else {
+          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż i wykonaj odpowiednie narzędzie! Jeśli rozmówca po prostu milczy, upewnij się łagodnie: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]");
+        }
       }
     }
 
+    // Etap 2 (25s ciszy): Jeśli rozmówca nadal milczy po zapytaniu sprawdzającym, asystent kulturalnie żegna się i wywołuje endCall
+    if (silentDuration >= 25000 && !this.silenceFarewellSent && !this.isTerminating && !this.agentSpeaking) {
+      this.silenceFarewellSent = true;
+      console.log('⏱️ [Silence Watchdog] Minęło 25s ciszy. Nakazuję asystentowi pożegnanie i wywołanie endCall.');
+      if (this.geminiClient && this.geminiClient.isLive()) {
+        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 25 sekund mimo zapytania sprawdzającego. Powiedz uprzejmie dokładnie jedno zwięzłe zdanie: 'Dziękuję bardzo za rozmowę, do usłyszenia!' i natychmiast wywołaj narzędzie endCall.]");
+      }
+    }
+
+    // Etap 3 (30s ciszy): Twarde, awaryjne odłożenie słuchawki przez centralę
     if (silentDuration >= this.SILENCE_TIMEOUT_MS) {
-      console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy/szumu w tle. Automatyczne odłożenie słuchawki.`);
+      console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy/szumu w tle. Awaryjne odłożenie słuchawki.`);
       if (this.silenceWatchdogInterval) {
         clearInterval(this.silenceWatchdogInterval);
         this.silenceWatchdogInterval = null;
@@ -635,6 +638,7 @@ export class CallOrchestrator {
       onVoiceActivity: () => {
         this.lastActivityTime = Date.now();
         this.silencePromptSent = false;
+        this.silenceFarewellSent = false;
         if (this.isAwaitingUserAfterAction) {
           console.log('🗣️ [VoiceActivity] Wykryto aktywność głosu rozmówcy z Gemini Live API. Zwalniam blokadę endCall.');
           this.isAwaitingUserAfterAction = false;
@@ -1001,22 +1005,29 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
     if (this.callSid && twilioSid && twilioToken) {
       try {
-        console.log(`📞 [EndCall] Wymuszam natychmiastowe zakończenie połączenia w centrali Twilio REST dla CallSid: ${this.callSid}`);
+        console.log(`📞 [EndCall] Wymuszam natychmiastowe zakończenie połączenia w centrali Twilio REST (SIP BYE) dla CallSid: ${this.callSid}`);
         const client = twilio(twilioSid, twilioToken);
-        await client.calls(this.callSid).update({
-          twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
-        }).catch(async (twimlErr) => {
-          console.warn('[EndCall] TwiML Hangup fallback to status completed:', twimlErr?.message || twimlErr);
-          await client.calls(this.callSid).update({ status: 'completed' });
-        });
-        console.log(`✅ [EndCall] Połączenie ${this.callSid} zostało pomyślnie rozłączone w Twilio REST.`);
+        // KRYTYCZNE: Bezpośrednie ustawienie statusu 'completed' wymusza w Twilio natychmiastowe wysłanie pakietu SIP BYE
+        // do operatora Zadarma / sieci GSM i fizyczne odłożenie słuchawki w telefonie komórkowym rozmówcy!
+        await client.calls(this.callSid).update({ status: 'completed' });
+        console.log(`✅ [EndCall] Połączenie ${this.callSid} zostało pomyślnie rozłączone w Twilio REST (status: completed).`);
       } catch (err: any) {
-        console.log(`ℹ️ [EndCall] Informacja Twilio REST przy rozłączaniu: ${err?.message || err}`);
+        console.warn(`[EndCall] Błąd rozłączania Twilio REST (status completed): ${err?.message || err}. Próba awaryjna TwiML Hangup.`);
+        try {
+          const client = twilio(twilioSid, twilioToken);
+          await client.calls(this.callSid).update({
+            twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
+          });
+        } catch (fallbackErr: any) {
+          console.log(`ℹ️ [EndCall] Awaryjny TwiML Hangup: ${fallbackErr?.message || fallbackErr}`);
+        }
       }
     }
 
     try {
-      this.twilioWs.close();
+      if (this.twilioWs && this.twilioWs.readyState === WebSocket.OPEN) {
+        this.twilioWs.close(1000, "Normal Closure");
+      }
     } catch (e) {
       // ignore
     }
@@ -1512,6 +1523,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     await this.vadService.processAudio(float32Array, (speechProb) => {
       this.lastActivityTime = Date.now(); // Wykryto ludzką mowę (nie szum w tle!)
       this.silencePromptSent = false;
+      this.silenceFarewellSent = false;
       isSpeechDetected = true;
       if (this.isAwaitingUserAfterAction) {
         console.log(`🗣️ [VAD] Wykryto mowę rozmówcy po akcji asystenta (prob: ${speechProb.toFixed(2)}). Zwalniam blokadę endCall.`);

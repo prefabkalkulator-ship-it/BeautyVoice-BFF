@@ -33,9 +33,10 @@ export class PushService {
     const iconUrl = 'https://beautyvoice-bff.web.app/EVA_favicon_192.png';
     const notificationTag = tag || ('bv-alert-' + (phone ? phone.replace(/[^0-9]/g, '') : 'general'));
 
-    // Pełny payload zgodny ze standardem WebPush:
-    // 1. Obiekt 'notification' gwarantuje natychmiastowe wybudzenie urządzenia
-    // 2. Obiekt 'data' i 'webpush.notification' ze stabilnym 'tag' zapobiegają duplikatom na Androidzie
+    // Pełny payload zgodny ze standardem WebPush / FCM:
+    // 1. Obiekt 'notification' i 'android.priority = high' wybudzają ekran i omijają uśpienie (Doze Mode)
+    // 2. 'visibility: public' oraz 'priority: max' wymuszają prezentację na ekranie blokady (lockscreen)
+    // 3. 'requireInteraction: true' zapobiega automatycznemu znikaniu powiadomienia
     const message = {
       notification: {
         title: String(title || 'BeautyVoice'),
@@ -48,6 +49,33 @@ export class PushService {
         phone: String(phone || ''),
         tag: notificationTag
       },
+      android: {
+        priority: 'high' as const,
+        notification: {
+          channelId: 'default',
+          priority: 'max' as const,
+          sound: 'default',
+          defaultSound: true,
+          defaultVibrateTimings: true,
+          visibility: 'public' as const
+        }
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+          'apns-push-type': 'alert'
+        },
+        payload: {
+          aps: {
+            alert: {
+              title: String(title || 'BeautyVoice'),
+              body: String(body || '')
+            },
+            sound: 'default',
+            contentAvailable: true
+          }
+        }
+      },
       webpush: {
         headers: {
           Urgency: 'high'
@@ -59,6 +87,7 @@ export class PushService {
           badge: iconUrl,
           tag: notificationTag,
           renotify: true,
+          requireInteraction: true,
           data: {
             url: String(clickUrl),
             phone: String(phone || ''),
