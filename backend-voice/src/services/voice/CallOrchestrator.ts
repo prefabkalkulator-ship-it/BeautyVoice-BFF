@@ -402,8 +402,8 @@ export class CallOrchestrator {
             }
           }
 
-          // Wywołanie Post-call workera dla asystenta osobistego (natychmiastowy Push FCM)
-          if (this.businessProfile === 'personal' && callLog) {
+          // Wywołanie Post-call workera (analiza rozmowy, kategoryzacja leada i natychmiastowy Push FCM dla właściciela firmy/asystenta)
+          if (callLog) {
             try {
               await PersonalAssistantWorker.processPostCall(callLog.id);
             } catch (workerErr) {
@@ -628,7 +628,7 @@ export class CallOrchestrator {
       (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot');
 
     const allowLeadQualification = isPersonalExpert || isB2BPremium;
-    const allowServiceArea = isPersonalExpert;
+    const allowServiceArea = isPersonalExpert || isB2BPremium;
 
     this.geminiClient = new GeminiClient({
       onAudioReceived: (audioBase64) => this.streamGeminiAudioToCaller(audioBase64),
@@ -886,7 +886,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               }
             }
 
-            const languageLock = ` Domyślnym językiem rozmowy jest w 100% język polski (słowa powitalne typu "halo", "halo halo", nazwy modeli i serii takie jak MDM, Optimal, Energy, Smart, akcent rozmówcy oraz pojęcia budowlane i techniczne o rdzeniach łacińskich takie jak fundamenty, płyta fundamentowa, wentylacja, modyfikacja oferty to w 100% język polski, a nie niemiecki ani rumuński!). Kategoryczny zakaz recytowania formułek typu "Rozmawiam w języku polskim" oraz zakaz pouczania rozmówcy o języku! Odpowiadaj merytorycznie na temat po polsku. Kategoryczny zakaz samowolnego przełączania na język obcy i kategoryczny zakaz zadawania pytań w językach obcych! Przełącz się na język obcy WYŁĄCZNIE wtedy, gdy rozmówca sam wprost o to poprosi (Direct Request: np. 'Do you speak English?', 'Czy rozmawiasz po ukraińsku?'). W każdym innym wypadku odpowiadaj wyłącznie po polsku! Skróty intencji i zapisywanie wiadomości podlegają w 100% tej zasadzie i nie mogą zmienić języka! ZASADA JĘZYKA INTERFEJSU: Nawet jeśli rozmowa toczy się w języku obcym, wszystkie pisemne notatki, streszczenia i parametry narzędzi ('callSummary' w endCall oraz 'rawMessage' w save_call_message) MUSISZ BEZWZGLĘDNIE zapisać w 100% w języku polskim dla właściciela!`;
+            const languageLock = ` Domyślnym językiem rozmowy jest w 100% język polski (słowa powitalne typu "halo", "halo halo", nazwy modeli i serii takie jak MDM, Optimal, Energy, Smart, wschodnia intonacja lub akcent rozmówcy oraz pojęcia budowlane i techniczne o rdzeniach łacińskich takie jak fundamenty, płyta fundamentowa, wentylacja, modyfikacja oferty to w 100% język polski, a nie ukraiński, niemiecki ani rumuński!). Kategoryczny zakaz recytowania formułek typu "Rozmawiam w języku polskim" oraz zakaz pouczania rozmówcy o języku! Odpowiadaj merytorycznie na temat po polsku. Kategoryczny zakaz samowolnego przełączania na jakikolwiek język obcy (w tym ukraiński, angielski, niemiecki) i kategoryczny zakaz zadawania pytań w językach obcych! Przełącz się na język obcy WYŁĄCZNIE wtedy, gdy rozmówca sam wprost o to poprosi (Direct Request: np. 'Do you speak English?', 'Czy rozmawiasz po ukraińsku?'). W każdym innym wypadku odpowiadaj wyłącznie po polsku! Skróty intencji i zapisywanie wiadomości podlegają w 100% tej zasadzie i nie mogą zmienić języka! ZASADA JĘZYKA INTERFEJSU: Nawet jeśli rozmowa toczy się w języku obcym, wszystkie pisemne notatki, streszczenia i parametry narzędzi ('callSummary' w endCall oraz 'rawMessage' w save_call_message) MUSISZ BEZWZGLĘDNIE zapisać w 100% w języku polskim dla właściciela!`;
             if (contextText && !contextText.includes('językiem rozmowy jest język polski')) {
               contextText += languageLock;
             }
@@ -954,25 +954,19 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     }
 
     if (this.shouldHangupAfterTurn) {
-      console.log('📞 [EndCall] Zakończenie tury pożegnalnej przez Gemini. Natychmiastowe zablokowanie dalszej mowy Gemini.');
+      console.log('📞 [EndCall] Zakończenie tury pożegnalnej przez Gemini. Przygotowuję bezpieczne odłożenie słuchawki po odegraniu mowy.');
       if (this.hangupTimeout) {
         clearTimeout(this.hangupTimeout);
         this.hangupTimeout = null;
       }
       this.isTurnCanceled = true;
-      this.isTerminatedAudio = true;
-      try {
-        this.geminiClient.close();
-      } catch (e) {
-        console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
-      }
 
       // Obliczamy ile audio pożegnalnego czeka jeszcze na fizyczne odegranie w słuchawce przez Twilio
       const totalFarewellMs = this.farewellAudioDurationMs || this.currentTurnAudioDurationMs;
       const elapsedPlaybackMs = this.turnStartTime ? (Date.now() - this.turnStartTime) : (this.farewellStartTime ? (Date.now() - this.farewellStartTime) : 0);
       const remainingAudioMs = Math.max(0, totalFarewellMs - elapsedPlaybackMs);
-      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + zwięzłe 200ms naturalnej pauzy po pożegnaniu
-      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 200, 300), 2000);
+      // Dajemy Twilio pełen czas na dokończenie zbuforowanego dźwięku + 800ms naturalnej pauzy po pożegnaniu przed rozłączeniem
+      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1500), 10000);
       console.log(`⏱️ [EndCall] Wygenerowano ${Math.round(totalFarewellMs)}ms mowy pożegnalnej. Pozostało ~${Math.round(remainingAudioMs)}ms w buforze Twilio. Odłożenie słuchawki za ${Math.round(finalHangupDelayMs)}ms.`);
 
       this.hangupTimeout = setTimeout(async () => {
@@ -1466,7 +1460,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
             const elapsedPlaybackMs = Date.now() - this.turnStartTime;
             const remainingAudioMs = Math.max(0, this.currentTurnAudioDurationMs - elapsedPlaybackMs);
-            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 200, 300), 2000);
+            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1500), 10000);
             console.log(`⏱️ [EndCall] Odłożenie słuchawki zaplanowane za ${Math.round(finalHangupDelayMs)}ms (w buforze Twilio pozostało: ~${Math.round(remainingAudioMs)}ms).`);
 
             if (this.hangupTimeout) clearTimeout(this.hangupTimeout);
@@ -1572,9 +1566,9 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
         // Dynamiczne podtrzymanie watchdoga: dopóki Gemini aktywnie dosyła pakiety mowy pożegnalnej, nie zrywaj połączenia
         if (this.hangupTimeout) {
           clearTimeout(this.hangupTimeout);
-          const elapsed = Date.now() - (this.turnStartTime || Date.now());
+          const elapsed = Date.now() - (this.farewellStartTime || this.turnStartTime || Date.now());
           const remaining = Math.max(0, this.farewellAudioDurationMs - elapsed);
-          const delay = Math.min(Math.max(remaining + 200, 300), 2000);
+          const delay = Math.min(Math.max(remaining + 800, 1500), 10000);
           this.hangupTimeout = setTimeout(async () => {
             console.log('⏱️ [EndCall] Zamknięcie połączenia po zakończeniu odtwarzania mowy pożegnalnej.');
             await this.terminateTwilioCall();

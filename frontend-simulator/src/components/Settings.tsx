@@ -805,6 +805,183 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Blok Funkcji Premium dla Firm B2B (Zasięg Działania, Kwalifikacja Leadów, Bufor) */}
+        {businessProfile !== 'personal' && (
+          <div className="mb-8 relative rounded-2xl border-2 border-purple-200 bg-purple-50/40 p-4 sm:p-5 space-y-4 overflow-hidden shadow-2xs">
+            {!isB2BPremium && (
+              <div className="absolute inset-0 bg-white/85 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center">
+                <div className="p-3 bg-purple-100 text-purple-700 rounded-2xl mb-3 shadow-2xs">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-3 py-1 rounded-full border border-purple-200 mb-2">
+                  Pakiet Premium B2B
+                </span>
+                <h4 className="text-base font-bold text-surface-900 mb-1.5">
+                  Zasięg Działania, Kwalifikacja Leadów & Badania Marketingowe
+                </h4>
+                <p className="text-xs text-surface-600 max-w-md mb-4 leading-relaxed">
+                  Inteligentna kwalifikacja nowych zapytań (pytania handlowe), badanie źródła leada, kontrola obszaru obsługi inwestycji oraz logistyczny bufor odstępu są dostępne w Pakiecie Premium B2B.
+                </p>
+                <Link
+                  to="/dashboard/subscription"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl shadow-sm transition"
+                >
+                  Ulepsz do Pakietu Premium B2B <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 border-b border-purple-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                  <MapPin className="w-4 h-4 shrink-0" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-surface-900">Zasięg Działania & Kwalifikacja Leadów</span>
+                  <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200/80 text-purple-900 uppercase">Pakiet Premium B2B</span>
+                </div>
+              </div>
+              {isB2BPremium && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Aktywny (Pakiet Premium B2B)
+                </span>
+              )}
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Obszar terytorialny / Rejon obsługi inwestycji i klientów
+                </label>
+                <input
+                  type="text"
+                  disabled={!isB2BPremium}
+                  value={serviceAreaDescription}
+                  onChange={e => setServiceAreaDescription(e.target.value)}
+                  placeholder="np. Cała Polska, woj. mazowieckie i łódzkie do 100 km"
+                  className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                />
+                <p className="text-[11px] text-surface-500 mt-1">
+                  Asystent poinformuje dzwoniącego o rejonie realizacji i upewni się, czy lokalizacja inwestycji mieści się w wyznaczonym obszarze.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                  Logistyczny bufor odstępu między spotkaniami
+                </label>
+                <select 
+                  disabled={!isB2BPremium}
+                  value={bufferMinutes} 
+                  onChange={e => setBufferMinutes(parseInt(e.target.value, 10))}
+                  className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                >
+                  <option value={0}>Brak bufora (0 min)</option>
+                  <option value={10}>10 minut odstępu</option>
+                  <option value={15}>15 minut odstępu (zalecane)</option>
+                  <option value={30}>30 minut odstępu</option>
+                  <option value={45}>45 minut odstępu</option>
+                  <option value={60}>60 minut odstępu</option>
+                </select>
+                <p className="text-[11px] text-surface-500 mt-1">Czas na dojazd, oddech lub notatki przed kolejnym spotkaniem handlowym.</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                Wytyczne kwalifikacji zapytania i budżetu
+              </label>
+              <textarea
+                rows={2}
+                disabled={!isB2BPremium}
+                value={qualificationPrompt}
+                onChange={e => setQualificationPrompt(e.target.value)}
+                placeholder="np. Wypytaj o metraż budynku, stan zaawansowania działki (pozwolenia) oraz preferowany termin rozpoczęcia budowy."
+                className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white disabled:opacity-60"
+              />
+              <p className="text-[11px] text-surface-500 mt-1">
+                Asystent przeprowadzi wstępny wywiad handlowy przed zaproponowaniem terminu spotkania z doradcą.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                Szablon SMS odrzucenia zapytania (1-kliknięcie w rejestrze połączeń)
+              </label>
+              <textarea
+                rows={2}
+                disabled={!isB2BPremium}
+                value={rejectionSmsTemplate}
+                onChange={e => setRejectionSmsTemplate(e.target.value)}
+                placeholder="Dzień dobry, dziękujemy za kontakt z naszą firmą. Uprzejmie informujemy, że z uwagi na rejon działania lub specyfikację zlecenia, aktualnie nie realizujemy takich projektów. Pozdrawiamy."
+                className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white disabled:opacity-60"
+              />
+              <p className="text-[11px] text-surface-500 mt-1">
+                Treść gotowej wiadomości SMS, którą wyślesz jednym kliknięciem z poziomu „Wiadomości i Połączenia”.
+              </p>
+            </div>
+
+            {/* Sekcja Pytań Kwalifikacyjnych & Badań Marketingowych */}
+            <div className="pt-3 border-t border-purple-200/80 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl shrink-0 mt-0.5">🎯</span>
+                <div>
+                  <h5 className="text-xs font-bold text-surface-900 uppercase tracking-wider">
+                    Wstępna Kwalifikacja Leadów & Badania Marketingowe (Rola Handlowca)
+                  </h5>
+                  <p className="text-[11px] text-surface-500 mt-0.5">
+                    Zadawane w trakcie rozmowy wyłącznie nowym klientom (brak numeru w bazie), którzy pytają o ofertę lub usługi. Puste pola są pomijane, a odpowiedzi asystent zapisze w podsumowaniu połączenia.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 mb-1">
+                    Pytanie 1 – Kwalifikacja zasobów / przedmiotu sprawy
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isB2BPremium}
+                    value={leadQuestion1}
+                    onChange={e => setLeadQuestion1(e.target.value)}
+                    placeholder="np. Czy posiada już Pan / Pani kupioną działkę pod budowę?"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 mb-1">
+                    Pytanie 2 – Termin realizacji lub budżet
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isB2BPremium}
+                    value={leadQuestion2}
+                    onChange={e => setLeadQuestion2(e.target.value)}
+                    placeholder="np. Na kiedy planują Państwo rozpoczęcie prac lub jaki jest preferowany termin?"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 mb-1">
+                    Pytanie 3 – Badanie marketingowe (skąd klient o nas wie)
+                  </label>
+                  <input
+                    type="text"
+                    disabled={!isB2BPremium}
+                    value={leadQuestion3}
+                    onChange={e => setLeadQuestion3(e.target.value)}
+                    placeholder="np. Z ciekawości – skąd dowiedział(a) się Pan / Pani o naszej firmie?"
+                    className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-purple-500 text-xs bg-white font-medium disabled:opacity-60"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {businessProfile === 'personal' && (
           <div className="mb-8 p-3.5 sm:p-5 bg-amber-50/40 border border-amber-200/80 rounded-2xl animate-in fade-in duration-300">
             <div className="flex items-center gap-2.5 mb-4">
