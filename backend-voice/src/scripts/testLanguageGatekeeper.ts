@@ -1,4 +1,4 @@
-import { getSystemPrompt } from '../prompts/systemPrompt';
+import { getSystemPrompt, normalizePolishNameToNominative } from '../prompts/systemPrompt';
 import { BookingService } from '../services/BookingService';
 import { isLikelyForeignText } from '../services/LanguageSafetyService';
 
@@ -195,6 +195,22 @@ function runTests() {
     personalGuestPrompt.includes('KATEGORYCZNA ZASADA JĘZYKOWA TURY 1') &&
     personalGuestPrompt.includes('Twoja odpowiedź audio MUSI być w 100% po polsku! Dopiero gdy rozmówca zapyta wprost "Do you speak English?", wolno przejść na angielski.'),
     'Test 6.4: Tura 1 zawiera blokadę odpowiedzi po angielsku przy zapytaniu ofertowym bez pytania "Do you speak English?"'
+  );
+
+  // --- SEKCJA 7: Normalizacja imion i koartykulacja fonetyczna oraz Tryb Doradcy ---
+  assert(
+    normalizePolishNameToNominative('Mario Schnowak') === 'Mariusz Nowak',
+    'Test 7.1: normalizePolishNameToNominative poprawnie koryguje koartykulację "Mario Schnowak" na "Mariusz Nowak"'
+  );
+
+  assert(
+    normalizePolishNameToNominative('Mariusza Nowaka') === 'Mariusz Nowak',
+    'Test 7.2: normalizePolishNameToNominative poprawnie zamienia dopełniacz "Mariusza Nowaka" na mianownik "Mariusz Nowak"'
+  );
+
+  assert(
+    personalGuestPrompt.includes('TRYB AKTYWNEGO DORADCY / PROWADZENIE ROZMOWY HANDLOWEJ'),
+    'Test 7.3: Sekcja getFAQ zawiera Tryb Aktywnego Doradcy zapobiegający milczeniu po przedstawieniu oferty'
   );
 
   console.log(`\n========================================`);

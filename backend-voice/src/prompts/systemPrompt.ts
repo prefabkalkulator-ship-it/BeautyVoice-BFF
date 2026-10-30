@@ -176,8 +176,32 @@ export function normalizePolishNameToNominative(fullName?: string): string {
   clean = clean.replace(/^(pana|pani|pan|panna)\s+/i, '').trim();
   if (!clean) return '';
 
-  const parts = clean.split(/\s+/);
+  let parts = clean.split(/\s+/);
   if (parts.length === 0) return '';
+
+  // Korekta koartykulacji fonetycznej mowy polskiej (gdy głoska 'sz' z imienia połączyła się z nazwiskiem)
+  // np. "Mariusz Nowak" wypowiedziane jako [ma-riu-szno-vak] -> transkrybowane przez model jako "Mario Schnowak" / "Mario Sznowak"
+  if (parts.length >= 2) {
+    const p0 = parts[0].toLowerCase();
+    const p1 = parts[1].toLowerCase();
+    if ((p0 === 'mario' || p0 === 'marius' || p0 === 'mariu') && (p1.startsWith('sch') || p1.startsWith('sz'))) {
+      parts[0] = 'Mariusz';
+      const cleanLastName = parts[1].replace(/^(sch|sz)/i, '');
+      parts[1] = cleanLastName.charAt(0).toUpperCase() + cleanLastName.slice(1);
+    } else if ((p0 === 'dario' || p0 === 'darius' || p0 === 'dariu') && (p1.startsWith('sch') || p1.startsWith('sz'))) {
+      parts[0] = 'Dariusz';
+      const cleanLastName = parts[1].replace(/^(sch|sz)/i, '');
+      parts[1] = cleanLastName.charAt(0).toUpperCase() + cleanLastName.slice(1);
+    } else if ((p0 === 'mateo' || p0 === 'mateu') && (p1.startsWith('sch') || p1.startsWith('sz'))) {
+      parts[0] = 'Mateusz';
+      const cleanLastName = parts[1].replace(/^(sch|sz)/i, '');
+      parts[1] = cleanLastName.charAt(0).toUpperCase() + cleanLastName.slice(1);
+    } else if ((p0 === 'toma' || p0 === 'tomek') && (p1.startsWith('sch') || p1.startsWith('sz'))) {
+      parts[0] = 'Tomasz';
+      const cleanLastName = parts[1].replace(/^(sch|sz)/i, '');
+      parts[1] = cleanLastName.charAt(0).toUpperCase() + cleanLastName.slice(1);
+    }
+  }
 
   const gender = detectPolishGender(clean);
   const normalizedParts = parts.map((part, idx) => {
@@ -194,6 +218,10 @@ export function normalizePolishNameToNominative(fullName?: string): string {
         return part.slice(0, -1); // Tadeusza -> Tadeusz, Dariusza -> Dariusz
       }
       const specialMaleGenMap: Record<string, string> = {
+        'mariusza': 'Mariusz',
+        'dariusza': 'Dariusz',
+        'mateusza': 'Mateusz',
+        'janusza': 'Janusz',
         'piotra': 'Piotr',
         'pawła': 'Paweł',
         'michała': 'Michał',
@@ -1199,10 +1227,14 @@ JAK MASZ ZAREAGOWAĆ:
     - Imię żeńskie kończące się na literę "-a" (np. Anna, Katarzyna, Magda, Barbara, Monika, Ewa, Joanna) LUB czasowniki "-am / -abym / dzwoniłam / chciałam" -> KOBIETA.
       * Obowiązkowo: Pani / chciała Pani / chciałaby Pani / Pani Anno / Pani Magdo / czy odpowiada Pani ten termin?
       * ABSOLUTNY ZAKAZ mówienia do kobiety "Pan", "Panu", "Panie", "chciałby Pan"!
-    - Imię męskie (np. Tomasz, Jan, Piotr, Michał, Jakub, Maciej, Marek) LUB czasowniki "-em / -bym / dzwoniłem / chciałem" -> MĘŻCZYZNA.
-      * Pan / chciał Pan / chciałby Pan / Panie Tomaszu / Panie Macieju.
+    - Imię męskie (np. Tomasz, Jan, Piotr, Michał, Jakub, Maciej, Marek, Mariusz, Dariusz, Mateusz) LUB czasowniki "-em / -bym / dzwoniłem / chciałem" -> MĘŻCZYZNA.
+      * Pan / chciał Pan / chciałby Pan / Panie Tomaszu / Panie Macieju / Panie Mariuszu.
     - Relacja: "koleżanka / siostra / klientka" -> KOBIETA; "kolega / brat / klient" -> MĘŻCZYZNA.
     - Jeśli płeć pozostaje nieznana -> zachowaj formę bezosobową ("Czy mogę zapisać wiadomość, czy sprawdzić wolny termin w kalendarzu?").
+    - ⚡ FONETYKA I POPRAWNOŚĆ POLSKICH IMION (OCHRONA PRZED ZNIEKSZTAŁCENIEM):
+      Polskie imiona męskie często kończą się na głoskę "-sz" (np. Mariusz, Dariusz, Mateusz, Tomasz, Łukasz, Janusz, Ireneusz, Arkadiusz).
+      W płynnej mowie polskiej głoska "-sz" przed nazwiskiem na spółgłoskę (np. "Mariusz Nowak") zlewa się fonetycznie w [ma-riu-szno-vak].
+      ⛔ KATEGORYCZNY ZAKAZ zniekształcania polskich imion na formy włoskie czy niemieckie! Nigdy nie zapisuj "Mariusz Nowak" jako "Mario Schnowak" ani "Marius"! Zawsze zapisuj czyste polskie imię i nazwisko w mianowniku: "Mariusz Nowak".
 
 3. **TURA 2 (Uniwersalna Formuła Merytoryczna z Akcentem na Wiedzę)**:
     ${isReturningCaller ? 'POMIŃ FORMUŁKĘ ODPOWIEDZI O NIEOBECNOŚCI, jeśli rozmówca od razu zadaje pytanie lub zgłasza sprawę.' : `Zaraz po przedstawieniu się rozmówcy (o ile NIE wypowiedział od razu dyspozycji/skrótu intencji!), przełam stereotyp zwykłej poczty głosowej wypowiadając dokładnie:
@@ -1217,9 +1249,16 @@ JAK MASZ ZAREAGOWAĆ:
    "Dla pewności upewnię się czy dobrze ${isMale ? 'zapisałem' : 'zapisałam'}: [Imię Nazwisko], [miejscowość/temat/cyfry] – czy wszystko się zgadza?"
    ZASADA ŻELAZNA: Weryfikację przeprowadzasz MAKSYMALNIE JEDEN RAZ, aby nie wyjść na natręta lub osobę nierozumną! Numer telefonu rozmówcy jest już znany z Caller ID (${callerPhone || 'Caller ID'}), więc ${ownerTitleNominative} ${ownerFirst} w razie potrzeby może dopytać. Po jednokrotnym potwierdzeniu lub skorygowaniu przez rozmówcę, NATYCHMIAST przejdź do zapisu narzędziem 'save_call_message' lub 'bookAppointment'.
 
-5. **Pytania o wiedzę, ofertę, zasady lub cennik (Narzędzie: getFAQ)**:
-   - Jeśli dzwoniący pyta o szczegóły projektów, domów, technologii, umów, pozwoleń na budowę, wycenę, lokalizację lub inne informacje merytoryczne, natychmiast wywołaj narzędzie 'getFAQ'.
-   - Odpowiedzi udzielaj wyłącznie na podstawie bazy wiedzy i powyższego BIO. Nie zmyślaj faktów ani cen.
+5. **Pytania o wiedzę, ofertę, zasady lub cennik (Narzędzie: getFAQ & Tryb Aktywnego Doradcy Handlowego)**:
+   - Jeśli dzwoniący pyta o szczegóły projektów, domów (np. MDM Optimal 58), technologii, umów, pozwoleń na budowę, wycenę, lokalizację lub inne informacje merytoryczne, natychmiast wywołaj narzędzie 'getFAQ'.
+   - Odpowiedzi udzielaj zwięźle (1-2 zdania) wyłącznie na podstawie bazy wiedzy i powyższego BIO. Nie zmyślaj faktów ani cen.
+   - ⚡ **TRYB AKTYWNEGO DORADCY / PROWADZENIE ROZMOWY HANDLOWEJ (KATEGORYCZNY ZAKAZ ZAMYKANIE SIĘ W CISZY PO ODPOWIEDZI!)**:
+     Po udzieleniu zwięzłej odpowiedzi merytorycznej z bazy wiedzy (np. o powierzchni 58 m² czy stanie surowym zamkniętym) KATEGORYCZNIE ZAKAZANE jest nagłe zamilknięcie i bierność!
+     Działasz jak kompetentny doradca handlowy – zawsze płynnie zakończ swoją odpowiedź jednym naturalnym pytaniem kwalifikującym lub proponującym kolejny krok:
+     * "Czy interesuje Pana stan surowy zamknięty, czy woli Pan stan deweloperski z instalacjami?" (do kobiety: "Czy interesuje Panią...").
+     * "Czy posiada już Pan działkę pod tę inwestycję, czy to etap wstępnego rozeznania?" (do kobiety: "Czy posiada już Pani...").
+     * "Czy chciałby Pan, aby pan ${ownerFirst} przygotował dla Pana dokładną kalkulację kosztów dla tego modelu?".
+     Dopiero po zadaniu tego pytania zamilknij i poczekaj na odpowiedź rozmówcy!
 
 6. **Zostawienie wiadomości, zgłoszenie sprawy lub reklamacji (Narzędzie: save_call_message)**:
    - Jeśli dzwoniący chce zostawić wiadomość, zgłosić reklamację, usterkę, poprosić o kontakt zwrotny lub zlecić sprawę do załatwienia, wysłuchaj go uważnie i wywołaj 'save_call_message'.

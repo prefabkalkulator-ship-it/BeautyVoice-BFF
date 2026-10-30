@@ -2155,42 +2155,90 @@ export class BookingService {
   ) {
     try {
       rawMessage = await ensurePolishSummary(rawMessage);
-      const callLog = await prisma.callLog.create({
-        data: {
+      const normalizedName = normalizePolishNameToNominative(callerName) || callerName;
+
+      // 1. Zapewnienie profilu klienta w Kartotece CRM (Customer)
+      if (callerPhone && callerPhone !== 'nieznany') {
+        try {
+          const normCallerDigits = callerPhone.replace(/[\s\-\+]/g, '').slice(-9);
+          let existingCust = await prisma.customer.findFirst({
+            where: {
+              tenantId,
+              phone: { contains: normCallerDigits }
+            }
+          });
+
+          const targetName = normalizedName && !normalizedName.includes('Połączenie') && !normalizedName.includes('Nieznan')
+            ? normalizedName
+            : (existingCust?.name || `Klient ${callerPhone}`);
+
+          if (existingCust) {
+            await prisma.customer.update({
+              where: { id: existingCust.id },
+              data: {
+                name: targetName,
+                lastVisitAt: new Date()
+              }
+            });
+          } else {
+            await prisma.customer.create({
+              data: {
+                tenantId,
+                name: targetName,
+                phone: callerPhone,
+                tags: ['#lead', '#wiadomosc_ai'],
+                lastVisitAt: new Date()
+              }
+            });
+          }
+        } catch (cErr) {
+          console.warn('[BookingService] Błąd zapisu klienta w CRM w saveCallMessage:', cErr);
+        }
+      }
+
+      // 2. Unikanie duplikatów CallLog w trakcie tej samej rozmowy (np. gdy rozmówca doprecyzowuje szczegóły)
+      const recentThreshold = new Date(Date.now() - 10 * 60 * 1000);
+      let callLog = await prisma.callLog.findFirst({
+        where: {
           tenantId,
           callerPhone: callerPhone || 'nieznany',
-          callerName: callerName || 'Nieznany rozmówca',
-          callerRole: 'GUEST',
           durationSeconds: 0,
-          status: 'message_left',
-          summary: rawMessage,
-          actionItems: callbackRequested ? 'Prośba o pilny kontakt telefoniczny' : undefined,
-          isMessageLeft: true,
-          urgency: urgency.toUpperCase(),
-          isProcessed: false
-        }
+          createdAt: { gte: recentThreshold }
+        },
+        orderBy: { createdAt: 'desc' }
       });
 
-      // Natychmiastowy Push FCM do właściciela
-      try {
-        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-        if (tenant?.fcmTokens && tenant.fcmTokens.length > 0) {
-          const { PushService } = await import('./PushService');
-          const priorityIcon = (urgency.toUpperCase() === 'HIGH' || urgency.toUpperCase() === 'CRITICAL') ? '🚨 [PILNE]' : '📩';
-          await PushService.sendNotification(
-            tenant.fcmTokens,
-            `${priorityIcon} Wiadomość od: ${callerName || callerPhone}`,
-            rawMessage,
-            'https://beautyvoice-bff.web.app/dashboard',
-            callerPhone,
+      if (callLog) {
+        callLog = await prisma.callLog.update({
+          where: { id: callLog.id },
+          data: {
+            callerName: normalizedName || callLog.callerName,
+            summary: rawMessage,
+            actionItems: callbackRequested ? 'Prośba o pilny kontakt telefoniczny' : callLog.actionItems,
+            urgency: urgency.toUpperCase()
+          }
+        });
+      } else {
+        callLog = await prisma.callLog.create({
+          data: {
             tenantId,
-            `bv-msg-${callLog.id}`
-          );
-          await prisma.callLog.update({ where: { id: callLog.id }, data: { pushSent: true } });
-        }
-      } catch (pushErr) {
-        console.error('[BookingService] Błąd wysyłki Push w saveCallMessage:', pushErr);
+            callerPhone: callerPhone || 'nieznany',
+            callerName: normalizedName || 'Nieznany rozmówca',
+            callerRole: 'GUEST',
+            durationSeconds: 0,
+            status: 'message_left',
+            summary: rawMessage,
+            actionItems: callbackRequested ? 'Prośba o pilny kontakt telefoniczny' : undefined,
+            isMessageLeft: true,
+            urgency: urgency.toUpperCase(),
+            isProcessed: false,
+            pushSent: false
+          }
+        });
       }
+
+      // Powiadomienie Push zostanie wysłane po zakończeniu rozmowy w PersonalAssistantWorker
+      // jako jedno, kompletne podsumowanie ze wszystkimi szczegółami i nastrojem dzwoniącego.
 
       // Jeśli dzwoniący prosi o kontakt / oddzwonienie, automatycznie dodaj zadanie telefonu do kalendarza właściciela
       if (callbackRequested) {

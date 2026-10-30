@@ -360,23 +360,44 @@ export class CallOrchestrator {
             }
           }
 
-          // Aktualizacja profilu Customer w CRM jeśli rozpoznano poprawne imię rozmówcy
-          if (resolvedCallerName && this.callerRole !== 'OWNER' && this.callerPhone && this.callerPhone !== 'nieznany') {
+          // Zapewnienie profilu Customer w Kartotece CRM dla każdego dzwoniącego
+          if (this.callerRole !== 'OWNER' && this.callerPhone && this.callerPhone !== 'nieznany') {
             try {
-              const existingCust = await prisma.customer.findFirst({
-                where: { tenantId: this.tenantId, phone: this.callerPhone }
-              });
-              if (existingCust) {
-                if (!existingCust.name || existingCust.name.includes('Połączenie') || existingCust.name !== resolvedCallerName) {
-                  await prisma.customer.update({
-                    where: { id: existingCust.id },
-                    data: { name: resolvedCallerName }
-                  });
-                  console.log(`👤 [CallOrchestrator] Zaktualizowano imię klienta w CRM: "${resolvedCallerName}"`);
+              const normCallerDigits = this.callerPhone.replace(/[\s\-\+]/g, '').slice(-9);
+              let existingCust = await prisma.customer.findFirst({
+                where: {
+                  tenantId: this.tenantId,
+                  phone: { contains: normCallerDigits }
                 }
+              });
+
+              const targetName = resolvedCallerName && !resolvedCallerName.includes('Połączenie') && !resolvedCallerName.includes('Nieznan')
+                ? resolvedCallerName
+                : (existingCust?.name || `Klient ${this.callerPhone}`);
+
+              if (existingCust) {
+                await prisma.customer.update({
+                  where: { id: existingCust.id },
+                  data: {
+                    name: targetName,
+                    lastVisitAt: new Date()
+                  }
+                });
+                console.log(`👤 [CallOrchestrator] Zaktualizowano klienta w Kartotece CRM: "${targetName}" (${this.callerPhone})`);
+              } else {
+                existingCust = await prisma.customer.create({
+                  data: {
+                    tenantId: this.tenantId,
+                    name: targetName,
+                    phone: this.callerPhone,
+                    tags: ['#lead', '#rozmowa_ai'],
+                    lastVisitAt: new Date()
+                  }
+                });
+                console.log(`👤 [CallOrchestrator] Utworzono nowego klienta w Kartotece CRM: "${targetName}" (${this.callerPhone})`);
               }
             } catch (custErr) {
-              console.warn('[CallOrchestrator] Błąd aktualizacji profilu Customer:', custErr);
+              console.warn('[CallOrchestrator] Błąd zapisu/aktualizacji profilu Customer:', custErr);
             }
           }
 
@@ -946,8 +967,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       const totalFarewellMs = this.farewellAudioDurationMs || this.currentTurnAudioDurationMs;
       const elapsedPlaybackMs = this.turnStartTime ? (Date.now() - this.turnStartTime) : (this.farewellStartTime ? (Date.now() - this.farewellStartTime) : 0);
       const remainingAudioMs = Math.max(0, totalFarewellMs - elapsedPlaybackMs);
-      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + 800ms naturalnej pauzy po pożegnaniu
-      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1000), 4000);
+      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + zwięzłe 200ms naturalnej pauzy po pożegnaniu
+      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 200, 300), 2000);
       console.log(`⏱️ [EndCall] Wygenerowano ${Math.round(totalFarewellMs)}ms mowy pożegnalnej. Pozostało ~${Math.round(remainingAudioMs)}ms w buforze Twilio. Odłożenie słuchawki za ${Math.round(finalHangupDelayMs)}ms.`);
 
       this.hangupTimeout = setTimeout(async () => {
@@ -982,7 +1003,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       try {
         console.log(`📞 [EndCall] Wymuszam natychmiastowe zakończenie połączenia w centrali Twilio REST dla CallSid: ${this.callSid}`);
         const client = twilio(twilioSid, twilioToken);
-        await client.calls(this.callSid).update({ status: 'completed' });
+        await client.calls(this.callSid).update({
+          twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
+        }).catch(async (twimlErr) => {
+          console.warn('[EndCall] TwiML Hangup fallback to status completed:', twimlErr?.message || twimlErr);
+          await client.calls(this.callSid).update({ status: 'completed' });
+        });
         console.log(`✅ [EndCall] Połączenie ${this.callSid} zostało pomyślnie rozłączone w Twilio REST.`);
       } catch (err: any) {
         console.log(`ℹ️ [EndCall] Informacja Twilio REST przy rozłączaniu: ${err?.message || err}`);
@@ -1429,7 +1455,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
             const elapsedPlaybackMs = Date.now() - this.turnStartTime;
             const remainingAudioMs = Math.max(0, this.currentTurnAudioDurationMs - elapsedPlaybackMs);
-            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1000), 4000);
+            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 200, 300), 2000);
             console.log(`⏱️ [EndCall] Odłożenie słuchawki zaplanowane za ${Math.round(finalHangupDelayMs)}ms (w buforze Twilio pozostało: ~${Math.round(remainingAudioMs)}ms).`);
 
             if (this.hangupTimeout) clearTimeout(this.hangupTimeout);
@@ -1536,7 +1562,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           clearTimeout(this.hangupTimeout);
           const elapsed = Date.now() - (this.turnStartTime || Date.now());
           const remaining = Math.max(0, this.farewellAudioDurationMs - elapsed);
-          const delay = Math.min(Math.max(remaining + 800, 1000), 4000);
+          const delay = Math.min(Math.max(remaining + 200, 300), 2000);
           this.hangupTimeout = setTimeout(async () => {
             console.log('⏱️ [EndCall] Zamknięcie połączenia po zakończeniu odtwarzania mowy pożegnalnej.');
             await this.terminateTwilioCall();
