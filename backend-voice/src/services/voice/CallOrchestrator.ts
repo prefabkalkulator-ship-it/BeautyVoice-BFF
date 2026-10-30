@@ -84,6 +84,7 @@ export class CallOrchestrator {
   private callSummaryFromAi: string | null = null;
   private callerNameFromAi: string | null = null;
   private bookedAppointments: string[] = [];
+  private isMessageLeft: boolean = false;
   private callActionJournal: string[] = [];
   private isReturningCaller: boolean = false;
   private returningCallerName: string = '';
@@ -398,8 +399,22 @@ export class CallOrchestrator {
     const now = Date.now();
     const silentDuration = now - this.lastActivityTime;
 
-    // Po 18 sekundach ciszy (gdy asystent nie mówi i nie kończy rozmowy) - jednorazowe podtrzymanie kontaktu:
-    if (silentDuration >= 18000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
+    // 1. Zabezpieczenie po wykonaniu akcji (save_call_message / rezerwacja):
+    // Jeśli akcja biznesowa została zarejestrowana i asystent potwierdził jej przyjęcie, to po 7 sekundach ciszy rozmówcy (np. po pożegnaniu) automatycznie rozłączamy!
+    const isPostActionDone = (this.isMessageLeft || this.callActionJournal.length > 0) && !this.isAwaitingUserAfterAction;
+    if (isPostActionDone && silentDuration >= 7000 && !this.isTerminating && !this.agentSpeaking) {
+      console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy po zrealizowaniu sprawy biznesowej. Automatyczne, kulturalne zakończenie połączenia.`);
+      if (this.silenceWatchdogInterval) {
+        clearInterval(this.silenceWatchdogInterval);
+        this.silenceWatchdogInterval = null;
+      }
+      this.terminateTwilioCall();
+      return;
+    }
+
+    // 2. Po 18 sekundach ciszy (gdy asystent nie mówi i nie kończy rozmowy) - jednorazowe podtrzymanie kontaktu:
+    // WYŁĄCZNIE wtedy, gdy sprawa nie została jeszcze załatwiona:
+    if (silentDuration >= 18000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking && !this.isMessageLeft && this.callActionJournal.length === 0) {
       this.silencePromptSent = true;
       console.log('⏱️ [Silence Watchdog] Minęło 18s ciszy. Asystent wysyła pytanie sprawdzające łączność.');
       if (this.geminiClient && this.geminiClient.isLive()) {
@@ -1322,6 +1337,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           const msgSummary = `[📝 Wiadomość] ${args.callerName || 'Rozmówca'}: ${cleanMessage}`;
           this.callSummaryFromAi = msgSummary;
           this.callActionJournal.push(msgSummary);
+          this.isMessageLeft = true;
           this.isAwaitingUserAfterAction = true;
           this.lastActionTimestamp = Date.now();
           console.log('📌 [CallOrchestrator] Zapisano wiadomość (save_call_message). Włączam blokadę przedwczesnego endCall do momentu odpowiedzi rozmówcy.');

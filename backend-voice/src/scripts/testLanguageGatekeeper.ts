@@ -171,6 +171,32 @@ function runTests() {
     'Test 5.2: Wzorce Skrótu Intencji zawierają jednoznaczne przykłady korekty oferty i wyceny'
   );
 
+  // 6. Testy nowych zabezpieczeń: Audio Generation Lock, brak powtarzania formułek, obowiązkowy endCall
+  assert(
+    personalGuestPrompt.includes('ŻELAZNA BLOKADA SYNTEZY DŹWIĘKOWEJ (AUDIO GENERATION LOCK)') &&
+    personalGuestPrompt.includes('Twoja synteza mowy (audio) MUSI bezwzględnie generować odpowiedź W 100% PO POLSKU!') &&
+    personalGuestPrompt.includes('MÓWIENIE W JĘZYKU OBCYM TO NIE JEST PROŚBA O ZMIANĘ JĘZYKA (IT IS NOT DIRECT REQUEST)'),
+    'Test 6.1: Audio Generation Lock bezwzględnie nakazuje mowę po polsku, gdy rozmówca mówi po angielsku bez Direct Request'
+  );
+
+  assert(
+    !personalGuestPrompt.includes('Czy mogę jeszcze w czymś pomóc, czy to już wszystko?'),
+    'Test 6.2: Całkowicie wyeliminowano sztywną, powtarzaną formułkę "Czy mogę jeszcze w czymś pomóc, czy to już wszystko?"'
+  );
+
+  assert(
+    personalGuestPrompt.includes('KRYTYCZNY OBOWIĄZEK SYSTEMOWY (FUNCTION CALL FIRST)') &&
+    personalGuestPrompt.includes('TWOIM PIERWSZYM I NAJWAŻNIEJSZYM OBOWIĄZKIEM JEST NATYCHMIASTOWE WYWOŁANIE NARZĘDZIA \'endCall\'!') &&
+    personalGuestPrompt.includes('ABSOLUTNY, KATEGORYCZNY ZAKAZ mówienia samego "do widzenia" bez równoczesnego wywołania narzędzia \'endCall\'!'),
+    'Test 6.3: Obowiązkowe wywołanie endCall w tej samej turze co pożegnanie'
+  );
+
+  assert(
+    personalGuestPrompt.includes('KATEGORYCZNA ZASADA JĘZYKOWA TURY 1') &&
+    personalGuestPrompt.includes('Twoja odpowiedź audio MUSI być w 100% po polsku! Dopiero gdy rozmówca zapyta wprost "Do you speak English?", wolno przejść na angielski.'),
+    'Test 6.4: Tura 1 zawiera blokadę odpowiedzi po angielsku przy zapytaniu ofertowym bez pytania "Do you speak English?"'
+  );
+
   console.log(`\n========================================`);
   console.log(`Wynik testów: ${passed} zdanych, ${failed} nieudanych.`);
   console.log(`========================================\n`);
