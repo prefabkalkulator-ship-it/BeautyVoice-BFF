@@ -166,7 +166,7 @@ export class CallOrchestrator {
 
             if (tenant && (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled')))) {
               console.log(`🚫 [CallOrchestrator] Połączenie odrzucone dla tenanta ${tenant.name} - konto zablokowane (isSuspended: ${tenant.isSuspended}, sub: ${tenant.subscription?.status})`);
-              this.twilioWs.close();
+              this.terminateTwilioCall();
               return;
             }
 
@@ -413,7 +413,7 @@ export class CallOrchestrator {
         clearInterval(this.silenceWatchdogInterval);
         this.silenceWatchdogInterval = null;
       }
-      this.twilioWs.close();
+      this.terminateTwilioCall();
       return;
     }
 
@@ -441,7 +441,7 @@ export class CallOrchestrator {
         setTimeout(() => {
           if (!this.isTerminatedAudio && this.twilioWs.readyState === WebSocket.OPEN) {
             console.log(`⏱️ [Call Duration Watchdog] Fallback timeout: zamykam połączenie.`);
-            this.twilioWs.close();
+            this.terminateTwilioCall();
           }
         }, 12000);
       }
@@ -846,7 +846,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               }
             }
 
-            const languageLock = ` Domyślnym językiem rozmowy jest w 100% język polski (słowa powitalne typu "halo", "halo halo", akcent rozmówcy oraz pojęcia budowlane i techniczne o rdzeniach łacińskich takie jak fundamenty, płyta fundamentowa, wentylacja, modyfikacja oferty to w 100% język polski, a nie niemiecki ani rumuński!). Kategoryczny zakaz samowolnego przełączania na język obcy i kategoryczny zakaz zadawania pytań w językach obcych! Przełącz się na język obcy WYŁĄCZNIE wtedy, gdy rozmówca sam wprost o to poprosi (Direct Request: np. 'Do you speak English?', 'Czy rozmawiasz po ukraińsku?'). W każdym innym wypadku odpowiadaj wyłącznie po polsku! Skróty intencji i zapisywanie wiadomości podlegają w 100% tej zasadzie i nie mogą zmienić języka! ZASADA JĘZYKA INTERFEJSU: Nawet jeśli rozmowa toczy się w języku obcym, wszystkie pisemne notatki, streszczenia i parametry narzędzi ('callSummary' w endCall oraz 'rawMessage' w save_call_message) MUSISZ BEZWZGLĘDNIE zapisać w 100% w języku polskim dla właściciela!`;
+            const languageLock = ` Domyślnym językiem rozmowy jest w 100% język polski (słowa powitalne typu "halo", "halo halo", nazwy modeli i serii takie jak MDM, Optimal, Energy, Smart, akcent rozmówcy oraz pojęcia budowlane i techniczne o rdzeniach łacińskich takie jak fundamenty, płyta fundamentowa, wentylacja, modyfikacja oferty to w 100% język polski, a nie niemiecki ani rumuński!). Kategoryczny zakaz recytowania formułek typu "Rozmawiam w języku polskim" oraz zakaz pouczania rozmówcy o języku! Odpowiadaj merytorycznie na temat po polsku. Kategoryczny zakaz samowolnego przełączania na język obcy i kategoryczny zakaz zadawania pytań w językach obcych! Przełącz się na język obcy WYŁĄCZNIE wtedy, gdy rozmówca sam wprost o to poprosi (Direct Request: np. 'Do you speak English?', 'Czy rozmawiasz po ukraińsku?'). W każdym innym wypadku odpowiadaj wyłącznie po polsku! Skróty intencji i zapisywanie wiadomości podlegają w 100% tej zasadzie i nie mogą zmienić języka! ZASADA JĘZYKA INTERFEJSU: Nawet jeśli rozmowa toczy się w języku obcym, wszystkie pisemne notatki, streszczenia i parametry narzędzi ('callSummary' w endCall oraz 'rawMessage' w save_call_message) MUSISZ BEZWZGLĘDNIE zapisać w 100% w języku polskim dla właściciela!`;
             if (contextText && !contextText.includes('językiem rozmowy jest język polski')) {
               contextText += languageLock;
             }
@@ -931,19 +931,53 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       const totalFarewellMs = this.farewellAudioDurationMs || this.currentTurnAudioDurationMs;
       const elapsedPlaybackMs = this.turnStartTime ? (Date.now() - this.turnStartTime) : (this.farewellStartTime ? (Date.now() - this.farewellStartTime) : 0);
       const remainingAudioMs = Math.max(0, totalFarewellMs - elapsedPlaybackMs);
-      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + 2000ms naturalnej pauzy po pożegnaniu
-      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 2000, 3500), 14000);
+      // Dajemy Twilio czas na dokończenie zbuforowanego dźwięku + 800ms naturalnej pauzy po pożegnaniu
+      const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1000), 4000);
       console.log(`⏱️ [EndCall] Wygenerowano ${Math.round(totalFarewellMs)}ms mowy pożegnalnej. Pozostało ~${Math.round(remainingAudioMs)}ms w buforze Twilio. Odłożenie słuchawki za ${Math.round(finalHangupDelayMs)}ms.`);
 
-      this.hangupTimeout = setTimeout(() => {
-        if (this.silenceWatchdogInterval) {
-          clearInterval(this.silenceWatchdogInterval);
-          this.silenceWatchdogInterval = null;
-        }
-        this.twilioWs.close();
+      this.hangupTimeout = setTimeout(async () => {
+        await this.terminateTwilioCall();
       }, finalHangupDelayMs);
     } else {
       this.isTurnCanceled = false;
+    }
+  }
+
+  private async terminateTwilioCall() {
+    this.isTurnCanceled = true;
+    this.isTerminatedAudio = true;
+    if (this.hangupTimeout) {
+      clearTimeout(this.hangupTimeout);
+      this.hangupTimeout = null;
+    }
+    if (this.silenceWatchdogInterval) {
+      clearInterval(this.silenceWatchdogInterval);
+      this.silenceWatchdogInterval = null;
+    }
+    try {
+      this.geminiClient?.close();
+    } catch (e) {
+      console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
+    }
+
+    // Natychmiastowe rozłączenie połączenia w centrali Twilio REST dla sieci komórkowej (SIP BYE)
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    if (this.callSid && twilioSid && twilioToken) {
+      try {
+        console.log(`📞 [EndCall] Wymuszam natychmiastowe zakończenie połączenia w centrali Twilio REST dla CallSid: ${this.callSid}`);
+        const client = twilio(twilioSid, twilioToken);
+        await client.calls(this.callSid).update({ status: 'completed' });
+        console.log(`✅ [EndCall] Połączenie ${this.callSid} zostało pomyślnie rozłączone w Twilio REST.`);
+      } catch (err: any) {
+        console.log(`ℹ️ [EndCall] Informacja Twilio REST przy rozłączaniu: ${err?.message || err}`);
+      }
+    }
+
+    try {
+      this.twilioWs.close();
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -1379,23 +1413,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
             const elapsedPlaybackMs = Date.now() - this.turnStartTime;
             const remainingAudioMs = Math.max(0, this.currentTurnAudioDurationMs - elapsedPlaybackMs);
-            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 2000, 4500), 14000);
+            const finalHangupDelayMs = Math.min(Math.max(remainingAudioMs + 800, 1000), 4000);
             console.log(`⏱️ [EndCall] Odłożenie słuchawki zaplanowane za ${Math.round(finalHangupDelayMs)}ms (w buforze Twilio pozostało: ~${Math.round(remainingAudioMs)}ms).`);
 
             if (this.hangupTimeout) clearTimeout(this.hangupTimeout);
-            this.hangupTimeout = setTimeout(() => {
-              this.isTurnCanceled = true;
-              this.isTerminatedAudio = true;
-              try {
-                this.geminiClient.close();
-              } catch (e) {
-                console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
-              }
-              if (this.silenceWatchdogInterval) {
-                clearInterval(this.silenceWatchdogInterval);
-                this.silenceWatchdogInterval = null;
-              }
-              this.twilioWs.close();
+            this.hangupTimeout = setTimeout(async () => {
+              await this.terminateTwilioCall();
             }, finalHangupDelayMs);
           } else {
             console.log('⏳ [EndCall] endCall wywołano bez wcześniejszego audio w tej turze. Oczekuję na osobną turę z mową pożegnalną od Gemini.');
@@ -1405,21 +1428,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
             this.farewellStartTime = 0;
 
             if (!this.hangupTimeout) {
-              this.hangupTimeout = setTimeout(() => {
+              this.hangupTimeout = setTimeout(async () => {
                 console.log('⏱️ [EndCall] Awaryjne zamknięcie połączenia (watchdog timeout po wywołaniu endCall).');
-                this.isTurnCanceled = true;
-                this.isTerminatedAudio = true;
-                try {
-                  this.geminiClient.close();
-                } catch (e) {
-                  console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
-                }
-                if (this.silenceWatchdogInterval) {
-                  clearInterval(this.silenceWatchdogInterval);
-                  this.silenceWatchdogInterval = null;
-                }
-                this.twilioWs.close();
-              }, 8000);
+                await this.terminateTwilioCall();
+              }, 5000);
             }
           }
 
@@ -1508,21 +1520,10 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           clearTimeout(this.hangupTimeout);
           const elapsed = Date.now() - (this.turnStartTime || Date.now());
           const remaining = Math.max(0, this.farewellAudioDurationMs - elapsed);
-          const delay = Math.min(Math.max(remaining + 2000, 4500), 14000);
-          this.hangupTimeout = setTimeout(() => {
+          const delay = Math.min(Math.max(remaining + 800, 1000), 4000);
+          this.hangupTimeout = setTimeout(async () => {
             console.log('⏱️ [EndCall] Zamknięcie połączenia po zakończeniu odtwarzania mowy pożegnalnej.');
-            this.isTurnCanceled = true;
-            this.isTerminatedAudio = true;
-            try {
-              this.geminiClient.close();
-            } catch (e) {
-              console.warn('[EndCall] Błąd zamykania GeminiClient:', e);
-            }
-            if (this.silenceWatchdogInterval) {
-              clearInterval(this.silenceWatchdogInterval);
-              this.silenceWatchdogInterval = null;
-            }
-            this.twilioWs.close();
+            await this.terminateTwilioCall();
           }, delay);
         }
       }

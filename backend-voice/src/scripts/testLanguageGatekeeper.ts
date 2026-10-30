@@ -74,6 +74,13 @@ function runTests() {
     'Test 1.7: Jedyna ścieżka przełączenia języka to bezpośrednia prośba rozmówcy (Direct Request)'
   );
 
+  assert(
+    !personalGuestPrompt.includes('Rozmawiam w języku polskim. W czym mogę pomóc? Jeśli woli Pan/Pani inny język') &&
+    personalGuestPrompt.includes('ABSOLUTNY, KATEGORYCZNY ZAKAZ RECYTOWANIA JAKICHKOLWIEK FORMUŁEK TYPU „ROZMAWIAM W JĘZYKU POLSKIM”') &&
+    personalGuestPrompt.includes('TARCZA PRZED NAZWAMI HANDLOWYMI, MODELAMI I SERIAMI PRODUKTÓW (MDM, OPTIMAL, ENERGY, SMART, MODERN, ECO)'),
+    'Test 1.8: Usunięto sztywny szablon o języku polskim, zakazano formułek o języku i dodano osłonę dla MDM Optimal 58'
+  );
+
   // 2. Test profilu DEMO
   const demoPrompt = getSystemPrompt({
     tenantName: 'DEMO',
@@ -150,10 +157,12 @@ function runTests() {
 
   // 5. Test Tury 1 i natychmiastowego podejmowania sprawy (Skrót Intencji w pierwszym kontakcie)
   assert(
-    personalGuestPrompt.includes('WYJĄTEK ABSOLUTNY – ROZMÓWCA W TURZE 1 OD RAZU MÓWI O SWOJEJ SPRAWIE (SKRÓT INTENCJI)') &&
-    personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ ponownego dopytywania o imię przed załatwieniem sprawy!') &&
+    personalGuestPrompt.includes('WYJĄTEK ABSOLUTNY – ROZMÓWCA W TURZE 1 OD RAZU MÓWI O SWOJEJ SPRAWIE (SKRÓT INTENCJI & PYTANIA O OFERTĘ/MODELE)') &&
+    personalGuestPrompt.includes('MDM Optimal 58') &&
+    personalGuestPrompt.includes('NATYCHMIAST wywołaj narzędzie \'getFAQ\' i odpowiedz konkretnie i merytorycznie po polsku!') &&
+    personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ ponownego dopytywania o imię przed udzieleniem odpowiedzi!') &&
     personalGuestPrompt.includes('KATEGORYCZNY ZAKAZ mówienia "z kim mam przyjemność?" lub "nie dosłyszałam, z kim rozmawiam"!'),
-    'Test 5.1: Tura 1 zawiera bezwzględny nakaz natychmiastowej obsługi sprawy rozmówcy bez powtórnego pytania o imię'
+    'Test 5.1: Tura 1 zawiera bezwzględny nakaz natychmiastowej obsługi sprawy rozmówcy (w tym pytań o MDM Optimal 58 i getFAQ) bez pytania o imię'
   );
 
   assert(
