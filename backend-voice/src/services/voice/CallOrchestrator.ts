@@ -999,21 +999,23 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
     if (this.callSid && twilioSid && twilioToken) {
       try {
-        console.log(`📞 [EndCall] Wymuszam natychmiastowe zakończenie połączenia w centrali Twilio REST (SIP BYE) dla CallSid: ${this.callSid}`);
+        console.log(`📞 [EndCall] Wymuszam TwiML <Hangup/> w centrali Twilio REST (SIP BYE) dla CallSid: ${this.callSid}`);
         const client = twilio(twilioSid, twilioToken);
-        // KRYTYCZNE: Bezpośrednie ustawienie statusu 'completed' wymusza w Twilio natychmiastowe wysłanie pakietu SIP BYE
-        // do operatora Zadarma / sieci GSM i fizyczne odłożenie słuchawki w telefonie komórkowym rozmówcy!
-        await client.calls(this.callSid).update({ status: 'completed' });
-        console.log(`✅ [EndCall] Połączenie ${this.callSid} zostało pomyślnie rozłączone w Twilio REST (status: completed).`);
-      } catch (err: any) {
-        console.warn(`[EndCall] Błąd rozłączania Twilio REST (status completed): ${err?.message || err}. Próba awaryjna TwiML Hangup.`);
+        // KRYTYCZNE: Wysłanie instrukcji TwiML <Hangup/> powoduje, że centrala Twilio SIP Domain
+        // natychmiast wysyła pakiet SIP BYE do operatora Zadarma (185.45.155.33),
+        // co powoduje fizyczne odłożenie słuchawki i natychmiastowe rozłączenie połączenia komórkowego GSM u dzwoniącego!
+        await client.calls(this.callSid).update({
+          twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
+        });
+        console.log(`✅ [EndCall] Wysłano TwiML <Hangup/> dla ${this.callSid} (SIP BYE wysłany do Zadarma/GSM).`);
+      } catch (twimlErr: any) {
+        console.warn(`[EndCall] Błąd wysyłania TwiML Hangup: ${twimlErr?.message || twimlErr}. Próba awaryjna status: completed.`);
         try {
           const client = twilio(twilioSid, twilioToken);
-          await client.calls(this.callSid).update({
-            twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
-          });
-        } catch (fallbackErr: any) {
-          console.log(`ℹ️ [EndCall] Awaryjny TwiML Hangup: ${fallbackErr?.message || fallbackErr}`);
+          await client.calls(this.callSid).update({ status: 'completed' });
+          console.log(`✅ [EndCall] Awaryjne ustawienie status: completed dla ${this.callSid}.`);
+        } catch (statusErr: any) {
+          console.warn(`[EndCall] Błąd awaryjnego status completed: ${statusErr?.message || statusErr}`);
         }
       }
     }
