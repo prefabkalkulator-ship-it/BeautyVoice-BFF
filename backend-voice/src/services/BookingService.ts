@@ -225,7 +225,7 @@ export class BookingService {
         },
         {
           name: 'getFAQ',
-          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca wprost poprosi o rozmowę w obcym języku (Direct Request), przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
+          description: 'Pobiera pełną bazę wiedzy: oferta, cennik, parametry techniczne domków i konstrukcji, czas trwania montażu, godziny pracy i informacje o firmie. Wywołaj ZAWSZE gdy rozmówca pyta o ofertę, technologię lub wiedzę merytoryczną. WAŻNE: Domyślnie odpowiadaj W 100% PO POLSKU! Wschodni akcent lub pojedyncze słowa (np. "chačiu") NIE SĄ powodem do zmiany języka – odpowiadaj wyłącznie po polsku.',
           parameters: { type: 'OBJECT', properties: {} }
         },
         {
@@ -415,7 +415,7 @@ export class BookingService {
         },
       {
         name: 'getServicesAndPrices',
-        description: 'Pobiera aktualny cennik usług oraz listę personelu. ZAWSZE wywołaj to narzędzie na początku rozmowy, gdy klient pyta o ofertę, ceny lub dostępne zabiegi.',
+        description: 'Pobiera aktualny cennik usług oraz listę personelu. ZAWSZE wywołaj to narzędzie na początku rozmowy, gdy klient pyta o ofertę, ceny lub dostępne zabiegi. WAŻNE: Domyślnie odpowiadaj W 100% PO POLSKU!',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
@@ -440,7 +440,7 @@ export class BookingService {
       },
       {
         name: 'getFAQ',
-        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. Jeśli rozmowa toczy się po polsku, odpowiadaj w 100% po polsku. Jedynie gdy rozmówca wprost poprosi o rozmowę w obcym języku (Direct Request), przetłumacz odpowiedzi na ten język w locie, zachowując 100% czystość języka docelowego (kategoryczny zakaz makaronizmów).',
+        description: 'Pobiera pełną bazę wiedzy i najczęściej zadawane pytania (FAQ), cennik, ofertę, godziny otwarcia i zasady. WAŻNE: Domyślnie odpowiadaj W 100% PO POLSKU! Wschodni akcent lub pojedyncze słowa (np. "chačiu") NIE SĄ powodem do zmiany języka – odpowiadaj wyłącznie po polsku.',
         parameters: { type: 'OBJECT', properties: {} },
       },
       {

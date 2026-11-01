@@ -33,12 +33,12 @@ export class CallOrchestrator {
   private turnBufferedDurationMs: number = 0;
   private readonly PREBUFFER_THRESHOLD_MS: number = 200; // 200ms poduszka rozbiegowa (1600 bajtów 8kHz mulaw)
 
-  // Inactivity / Silence Watchdog (30s) & EndCall state
+  // Inactivity / Silence Watchdog (20s) & EndCall state
   private lastActivityTime: number = Date.now();
   private silencePromptSent: boolean = false;
   private silenceFarewellSent: boolean = false;
   private silenceWatchdogInterval: NodeJS.Timeout | null = null;
-  private readonly SILENCE_TIMEOUT_MS: number = 30000; // 30 sekund ciszy / szumu w tle
+  private readonly SILENCE_TIMEOUT_MS: number = 20000; // 20 sekund ciszy / szumu w tle
   private shouldHangupAfterTurn: boolean = false;
   private hangupTimeout: NodeJS.Timeout | null = null;
   private isTerminating: boolean = false;
@@ -421,31 +421,31 @@ export class CallOrchestrator {
     const now = Date.now();
     const silentDuration = now - this.lastActivityTime;
 
-    // Etap 1 (14-16s ciszy): Uprzejme pytanie sprawdzające łączność
+    // Etap 1 (10s ciszy): Uprzejme pytanie sprawdzające łączność
     // Zapobiega przedwczesnemu ucięciu rozmowy, gdy rozmówca robi naturalną pauzę w wypowiedzi
-    if (silentDuration >= 15000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
+    if (silentDuration >= 10000 && !this.silencePromptSent && !this.isTerminating && !this.agentSpeaking) {
       this.silencePromptSent = true;
       const isPostActionDone = (this.isMessageLeft || this.callActionJournal.length > 0) && !this.isAwaitingUserAfterAction;
-      console.log(`⏱️ [Silence Watchdog] Minęło 15s ciszy (isPostActionDone: ${isPostActionDone}). Wysyłam pytanie sprawdzające.`);
+      console.log(`⏱️ [Silence Watchdog] Minęło 10s ciszy (isPostActionDone: ${isPostActionDone}). Wysyłam pytanie sprawdzające.`);
       if (this.geminiClient && this.geminiClient.isLive()) {
         if (isPostActionDone) {
-          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 15 sekund po zapisaniu sprawy. Upewnij się łagodnie: 'Czy ma Pan / Pani jeszcze jakieś pytania, czy na dzisiaj to wszystko?']");
+          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 10 sekund po zapisaniu sprawy. Upewnij się łagodnie po polsku: 'Czy ma Pan / Pani jeszcze jakieś pytania, czy na dzisiaj to wszystko?']");
         } else {
-          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż i wykonaj odpowiednie narzędzie! Jeśli rozmówca po prostu milczy, upewnij się łagodnie: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]");
+          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż po polsku i wykonaj odpowiednie narzędzie! Jeśli rozmówca po prostu milczy, upewnij się łagodnie po polsku: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]");
         }
       }
     }
 
-    // Etap 2 (25s ciszy): Jeśli rozmówca nadal milczy po zapytaniu sprawdzającym, asystent kulturalnie żegna się i wywołuje endCall
-    if (silentDuration >= 25000 && !this.silenceFarewellSent && !this.isTerminating && !this.agentSpeaking) {
+    // Etap 2 (16s ciszy): Jeśli rozmówca nadal milczy po zapytaniu sprawdzającym, asystent kulturalnie żegna się i wywołuje endCall
+    if (silentDuration >= 16000 && !this.silenceFarewellSent && !this.isTerminating && !this.agentSpeaking) {
       this.silenceFarewellSent = true;
-      console.log('⏱️ [Silence Watchdog] Minęło 25s ciszy. Nakazuję asystentowi pożegnanie i wywołanie endCall.');
+      console.log('⏱️ [Silence Watchdog] Minęło 16s ciszy. Nakazuję asystentowi pożegnanie i wywołanie endCall.');
       if (this.geminiClient && this.geminiClient.isLive()) {
-        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 25 sekund mimo zapytania sprawdzającego. Powiedz uprzejmie dokładnie jedno zwięzłe zdanie: 'Dziękuję bardzo za rozmowę, do usłyszenia!' i natychmiast wywołaj narzędzie endCall.]");
+        this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 16 sekund mimo zapytania sprawdzającego. Powiedz uprzejmie po polsku dokładnie jedno zwięzłe zdanie: 'Dziękuję bardzo za rozmowę, do usłyszenia!' i natychmiast wywołaj narzędzie endCall.]");
       }
     }
 
-    // Etap 3 (30s ciszy): Twarde, awaryjne odłożenie słuchawki przez centralę
+    // Etap 3 (20s ciszy): Twarde, awaryjne odłożenie słuchawki przez centralę
     if (silentDuration >= this.SILENCE_TIMEOUT_MS) {
       console.log(`⏱️ [Silence Watchdog] Wykryto ${Math.round(silentDuration / 1000)}s ciszy/szumu w tle. Awaryjne odłożenie słuchawki.`);
       if (this.silenceWatchdogInterval) {
@@ -1008,6 +1008,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
           twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
         });
         console.log(`✅ [EndCall] Wysłano TwiML <Hangup/> dla ${this.callSid} (SIP BYE wysłany do Zadarma/GSM).`);
+        // Krótka separacja czasowa (300ms), aby centrala Twilio przetworzyła <Hangup/> przed zamknięciem WebSocketu
+        await new Promise(resolve => setTimeout(resolve, 300));
       } catch (twimlErr: any) {
         console.warn(`[EndCall] Błąd wysyłania TwiML Hangup: ${twimlErr?.message || twimlErr}. Próba awaryjna status: completed.`);
         try {
@@ -1087,10 +1089,20 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       const args = functionCall.args || {};
 
       switch (functionCall.name) {
-        case 'getServicesAndPrices':
-          return await bookingService.getServicesAndPrices(tenantId);
-        case 'getFAQ':
-          return await bookingService.getFAQ(tenantId, this.isConfidentialUnlocked);
+        case 'getServicesAndPrices': {
+          const servicesData = await bookingService.getServicesAndPrices(tenantId);
+          return {
+            _instrukcjaJezykowa: "ODPOWIEDZ PO POLSKU (chyba że rozmówca wcześniej wprost poprosił pełnym zdaniem o zmianę języka). Akcent wschodni lub pojedyncze słowa (np. 'chačiu') OZNACZAJĄ JĘZYK POLSKI – kategoryczny zakaz przechodzenia na język obcy!",
+            data: servicesData
+          };
+        }
+        case 'getFAQ': {
+          const faqData = await bookingService.getFAQ(tenantId, this.isConfidentialUnlocked);
+          return {
+            _instrukcjaJezykowa: "ODPOWIEDZ PO POLSKU (chyba że rozmówca wcześniej wprost poprosił pełnym zdaniem o zmianę języka). Akcent wschodni lub pojedyncze słowa (np. 'chačiu') OZNACZAJĄ JĘZYK POLSKI – kategoryczny zakaz przechodzenia na język obcy!",
+            items: faqData
+          };
+        }
         case 'verify_owner_pin': {
           if (this.isOwnerLocked) {
             return {

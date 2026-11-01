@@ -137,6 +137,7 @@ export class GeminiClient {
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: {
+            languageCode: "pl-PL",
             voiceConfig: { 
               prebuiltVoiceConfig: { 
                 voiceName: aiVoice 

@@ -3,6 +3,7 @@ import { app } from './app';
 import { config } from './config/env';
 import { WebSocketServer } from 'ws';
 import { CallOrchestrator } from './services/voice/CallOrchestrator';
+import { VADService } from './services/voice/VADService';
 import { copilotEngineService } from './services/voice/CopilotEngineService';
 
 const port = config.port;
@@ -12,6 +13,10 @@ const server = app.listen(port, () => {
   if (!process.env.GEMINI_API_KEY) {
     console.warn('⚠️ OSTRZEŻENIE: Brak zmiennej GEMINI_API_KEY. Żądania do modelu nie powiodą się.');
   }
+  // Pre-warming modelu Silero VAD przy starcie kontenera (eliminacja opóźnienia zimnego startu przy 1. połączeniu)
+  VADService.init().catch((err) => {
+    console.warn('⚠️ [VAD Pre-warm] Nie udało się wstępnie załadować modelu VAD przy starcie:', err?.message || err);
+  });
 });
 
 // Serwery WebSocket (noServer: true) dla izolacji ścieżek
