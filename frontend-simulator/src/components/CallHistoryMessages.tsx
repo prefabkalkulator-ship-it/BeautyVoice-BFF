@@ -39,6 +39,8 @@ interface CallLog {
   durationSeconds: number;
   status: string;
   summary?: string | null;
+  transcript?: string | null;
+  hasTranscript?: boolean;
   actionItems?: string | null;
   isMessageLeft: boolean;
   urgency: string;
@@ -59,6 +61,25 @@ export default function CallHistoryMessages() {
   const [filter, setFilter] = useState<'all' | 'messages' | 'urgent'>('messages');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedTranscriptIds, setExpandedTranscriptIds] = useState<string[]>([]);
+
+  const handleToggleTranscript = (logId: string) => {
+    setExpandedTranscriptIds(prev =>
+      prev.includes(logId) ? prev.filter(id => id !== logId) : [...prev, logId]
+    );
+  };
+
+  const handleDeleteTranscript = async (logId: string) => {
+    try {
+      const res = await fetch(`/api/call-logs/${logId}/transcript`, { method: 'DELETE' });
+      if (res.ok) {
+        setLogs(prev => prev.map(l => l.id === logId ? { ...l, transcript: null, hasTranscript: false } : l));
+        setExpandedTranscriptIds(prev => prev.filter(id => id !== logId));
+      }
+    } catch (err) {
+      console.error('Błąd usuwania transkrypcji:', err);
+    }
+  };
 
   // Stan uniwersalnego modala potwierdzeń spotkań / wizyt
   const [confirmationModalData, setConfirmationModalData] = useState<{
@@ -208,11 +229,11 @@ export default function CallHistoryMessages() {
     }
   };
 
-  const handleOpenTrain = (log: CallLog) => {
+  const handleOpenTrain = (log: CallLog, customQuestion?: string) => {
     setTrainModalLog(log);
     setTrainError('');
     setTrainSuccess('');
-    setTrainQuestion(log.actionItems ? `Pytanie dot.: ${log.actionItems}` : `Pytanie z rozmowy: ${log.summary?.slice(0, 60) || ''}`);
+    setTrainQuestion(customQuestion || (log.actionItems ? `Pytanie dot.: ${log.actionItems}` : `Pytanie z rozmowy: ${log.summary?.slice(0, 60) || ''}`));
     setTrainAnswer('');
     setTrainIsConfidential(false);
   };
@@ -307,7 +328,8 @@ export default function CallHistoryMessages() {
       log.callerPhone.includes(q) ||
       (log.callerName && log.callerName.toLowerCase().includes(q)) ||
       (log.summary && log.summary.toLowerCase().includes(q)) ||
-      (log.actionItems && log.actionItems.toLowerCase().includes(q))
+      (log.actionItems && log.actionItems.toLowerCase().includes(q)) ||
+      (log.transcript && log.transcript.toLowerCase().includes(q))
     );
   });
 
@@ -577,6 +599,35 @@ export default function CallHistoryMessages() {
                           <GraduationCap className={`w-3.5 h-3.5 ${canUseExpertFeatures ? 'text-purple-700' : 'text-surface-400'}`} />
                           Doszkól asystenta
                         </button>
+                        {(log.transcript || log.hasTranscript || (!canUseExpertFeatures && log.durationSeconds >= 10)) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!canUseExpertFeatures) {
+                                setUpgradeModal({
+                                  isOpen: true,
+                                  title: 'Moduł: Pełna Transkrypcja Rozmów (Stenogram AI)',
+                                  description: 'Dostęp do pełnego, podzielonego na role stenogramu rozmów (Klient vs EVA / Handlowiec) wraz ze znacznikami czasu, filtrem RODO/PII oraz wyszukiwarką słów kluczowych jest dostępny w Pakiecie Osobisty Ekspert oraz Pakiecie Premium B2B.',
+                                  targetPlanName: isPersonalProfile ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'
+                                });
+                                return;
+                              }
+                              handleToggleTranscript(log.id);
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-medium rounded-xl text-xs transition cursor-pointer ${
+                              canUseExpertFeatures
+                                ? expandedTranscriptIds.includes(log.id)
+                                  ? 'bg-indigo-600 text-white border border-indigo-600 shadow-2xs'
+                                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/70'
+                                : 'bg-surface-100 hover:bg-surface-200 text-surface-500 border border-surface-200'
+                            }`}
+                            title={canUseExpertFeatures ? "Pokaż lub ukryj pełny zapis przebiegu rozmowy (stenogram)" : (isPersonalProfile ? "Funkcja zablokowana (wymaga Pakietu Osobisty Ekspert)" : "Funkcja zablokowana (wymaga Pakietu Premium B2B)")}
+                          >
+                            {!canUseExpertFeatures && <Lock className="w-3.5 h-3.5 text-indigo-600" />}
+                            <BookOpen className={`w-3.5 h-3.5 ${canUseExpertFeatures ? (expandedTranscriptIds.includes(log.id) ? 'text-white' : 'text-indigo-700') : 'text-surface-400'}`} />
+                            {expandedTranscriptIds.includes(log.id) ? 'Ukryj transkrypcję' : 'Pełny zapis rozmowy'}
+                          </button>
+                        )}
                         {log.callerPhone && log.callerPhone !== 'nieznany' && log.rejectionReason !== 'OUT_OF_AREA' && (
                           <button
                             type="button"
@@ -605,6 +656,86 @@ export default function CallHistoryMessages() {
                           </button>
                         )}
                       </div>
+
+                      {/* ROZWIJANY WIDOK PEŁNEJ TRANSKRYPCJI ROZMOWY (CZAT DIALOGOWY) */}
+                      {canUseExpertFeatures && expandedTranscriptIds.includes(log.id) && log.transcript && (
+                        <div className="mt-3 p-3.5 sm:p-4 bg-gradient-to-b from-indigo-50/40 to-white rounded-2xl border border-indigo-200/80 space-y-3 animate-in fade-in duration-200">
+                          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-indigo-100">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                                <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                                Pełny stenogram rozmowy
+                              </span>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                🛡️ Chronione RODO / PII
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(log.transcript || '', `tr_${log.id}`)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-surface-100 text-surface-700 border border-surface-200 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                              >
+                                {copiedId === `tr_${log.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                {copiedId === `tr_${log.id}` ? 'Skopiowano' : 'Kopiuj stenogram'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTranscript(log.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-medium transition cursor-pointer"
+                                title="Usuń sam stenogram rozmowy zgodnie z prawem do bycia zapomnianym (RODO), zachowując notatkę podsumowującą"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Usuń zapis (RODO)
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                            {log.transcript.split('\n').filter(line => line.trim().length > 0).map((line, idx) => {
+                              const match = line.match(/^(\[\d{2}:\d{2}\])?\s*(🤖\s*[^:]+|💼\s*[^:]+|👤\s*[^:]+|Klient|EVA|Ewa|Handlowiec):\s*(.*)$/i);
+                              const timeTag = match?.[1] || '';
+                              const speakerRaw = match?.[2] || '';
+                              const contentText = match?.[3] || line;
+                              const isClient = speakerRaw.includes('👤') || /klient/i.test(speakerRaw);
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex flex-col ${isClient ? 'items-start' : 'items-end'}`}
+                                >
+                                  <div
+                                    className={`max-w-[92%] sm:max-w-[82%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed shadow-2xs ${
+                                      isClient
+                                        ? 'bg-white border border-surface-200 text-surface-900 rounded-tl-xs'
+                                        : 'bg-indigo-600 text-white rounded-tr-xs'
+                                    }`}
+                                  >
+                                    <div className={`flex items-center justify-between gap-3 mb-0.5 text-[10px] font-bold ${isClient ? 'text-surface-500' : 'text-indigo-200'}`}>
+                                      <span>{speakerRaw || (isClient ? '👤 Klient' : '🤖 Asystent')}</span>
+                                      {timeTag && <span className="font-mono">{timeTag}</span>}
+                                    </div>
+                                    <div className="break-words">{contentText}</div>
+                                    {isClient && contentText.length > 6 && (
+                                      <div className="mt-1.5 pt-1 border-t border-surface-100 flex justify-end">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenTrain(log, contentText)}
+                                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-700 hover:text-purple-900 transition cursor-pointer"
+                                          title="Utwórz wpis w Bazie Wiedzy FAQ bezpośrednio z tego pytania klienta"
+                                        >
+                                          <GraduationCap className="w-3 h-3" />
+                                          Doszkól z tej wypowiedzi
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

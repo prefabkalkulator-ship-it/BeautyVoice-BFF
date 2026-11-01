@@ -7,7 +7,12 @@ import { prisma } from '../../prisma';
 import { PushService } from '../PushService';
 
 import { BookingService } from '../BookingService';
-import { ensurePolishSummary } from '../LanguageSafetyService';
+import {
+  ensurePolishSummary,
+  shouldRecordTranscriptForTenant,
+  isPiiRedactionEnabledForTenant,
+  generateCallTranscriptFromMulaw
+} from '../LanguageSafetyService';
 import { getPolishGenitive, detectPolishGender, normalizePolishNameToNominative, getPolishVocative } from '../../prompts/systemPrompt';
 import { PersonalAssistantWorker } from '../../jobs/PersonalAssistantWorker';
 
@@ -108,6 +113,14 @@ export class CallOrchestrator {
   private isConfirmedOutbound: boolean = false;
   private isCancelledOutbound: boolean = false;
   private isFirstOutboundTurnComplete: boolean = false;
+
+  // Bufor RAM dla pełnej transkrypcji rozmów (Osobisty Ekspert & Premium B2B - Zero Data Retention dla audio)
+  private shouldSaveTranscript: boolean = false;
+  private piiRedactionEnabled: boolean = true;
+  private secretPins: string[] = [];
+  private callMulawChunks: Buffer[] = [];
+  private callMulawTotalBytes: number = 0;
+  private readonly MAX_TRANSCRIPT_AUDIO_BYTES: number = 8000 * 600; // maks. 10 min (4.8 MB RAM)
 
   constructor(twilioConnection: WebSocket) {
     this.twilioWs = twilioConnection;
@@ -241,6 +254,33 @@ export class CallOrchestrator {
                 ? (this.ownerName || this.tenantName) 
                 : (this.callerNameFromAi || undefined));
 
+          // Generowanie pełnej transkrypcji rozmowy (dla pakietów Osobisty Ekspert oraz Premium B2B)
+          let resolvedTranscript: string | null = null;
+          if (this.shouldSaveTranscript && this.callMulawChunks.length > 0 && durationSeconds >= 6) {
+            const fullMulaw = Buffer.concat(this.callMulawChunks);
+            this.callMulawChunks = []; // Natychmiastowe zwolnienie pamięci RAM (ZDR)
+            this.callMulawTotalBytes = 0;
+
+            const needFallback = !resolvedSummary && this.callActionJournal.length === 0 && this.bookedAppointments.length === 0;
+            const transcriptResult = await generateCallTranscriptFromMulaw(fullMulaw, {
+              botName: this.botName || 'EVA',
+              piiRedactionEnabled: this.piiRedactionEnabled,
+              extraSecrets: this.secretPins,
+              needFallbackSummary: needFallback
+            });
+
+            if (transcriptResult.transcript) {
+              resolvedTranscript = transcriptResult.transcript;
+              console.log(`📄 [CallOrchestrator] Wygenerowano pełną transkrypcję rozmowy (${resolvedTranscript.split('\n').length} linii).`);
+            }
+            if (!resolvedSummary && transcriptResult.fallbackSummary) {
+              resolvedSummary = await ensurePolishSummary(transcriptResult.fallbackSummary);
+            }
+          } else {
+            this.callMulawChunks = [];
+            this.callMulawTotalBytes = 0;
+          }
+
           // Jeśli AI nie przekazało podsumowania przez endCall, wygeneruj z faktów zarejestrowanych w TEJ konkretnej rozmowie
           if (!resolvedSummary) {
             if (this.callActionJournal.length > 0) {
@@ -284,6 +324,7 @@ export class CallOrchestrator {
               data: { 
                 durationSeconds,
                 summary: resolvedSummary || undefined,
+                transcript: resolvedTranscript || undefined,
                 callerName: resolvedCallerName || undefined,
                 isProcessed: true
               }
@@ -303,6 +344,7 @@ export class CallOrchestrator {
               data: { 
                 durationSeconds,
                 summary: resolvedSummary || callLog.summary,
+                transcript: resolvedTranscript || callLog.transcript,
                 callerName: resolvedCallerName || callLog.callerName,
                 status: logStatus,
                 isProcessed: isProcessed
@@ -326,6 +368,7 @@ export class CallOrchestrator {
                 durationSeconds,
                 status: logStatus,
                 summary: resolvedSummary || null,
+                transcript: resolvedTranscript || null,
                 isProcessed: isProcessed
               }
             });
@@ -629,6 +672,10 @@ export class CallOrchestrator {
 
     const allowLeadQualification = isPersonalExpert || isB2BPremium;
     const allowServiceArea = isPersonalExpert || isB2BPremium;
+
+    this.shouldSaveTranscript = shouldRecordTranscriptForTenant(tenant);
+    this.piiRedactionEnabled = isPiiRedactionEnabledForTenant(tenant);
+    this.secretPins = [tenant?.pinCode || '', tenant?.confidentialPin || ''].filter(Boolean);
 
     this.geminiClient = new GeminiClient({
       onAudioReceived: (audioBase64) => this.streamGeminiAudioToCaller(audioBase64),
@@ -1551,6 +1598,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
     // 2. FULL-DUPLEX: Zawsze przesyłamy dźwięk dzwoniącego do Gemini Live API w trybie ciągłym,
     // co pozwala modelowi Gemini natychmiast wykrywać wejście w słowo (interrupted: true),
     // podczas gdy lokalny Silero VAD (z progiem 0.50) służy jako lokalny akcelerator szybkiego uciszania Twilio.
+    if (this.shouldSaveTranscript && !this.agentSpeaking && this.callMulawTotalBytes < this.MAX_TRANSCRIPT_AUDIO_BYTES) {
+      const callerMulawChunk = Buffer.from(payloadBase64, 'base64');
+      this.callMulawChunks.push(callerMulawChunk);
+      this.callMulawTotalBytes += callerMulawChunk.length;
+    }
+
     const pcmBase64 = AudioPipeline.float32ToPcm16Base64(float32Array);
     this.geminiClient.sendRealtimeAudio(pcmBase64);
   }
@@ -1563,6 +1616,11 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       }
 
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
+      if (this.shouldSaveTranscript && this.callMulawTotalBytes < this.MAX_TRANSCRIPT_AUDIO_BYTES) {
+        const botMulawChunk = Buffer.from(outMulawBuffer);
+        this.callMulawChunks.push(botMulawChunk);
+        this.callMulawTotalBytes += botMulawChunk.length;
+      }
       const durationMs = outMulawBuffer.length / 8; // 8 bajtów na ms (8000Hz mulaw)
       this.lastActivityTime = Math.max(this.lastActivityTime, Date.now() + durationMs); // Asystentka mówi - uwzględniamy czas rzeczywistego odtwarzania w Twilio
       if (!this.agentSpeaking || this.turnStartTime === 0) {

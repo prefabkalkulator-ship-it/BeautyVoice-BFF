@@ -233,6 +233,9 @@ export default function Settings() {
     dualShortMinutes: 60,
     dualLongLabel: 'Dłuższa realizacja / Prace',
     dualLongMinutes: 480,
+    saveFullTranscripts: true,
+    piiRedactionEnabled: true,
+    transcriptRetentionDays: 90,
     focusBlocks: [] as Array<{ 
       id: string; 
       name: string; 
@@ -309,6 +312,9 @@ export default function Settings() {
             dualShortMinutes: tData.personalSchedule.dualShortMinutes ?? 60,
             dualLongLabel: tData.personalSchedule.dualLongLabel || 'Dłuższa realizacja / Prace',
             dualLongMinutes: tData.personalSchedule.dualLongMinutes ?? 480,
+            saveFullTranscripts: tData.personalSchedule.saveFullTranscripts !== false,
+            piiRedactionEnabled: tData.personalSchedule.piiRedactionEnabled !== false,
+            transcriptRetentionDays: tData.personalSchedule.transcriptRetentionDays ?? 90,
             days: {
               ...DEFAULT_PERSONAL_DAYS,
               ...(tData.personalSchedule.days || {})
@@ -804,6 +810,111 @@ export default function Settings() {
             </div>
           </div>
         )}
+
+        {/* Karta: Pełna Transkrypcja Rozmów & Ochrona RODO / PII (Pakiet Osobisty Ekspert & Premium B2B) */}
+        <div className="mb-8 relative rounded-2xl border-2 border-indigo-200 bg-indigo-50/35 p-4 sm:p-5 space-y-4 overflow-hidden shadow-2xs">
+          {!isEligibleForLandline && (
+            <div className="absolute inset-0 bg-white/85 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center">
+              <div className="p-3 bg-indigo-100 text-indigo-700 rounded-2xl mb-3 shadow-2xs">
+                <Lock className="w-6 h-6" />
+              </div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100/80 px-3 py-1 rounded-full border border-indigo-200 mb-2">
+                {businessProfile === 'personal' ? 'Pakiet Osobisty Ekspert' : 'Pakiet Premium B2B'}
+              </span>
+              <h4 className="text-base font-bold text-surface-900 mb-1.5">
+                Pełny Stenogram Rozmów (Transkrypcja AI) & Filtr RODO / PII
+              </h4>
+              <p className="text-xs text-surface-600 max-w-md mb-4 leading-relaxed">
+                Automatyczny zapis pełnego dialogu (Klient vs EVA / Handlowiec) ze znacznikami czasu, wyszukiwarką słów kluczowych, szkoleniem 1-Click FAQ z wypowiedzi klienta oraz maskowaniem danych wrażliwych RODO jest dostępny w {businessProfile === 'personal' ? 'Pakiecie Osobisty Ekspert' : 'Pakiecie Premium B2B'}.
+              </p>
+              <Link
+                to="/dashboard/subscription"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
+              >
+                Ulepsz do {businessProfile === 'personal' ? 'Pakietu Osobisty Ekspert' : 'Pakietu Premium B2B'} <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2 border-b border-indigo-100 pb-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                <MessageSquare className="w-4 h-4 shrink-0" />
+              </div>
+              <div>
+                <span className="text-sm font-bold text-surface-900">Pełna Transkrypcja Rozmów & Ochrona RODO (PII)</span>
+                <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-200/80 text-indigo-900 uppercase">
+                  {businessProfile === 'personal' ? 'Osobisty Ekspert' : 'Premium B2B'}
+                </span>
+              </div>
+            </div>
+            {isEligibleForLandline && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Aktywny
+              </span>
+            )}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-white border border-indigo-100 cursor-pointer hover:border-indigo-300 transition">
+              <input
+                type="checkbox"
+                disabled={!isEligibleForLandline}
+                checked={personalSchedule.saveFullTranscripts !== false}
+                onChange={e => setPersonalSchedule(prev => ({ ...prev, saveFullTranscripts: e.target.checked }))}
+                className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+              />
+              <div>
+                <div className="text-xs font-bold text-surface-900">
+                  Zapisuj pełny stenogram rozmów (EVA & Live Copilot)
+                </div>
+                <p className="text-[11px] text-surface-500 mt-0.5 leading-relaxed">
+                  Tworzy dokładny zapis dialogu z podziałem na role (`🤖 EVA` / `💼 Handlowiec` vs `👤 Klient`) i znacznikami czasu `[MM:SS]` w Historii Połączeń.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-white border border-indigo-100 cursor-pointer hover:border-indigo-300 transition">
+              <input
+                type="checkbox"
+                disabled={!isEligibleForLandline}
+                checked={personalSchedule.piiRedactionEnabled !== false}
+                onChange={e => setPersonalSchedule(prev => ({ ...prev, piiRedactionEnabled: e.target.checked }))}
+                className="mt-0.5 w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+              />
+              <div>
+                <div className="text-xs font-bold text-surface-900">
+                  Automatyczna anonimizacja danych wrażliwych (Filtr RODO / PII)
+                </div>
+                <p className="text-[11px] text-surface-500 mt-0.5 leading-relaxed">
+                  Automatycznie maskuje numery PESEL, numery kart płatniczych / IBAN oraz kody PIN przed zapisaniem tekstu w bazie danych.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4 items-center pt-1">
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 uppercase tracking-wider mb-1">
+                Okres przechowywania pełnych transkrypcji (Retencja RODO)
+              </label>
+              <select
+                disabled={!isEligibleForLandline}
+                value={personalSchedule.transcriptRetentionDays ?? 90}
+                onChange={e => setPersonalSchedule(prev => ({ ...prev, transcriptRetentionDays: parseInt(e.target.value, 10) }))}
+                className="w-full rounded-xl border border-surface-200 p-2.5 outline-none focus:border-indigo-500 text-xs bg-white font-medium disabled:opacity-60"
+              >
+                <option value={30}>30 dni (automatyczne czyszczenie stenogramu po miesiącu)</option>
+                <option value={90}>90 dni (zalecany balans dowodowy i RODO)</option>
+                <option value={0}>Bezterminowo (do ręcznego usunięcia przez właściciela)</option>
+              </select>
+            </div>
+            <div className="p-3 rounded-xl bg-white/80 border border-indigo-100 text-[11px] text-surface-600 leading-relaxed">
+              <strong className="text-indigo-950 block mb-0.5">⚖️ Wskazówka prawna & Zero Data Retention (ZDR):</strong>
+              System nie przechowuje plików audio na dysku – bufor dźwiękowy w pamięci RAM jest niszczony w ułamku sekundy po wygenerowaniu tekstu. Po upływie okresu retencji usuwany jest tylko surowy dialog, a zwięzła notatka CRM zostaje zachowana.
+            </div>
+          </div>
+        </div>
 
         {/* Blok Funkcji Premium dla Firm B2B (Zasięg Działania, Kwalifikacja Leadów, Bufor) */}
         {businessProfile !== 'personal' && (

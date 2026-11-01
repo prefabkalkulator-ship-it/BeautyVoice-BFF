@@ -4,6 +4,11 @@ import { createRequire } from 'module';
 import { prisma } from '../../prisma';
 import { AI_MODELS } from '../../config/aiModels';
 import { VoiceOutboundService } from './VoiceOutboundService';
+import {
+  shouldRecordTranscriptForTenant,
+  isPiiRedactionEnabledForTenant,
+  sanitizeTranscriptPII
+} from '../LanguageSafetyService';
 
 const require = createRequire(import.meta.url);
 const { mulaw } = require('alawmulaw');
@@ -31,6 +36,7 @@ export interface CopilotDraftSummary {
   nextStepTask: string;
   nextStepDate: string;
   leadStage: 'IN_PROGRESS' | 'OFFER_SENT' | 'WON' | 'LOST';
+  transcript?: string | null;
 }
 
 export interface CopilotSession {
@@ -64,6 +70,10 @@ export interface CopilotSession {
   lastInboundAudioTime: number;
   evaluatingInbound: boolean;
   recentEmittedHints: string[];
+  transcriptLines: string[];
+  saveFullTranscripts: boolean;
+  piiRedactionEnabled: boolean;
+  secretPins: string[];
 }
 
 export class CopilotEngineService {
@@ -113,7 +123,8 @@ export class CopilotEngineService {
       where: { id: options.tenantId },
       include: {
         faqEntries: true,
-        services: true
+        services: true,
+        subscription: true
       }
     });
 
@@ -286,7 +297,11 @@ export class CopilotEngineService {
       evaluatingInbound: false,
       activeBattlecard: initialBattlecard,
       battlecards: [initialBattlecard],
-      recentEmittedHints: [initialBattlecard.heading, ...initialBattlecard.bullets]
+      recentEmittedHints: [initialBattlecard.heading, ...initialBattlecard.bullets],
+      transcriptLines: [],
+      saveFullTranscripts: shouldRecordTranscriptForTenant(tenant),
+      piiRedactionEnabled: isPiiRedactionEnabledForTenant(tenant),
+      secretPins: [tenant?.pinCode || '', tenant?.confidentialPin || ''].filter(Boolean)
     };
 
     this.sessions.set(sessionId, session);
@@ -557,7 +572,9 @@ ${confidentialLimits || 'Brak poufnych progów.'}
 WYMOGI FORMATOWANIA:
 - Odpowiedz WYŁĄCZNIE obiektem JSON:
 {
-  "heading": "Krótki temat pytania/sytuacji (maks. 5 słów, np. CENA DOMU MDM 58)",
+  "speaker": "KLIENT" | "HANDLOWIEC",
+  "spokenText": "Dosłowny, zwięzły zapis wypowiedzi usłyszanej w tym fragmencie audio (lub pusty ciąg '', jeśli słychać tylko szum/ciszę)",
+  "heading": "Krótki temat pytania/sytuacji (maks. 5 słów, np. CENA DOMU MDM 58, lub '' jeśli brak nowej podpowiedzi)",
   "bullets": [
     "Pierwszy twardy fakt / liczba / cena / parametr",
     "Kolejny fakt (tyle linii ile wymaga temat - od 1 do 8 linijek, bez lania wody)"
@@ -577,12 +594,13 @@ ZASADY MERYTORYCZNE I WIZUALNE:
      ⚠️ – dla ważnych uwag, warunków i obostrzeń (np. ⚠️ **Wymóg:** płyta fundamentowa wg projektu MDM)
      📍 – dla lokalizacji i domów pokazowych (np. 📍 Dom pokazowy: **Kolonia Poczesna** k. Częstochowy)
      👉 lub ❓ – dla zalecanego kolejnego pytania handlowego lub kroku
+5. ZAWSZE wypełnij pole "spokenText" oraz "speaker", jeśli w nagraniu słychać ludzką mowę (nawet gdy nie generujesz nowej karty podpowiedzi).
 `;
 
       // Pamięć ostatnich podpowiedzi (anty-powtórzeniowa)
       const recentEmitted = (session.recentEmittedHints || []).slice(-8).map(h => `- ${h}`).join('\n');
       const antiRepetitionSection = recentEmitted
-        ? `\n\nOSTATNIO WYGENEROWANE PODPOWIEDZI (Handlowiec prawdopodobnie właśnie je odczytuje lub przekazał klientowi):\n${recentEmitted}\n\nBEZWZGLĘDNA ZASADA ANTY-POWTÓRZENIOWA:\nJeśli w nagraniu słyszysz handlowca powtarzającego lub czytającego powyższe fakty, ALBO klienta potwierdzającego ('tak', 'rozumiem', 'dobrze', 'aha'):\nNIE GENERUJ PONOWNIE TYCH SAMYCH FAKTÓW! Zwróć pusty obiekt JSON: {}\nWygeneruj nową podpowiedź TYLKO JEŚLI klient zadał NOWE pytanie, padła nowa obiekcja lub poruszono kolejny temat.`
+        ? `\n\nOSTATNIO WYGENEROWANE PODPOWIEDZI (Handlowiec prawdopodobnie właśnie je odczytuje lub przekazał klientowi):\n${recentEmitted}\n\nBEZWZGLĘDNA ZASADA ANTY-POWTÓRZENIOWA:\nJeśli w nagraniu słyszysz handlowca powtarzającego lub czytającego powyższe fakty, ALBO klienta potwierdzającego ('tak', 'rozumiem', 'dobrze', 'aha'):\nNIE GENERUJ PONOWNIE TYCH SAMYCH FAKTÓW! Zwróć obiekt JSON z wypełnionym "speaker" i "spokenText", ale z pustym "heading": "" i "bullets": []!\nWygeneruj nową podpowiedź ("heading" i "bullets") TYLKO JEŚLI klient zadał NOWE pytanie, padła nowa obiekcja lub poruszono kolejny temat.`
         : '';
 
       const userParts: any[] = [{ text: systemPrompt }];
@@ -595,7 +613,7 @@ ZASADY MERYTORYCZNE I WIZUALNE:
         });
       }
       userParts.push({
-        text: `Odsłuchaj nagranie wypowiedzi z rozmowy (klient lub handlowiec). Zidentyfikuj intencję, pytanie, ofertę lub obiekcję:\n- Jeśli mówi klient: podaj natychmiast twarde fakty, ceny, terminy lub zbijanie obiekcji z bazy FAQ/cennika.\n- Jeśli mówi handlowiec: podaj proaktywnie twarde parametry, specyfikację, warianty i aktualny rabat z bazy wiedzy dla omawianego produktu.\n- Jeśli nagranie zawiera jedynie powtórzenie ostatnich faktów lub potakiwanie: ZWRÓĆ PUSTY OBIEKT JSON: {}\n- Jeśli pada deklaracja zakupu: podaj kolejny krok do domknięcia.${antiRepetitionSection}`
+        text: `Odsłuchaj nagranie wypowiedzi z rozmowy (klient lub handlowiec). Zapisz usłyszaną wypowiedź w "spokenText" oraz określ mówcę w "speaker". Następnie zidentyfikuj intencję, pytanie, ofertę lub obiekcję:\n- Jeśli mówi klient: podaj natychmiast twarde fakty, ceny, terminy lub zbijanie obiekcji z bazy FAQ/cennika.\n- Jeśli mówi handlowiec: podaj proaktywnie twarde parametry, specyfikację, warianty i aktualny rabat z bazy wiedzy dla omawianego produktu.\n- Jeśli nagranie zawiera jedynie powtórzenie ostatnich faktów lub potakiwanie: pozostaw "heading": "" oraz "bullets": [].\n- Jeśli pada deklaracja zakupu: podaj kolejny krok do domknięcia.${antiRepetitionSection}`
       });
 
       const response = await this.ai.models.generateContent({
@@ -616,6 +634,26 @@ ZASADY MERYTORYCZNE I WIZUALNE:
 
       const responseText = response.text?.trim() || '{}';
       const battlecard = JSON.parse(responseText);
+
+      // Zapis linii dialogowej do stenogramu sesji (dla pakietów Ekspert / Premium B2B)
+      if (session.saveFullTranscripts && typeof battlecard.spokenText === 'string') {
+        const cleanSpoken = battlecard.spokenText.trim();
+        if (cleanSpoken.length > 2) {
+          const elapsedSec = Math.max(0, Math.round((Date.now() - session.createdAt.getTime()) / 1000));
+          const mm = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+          const ss = String(elapsedSec % 60).padStart(2, '0');
+          const speakerLabel = battlecard.speaker === 'HANDLOWIEC' ? '💼 Handlowiec' : '👤 Klient';
+          const sanitizedSpoken = sanitizeTranscriptPII(
+            cleanSpoken,
+            session.piiRedactionEnabled,
+            session.secretPins
+          );
+          const lastLine = session.transcriptLines[session.transcriptLines.length - 1] || '';
+          if (!lastLine.endsWith(sanitizedSpoken)) {
+            session.transcriptLines.push(`[${mm}:${ss}] ${speakerLabel}: ${sanitizedSpoken}`);
+          }
+        }
+      }
 
       const heading = (battlecard.heading || battlecard.topic || '').trim();
       const bullets: string[] = Array.isArray(battlecard.bullets) 
@@ -692,14 +730,16 @@ ZASADY MERYTORYCZNE I WIZUALNE:
 
     const callAgeSeconds = Math.round((Date.now() - session.createdAt.getTime()) / 1000);
     const liveCards = (session.battlecards || []).filter(b => b.id && !b.id.startsWith('bc_init'));
+    const hasTranscript = Array.isArray(session.transcriptLines) && session.transcriptLines.length > 0;
 
-    // Blokada fałszywych podsumowań: jeśli połączenie trwało poniżej 15s LUB brak faktycznych podpowiedzi z rozmowy
-    if (liveCards.length === 0 || callAgeSeconds < 15) {
+    // Blokada fałszywych podsumowań: jeśli połączenie trwało poniżej 15s LUB brak faktycznych podpowiedzi/wypowiedzi z rozmowy
+    if ((liveCards.length === 0 && !hasTranscript) || callAgeSeconds < 15) {
       const fallback: CopilotDraftSummary = {
         notes: `Próba kontaktu z klientem ${session.customerName || session.customerPhone} nie powiodła się (połączenie nieodebrane, zajęte lub przerwane przed nawiązaniem rozmowy). Brak nowych ustaleń.`,
         nextStepTask: 'Ponowić próbę kontaktu telefonicznego',
         nextStepDate: tomorrow,
-        leadStage: 'IN_PROGRESS'
+        leadStage: 'IN_PROGRESS',
+        transcript: null
       };
       this.recentDrafts.set(sessionId, { draft: fallback, createdAt: Date.now() });
       return fallback;
@@ -708,17 +748,19 @@ ZASADY MERYTORYCZNE I WIZUALNE:
     const cardsToUse = liveCards;
 
     const factsText = cardsToUse.map(b => `• ${b.heading}: ${b.bullets.join('; ')}`).join('\n');
+    const transcriptText = hasTranscript ? session.transcriptLines.join('\n') : '';
     const checkedChecklist = (session.checklist || []).filter(c => c.checked).map(c => c.text);
 
     try {
       const prompt = `Jesteś profesjonalnym polskim asystentem CRM i handlowym.
 Właśnie zakończyła się rozmowa telefoniczna z klientem.
-Twoim zadaniem jest sporządzenie zwięzłego, rzeczowego podsumowania CRM na podstawie faktów i tematów zarejestrowanych podczas rozmowy przez Copilota.
+Twoim zadaniem jest sporządzenie zwięzłego, rzeczowego podsumowania CRM na podstawie faktów i przebiegu rozmowy zarejestrowanych przez Copilota.
 
 Klient: ${session.customerName || 'Klient'} (${session.customerPhone})
 Tematy i fakty omówione podczas rozmowy:
-${factsText}
+${factsText || 'Brak wywołanych kart faktów'}
 
+${transcriptText ? `Zapis przebiegu rozmowy:\n${transcriptText}\n` : ''}
 Odhaczone cele rozmowy:
 ${checkedChecklist.length > 0 ? checkedChecklist.join(', ') : 'Rozmowa bieżąca'}
 
@@ -752,7 +794,8 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON w formacie:
           : tomorrow,
         leadStage: ['IN_PROGRESS', 'OFFER_SENT', 'WON', 'LOST'].includes(parsed.leadStage)
           ? parsed.leadStage
-          : 'IN_PROGRESS'
+          : 'IN_PROGRESS',
+        transcript: session.saveFullTranscripts && hasTranscript ? transcriptText : null
       };
 
       this.recentDrafts.set(sessionId, { draft, createdAt: Date.now() });
@@ -771,7 +814,8 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON w formacie:
         notes: `Rozmowa z klientem ${session.customerName}. Omówiono szczegóły oferty.`,
         nextStepTask: 'Oddzwonić do klienta',
         nextStepDate: tomorrow,
-        leadStage: 'IN_PROGRESS'
+        leadStage: 'IN_PROGRESS',
+        transcript: session.saveFullTranscripts && hasTranscript ? transcriptText : null
       };
       this.recentDrafts.set(sessionId, { draft: fallback, createdAt: Date.now() });
       return fallback;

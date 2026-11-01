@@ -7,6 +7,12 @@ import { webhookController } from './controllers/WebhookController';
 import { knowledgeService } from './services/KnowledgeExtractorService';
 import { VoiceOutboundService } from './services/voice/VoiceOutboundService';
 import { PushService } from './services/PushService';
+import {
+  isTenantEligibleForTranscripts,
+  shouldRecordTranscriptForTenant,
+  isPiiRedactionEnabledForTenant,
+  sanitizeTranscriptPII
+} from './services/LanguageSafetyService';
 
 const app = express();
 
@@ -2527,6 +2533,18 @@ app.get('/api/call-logs', async (req, res) => {
       orderBy: { startTime: 'asc' }
     });
 
+    const sub = await prisma.subscription.findUnique({ where: { tenantId: tenant.id } });
+    const canAccessTranscripts = isTenantEligibleForTranscripts({ ...tenant, subscription: sub });
+    const sched = (tenant?.personalSchedule && typeof tenant.personalSchedule === 'object') ? (tenant.personalSchedule as any) : {};
+    const retentionDays = Number(sched.transcriptRetentionDays) || 0;
+    if (retentionDays > 0) {
+      const cutoffDate = new Date(Date.now() - retentionDays * 24 * 3600 * 1000);
+      prisma.callLog.updateMany({
+        where: { tenantId: tenant.id, transcript: { not: null }, createdAt: { lt: cutoffDate } },
+        data: { transcript: null }
+      }).catch(() => {});
+    }
+
     const enrichedLogs = logs.map(log => {
       // 1. Szukaj po bezpośrednim callLogId
       let appt = relatedAppts.find(a => a.callLogId === log.id);
@@ -2542,6 +2560,8 @@ app.get('/api/call-logs', async (req, res) => {
 
       return {
         ...log,
+        hasTranscript: Boolean(log.transcript),
+        transcript: canAccessTranscripts ? log.transcript : null,
         appointmentId: appt?.id || null,
         appointmentDate: appt?.startTime || null,
         appointmentStatus: appt?.status || null,
@@ -2591,6 +2611,23 @@ app.delete('/api/call-logs/:id', async (req, res) => {
     const { id } = req.params;
     await prisma.callLog.deleteMany({
       where: { id, tenantId: tenant.id }
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/call-logs/:id/transcript', async (req, res) => {
+  try {
+    const tenant = await getContextTenant(req);
+    if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
+
+    const { id } = req.params;
+    await prisma.callLog.updateMany({
+      where: { id, tenantId: tenant.id },
+      data: { transcript: null }
     });
 
     res.json({ success: true });
@@ -3225,7 +3262,7 @@ app.post('/api/copilot/save-summary', async (req, res) => {
     const tenant = await getContextTenant(req);
     if (!tenant) return res.status(401).json({ error: 'Brak autoryzacji' });
 
-    const { customerPhone, customerName, notes, nextStepTask, nextStepDate, leadStage, callDurationSeconds } = req.body || {};
+    const { customerPhone, customerName, notes, nextStepTask, nextStepDate, leadStage, callDurationSeconds, transcript } = req.body || {};
     if (!customerPhone) return res.status(400).json({ error: 'Brak numeru telefonu klienta' });
 
     const rawPhone = String(customerPhone).replace(/[\s\-\+]/g, '');
@@ -3286,6 +3323,9 @@ app.post('/api/copilot/save-summary', async (req, res) => {
           durationSeconds: duration,
           status: 'COMPLETED',
           summary: summaryText,
+          transcript: (typeof transcript === 'string' && transcript.trim().length > 0)
+            ? sanitizeTranscriptPII(transcript.trim(), isPiiRedactionEnabledForTenant(tenant), [tenant.pinCode || '', tenant.confidentialPin || ''].filter(Boolean))
+            : null,
           actionItems: nextStepTask ? `${nextStepTask}${nextStepDate ? ` (Termin: ${nextStepDate})` : ''}` : null,
           isProcessed: true,
           urgency: 'NORMAL'

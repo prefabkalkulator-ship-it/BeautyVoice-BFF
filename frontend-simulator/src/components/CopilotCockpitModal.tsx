@@ -214,6 +214,7 @@ export default function CopilotCockpitModal({
 
   // Notatki powoławcze i zadanie CRM
   const [postCallNote, setPostCallNote] = useState('');
+  const [postCallTranscript, setPostCallTranscript] = useState<string | null>(null);
   const [nextStepTask, setNextStepTask] = useState('');
   const [nextStepDate, setNextStepDate] = useState('');
   const [leadStage, setLeadStage] = useState<'IN_PROGRESS' | 'OFFER_SENT' | 'WON' | 'LOST'>('IN_PROGRESS');
@@ -680,6 +681,9 @@ export default function CopilotCockpitModal({
     if (draft.leadStage && ['IN_PROGRESS', 'OFFER_SENT', 'WON', 'LOST'].includes(draft.leadStage)) {
       setLeadStage(draft.leadStage);
     }
+    if (draft.transcript && typeof draft.transcript === 'string') {
+      setPostCallTranscript(draft.transcript);
+    }
   };
 
   const handleStartCopilotCall = async () => {
@@ -760,7 +764,8 @@ export default function CopilotCockpitModal({
           nextStepTask,
           nextStepDate,
           leadStage,
-          callDurationSeconds: callDurationSeconds || 60
+          callDurationSeconds: callDurationSeconds || 60,
+          transcript: postCallTranscript
         })
       });
 
