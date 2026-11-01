@@ -785,10 +785,10 @@ export default function CopilotCockpitModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-2 sm:p-4 bg-surface-950/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl w-full max-w-2xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl shadow-2xl border border-surface-200 overflow-hidden flex flex-col max-h-[94vh] md:max-h-[92vh] animate-scale-in">
+      <div className="bg-white rounded-3xl w-full max-w-2xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl shadow-2xl border border-surface-200 overflow-hidden flex flex-col h-[94vh] md:h-auto max-h-[94vh] md:max-h-[92vh] animate-scale-in">
         
         {/* NAGŁÓWEK KOKPITU */}
-        <div className="bg-gradient-to-r from-surface-900 via-indigo-950 to-surface-900 text-white p-4 sm:p-5 md:p-6 flex items-center justify-between border-b border-surface-800 shrink-0">
+        <div className="bg-gradient-to-r from-surface-900 via-indigo-950 to-surface-900 text-white p-3 sm:p-5 md:p-6 flex items-center justify-between border-b border-surface-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
               <Headphones className="w-5 h-5 md:w-6 md:h-6 animate-pulse" />
@@ -1219,7 +1219,7 @@ export default function CopilotCockpitModal({
         {/* FAZA 3: AKTYWNY KOKPIT W TRAKCIE ROZMOWY (IN_CALL) */}
         {/* ============================================================== */}
         {callPhase === 'in_call' && (
-          <div className="p-3 sm:p-5 md:p-6 space-y-4 md:space-y-5 overflow-y-auto flex-1 flex flex-col">
+          <div className="p-2 sm:p-4 md:p-6 space-y-2 sm:space-y-4 md:space-y-5 overflow-hidden md:overflow-y-auto flex-1 min-h-0 flex flex-col">
             
             {/* OSTRZEŻENIE O ZERWANIU INTERNETU */}
             {isOffline && (
@@ -1251,20 +1251,20 @@ export default function CopilotCockpitModal({
             )}
 
             {/* PASEK STANU MÓWCY I SYNCHRONIZACJI */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-surface-100/90 p-2.5 sm:p-3 md:p-3.5 rounded-2xl border border-surface-200 gap-2 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-surface-100/90 p-2 sm:p-3 md:p-3.5 rounded-2xl border border-surface-200 gap-1.5 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
                 <div className="text-xs sm:text-sm md:text-base font-bold text-surface-900">
                   EVA nasłuchuje obu rozmówców
                 </div>
                 <span className="hidden sm:inline-block text-surface-400">•</span>
-                <span className="text-[11px] sm:text-xs md:text-sm text-surface-600">
+                <span className="hidden sm:inline-block text-[11px] sm:text-xs md:text-sm text-surface-600">
                   AI na żywo analizuje pytania klienta i Twoje propozycje handlowe
                 </span>
               </div>
 
               <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                <span className="text-[10px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200/80">
+                <span className="text-[10px] sm:text-xs font-semibold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200/80">
                   Podpowiedzi: {battlecards.length}
                 </span>
               </div>
@@ -1316,7 +1316,7 @@ export default function CopilotCockpitModal({
                   <div 
                     ref={feedContainerRef}
                     onScroll={handleFeedScroll}
-                    className="flex-1 overflow-y-auto pr-1 divide-y divide-surface-200 scroll-smooth min-h-[46vh] max-h-[58vh]"
+                    className="flex-1 min-h-0 overflow-y-auto pr-1 divide-y divide-surface-200 scroll-smooth"
                   >
                     {battlecards.length === 0 ? (
                       <div className="py-8 px-3 text-center space-y-2">
@@ -1416,7 +1416,7 @@ export default function CopilotCockpitModal({
                     </span>
                   </div>
 
-                  <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-[38vh]">
+                  <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-1">
                     {checklist.length === 0 ? (
                       <div className="py-6 px-3 text-center text-xs text-surface-400 italic bg-surface-50 rounded-xl border border-dashed border-surface-200">
                         Brak zdefiniowanych celów rozmowy. Wpisz własny punkt poniżej.
