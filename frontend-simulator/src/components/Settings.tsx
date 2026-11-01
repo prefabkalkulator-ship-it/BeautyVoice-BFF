@@ -2,7 +2,7 @@ import PageHelpButton from './common/PageHelpButton';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight, Calendar, ShieldCheck, Loader2, PhoneForwarded, AlertCircle, Headphones } from 'lucide-react';
+import { Save, Plus, X, User, Briefcase, Home, Moon, Zap, Clock, GraduationCap, Trash2, Copy, RotateCcw, Lock, Code, PhoneCall, ExternalLink, MapPin, CheckCircle2, Check, ArrowRight, Calendar, ShieldCheck, Loader2, PhoneForwarded, AlertCircle, Headphones, MessageSquare } from 'lucide-react';
 
 const defaultSchedule = {
   "1": { "isWorking": true, "start": "09:00", "end": "17:00" },
