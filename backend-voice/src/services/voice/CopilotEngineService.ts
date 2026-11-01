@@ -172,10 +172,16 @@ export class CopilotEngineService {
     if (Array.isArray(options.checklist)) {
       checklist = options.checklist;
     } else if (scenario === 'callback' && cleanLastSummary) {
+      const firstGoal = cleanLastSummary.length > 50 
+        ? `Nawiąż do ustaleń z poprzedniej rozmowy (${cleanLastSummary.slice(0, 38)}...)`
+        : `Nawiąż do: ${cleanLastSummary}`;
+      const secondGoal = recentCalls[0]?.actionItems 
+        ? `Zrealizuj zadanie: ${recentCalls[0].actionItems.slice(0, 45)}`
+        : 'Przedstaw kalkulację i odpowiedz na pytania techniczne';
       checklist.push(
-        { id: '1', text: `Nawiąż do ostatniej rozmowy (${cleanLastSummary.slice(0, 38)}...)`, checked: false },
-        { id: '2', text: 'Przedstaw skorygowaną kalkulację i warunki cenowe', checked: false },
-        { id: '3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
+        { id: '1', text: firstGoal, checked: false },
+        { id: '2', text: secondGoal, checked: false },
+        { id: '3', text: 'Ustal termin kolejnego kontaktu lub wizyty w domu pokazowym', checked: false }
       );
     } else if (scenario === 'sales') {
       checklist.push(
@@ -428,6 +434,11 @@ export class CopilotEngineService {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    // Guard: W trybie konferencji przez pierwsze 3.5s ignorujemy szum/sygnały łączenia centrali
+    if (session.mode === 'conference' && (Date.now() - session.createdAt.getTime() < 3500)) {
+      return;
+    }
+
     const audioChunk = Buffer.from(payloadBase64, 'base64');
 
     // Precyzyjna detekcja energii głosu na zdekodowanych próbkach 16-bit linear PCM (G.711 mulaw decode)
@@ -554,10 +565,18 @@ WYMOGI FORMATOWANIA:
   "category": "OBJECTION" | "FACT_QUERY" | "BUYING_SIGNAL" | "DEESCALATION",
   "faqSource": "current" | "permanent" | "confidential" | null
 }
-ZASADY MERYTORYCZNE:
+ZASADY MERYTORYCZNE I WIZUALNE:
 1. BRAK SZTYWNEGO LIMITU WIERSZY: Jeśli pytanie wymaga 1 faktu (np. gwarancja), daj 1 wiersz. Jeśli klient pyta o zakres lub ofertę, podaj 4-8 konkretnych punktów specyfikacji.
 2. Zwięzłe, wyczerpujące fakty z twardymi liczbami, cenami brutto/netto i terminami.
 3. BEZWZGLĘDNY ZAKAZ lania wody, wstępów i ogólników.
+4. WIZUALNE WYRÓŻNIANIE KLUCZOWYCH DANYCH (CZYTELNOŚĆ W 0.2 SEKUNDY):
+   - Zawsze pogrubiaj za pomocą Markdown **...** kluczowe kwoty, ceny brutto/netto, nazwy modeli, metraże, okresy gwarancji i terminy (np. **348 430 zł brutto**, model **MDM 58**, **30 lat** gwarancji konstrukcyjnej).
+   - Rozpoczynaj każdy punkt od intuicyjnego emoji lub symbolu:
+     💰 lub 🏷️ – dla cen, kosztów i rabatów (np. 💰 **348 430 zł brutto** – stan deweloperski do 300 km)
+     ⭐ – dla gwarancji, certyfikatów i atutów (np. ⭐ Drewno konstrukcyjne klasy **C24** i **BSH**)
+     ⚠️ – dla ważnych uwag, warunków i obostrzeń (np. ⚠️ **Wymóg:** płyta fundamentowa wg projektu MDM)
+     📍 – dla lokalizacji i domów pokazowych (np. 📍 Dom pokazowy: **Kolonia Poczesna** k. Częstochowy)
+     👉 lub ❓ – dla zalecanego kolejnego pytania handlowego lub kroku
 `;
 
       // Pamięć ostatnich podpowiedzi (anty-powtórzeniowa)
@@ -671,19 +690,22 @@ ZASADY MERYTORYCZNE:
       return fallback;
     }
 
+    const callAgeSeconds = Math.round((Date.now() - session.createdAt.getTime()) / 1000);
     const liveCards = (session.battlecards || []).filter(b => b.id && !b.id.startsWith('bc_init'));
-    const cardsToUse = liveCards.length > 0 ? liveCards : (session.battlecards || []);
 
-    if (cardsToUse.length === 0) {
+    // Blokada fałszywych podsumowań: jeśli połączenie trwało poniżej 15s LUB brak faktycznych podpowiedzi z rozmowy
+    if (liveCards.length === 0 || callAgeSeconds < 15) {
       const fallback: CopilotDraftSummary = {
-        notes: `Krótka rozmowa wstępna z klientem ${session.customerName || session.customerPhone}.`,
-        nextStepTask: 'Kontakt ponowny z klientem',
+        notes: `Próba kontaktu z klientem ${session.customerName || session.customerPhone} nie powiodła się (połączenie nieodebrane, zajęte lub przerwane przed nawiązaniem rozmowy). Brak nowych ustaleń.`,
+        nextStepTask: 'Ponowić próbę kontaktu telefonicznego',
         nextStepDate: tomorrow,
         leadStage: 'IN_PROGRESS'
       };
       this.recentDrafts.set(sessionId, { draft: fallback, createdAt: Date.now() });
       return fallback;
     }
+
+    const cardsToUse = liveCards;
 
     const factsText = cardsToUse.map(b => `• ${b.heading}: ${b.bullets.join('; ')}`).join('\n');
     const checkedChecklist = (session.checklist || []).filter(c => c.checked).map(c => c.text);

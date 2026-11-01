@@ -81,7 +81,7 @@ const SCENARIO_PRESETS: Record<string, { checklist: ChecklistItem[]; initialCard
     checklist: [
       { id: 'cb1', text: 'Nawiąż do ustaleń i prośby z poprzedniej rozmowy', checked: false },
       { id: 'cb2', text: 'Przedstaw skorygowaną specyfikację i warunki cenowe', checked: false },
-      { id: 'cb3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
+      { id: 'cb3', text: 'Ustal termin kolejnego kontaktu lub wizyty w domu pokazowym', checked: false }
     ],
     initialCard: {
       category: 'BUYING_SIGNAL',
@@ -133,6 +133,53 @@ const SCENARIO_PRESETS: Record<string, { checklist: ChecklistItem[]; initialCard
   }
 };
 
+// Inteligentny renderer formatowania faktów (pogrubienia, kwoty, ostrzeżenia)
+const renderFormattedBullet = (text: string) => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <span className="leading-relaxed">
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const content = part.slice(2, -2);
+          const isPrice = /\d[\d\s]*(?:zł|PLN|tys|k)/i.test(content);
+          const isWarning = /uwaga|wymóg|wymaga|ważne|obostrzen/i.test(content);
+
+          if (isPrice) {
+            return (
+              <strong
+                key={i}
+                className="font-bold text-emerald-950 bg-emerald-100/90 border border-emerald-300/80 px-1.5 py-0.5 rounded-md mx-0.5 shadow-2xs inline-block"
+              >
+                {content}
+              </strong>
+            );
+          }
+          if (isWarning) {
+            return (
+              <strong
+                key={i}
+                className="font-bold text-amber-950 bg-amber-100/90 border border-amber-300/80 px-1.5 py-0.5 rounded-md mx-0.5 shadow-2xs inline-block"
+              >
+                {content}
+              </strong>
+            );
+          }
+          return (
+            <strong
+              key={i}
+              className="font-bold text-indigo-950 bg-indigo-100/90 border border-indigo-300/80 px-1.5 py-0.5 rounded-md mx-0.5 shadow-2xs inline-block"
+            >
+              {content}
+            </strong>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+};
+
 export default function CopilotCockpitModal({
   isOpen,
   onClose,
@@ -177,6 +224,7 @@ export default function CopilotCockpitModal({
   const [activeBattlecard, setActiveBattlecard] = useState<Battlecard>(SCENARIO_PRESETS.sales.initialCard);
   const [battlecards, setBattlecards] = useState<Battlecard[]>([]);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [mobileTab, setMobileTab] = useState<'feed' | 'checklist'>('feed');
 
   // Inteligentny auto-scroll: nie przerywa czytania, gdy użytkownik przewinął w górę
   const [hasNewCardsBelow, setHasNewCardsBelow] = useState(false);
@@ -323,6 +371,7 @@ export default function CopilotCockpitModal({
       setNextStepTask('');
       setNextStepDate('');
       setActiveSessionId(null);
+      setMobileTab('feed');
 
       fetch('/api/tenant')
         .then(r => r.json())
@@ -357,25 +406,40 @@ export default function CopilotCockpitModal({
               const clean = calls[0].summary.replace(/^\[[^\]]+\]\s*/, '').trim();
               setScenario('callback');
 
-              // Czytelna, elegancka etykieta celu rozmowy zamiast surowego długiego tekstu
-              let goalText = 'Nawiąż do ustaleń z poprzedniej rozmowy';
+              // Cel 1: Inteligentne nawiązanie do poprzedniego kontaktu
+              let goal1 = 'Nawiąż do ustaleń z poprzedniej rozmowy';
               const lowerClean = clean.toLowerCase();
-              if (lowerClean.includes('modyfikacj') || lowerClean.includes('ofert')) {
-                goalText = 'Nawiąż do prośby o modyfikację oferty';
+              if (lowerClean.includes('mdm 58') || lowerClean.includes('mdm 74')) {
+                goal1 = 'Nawiąż do modeli MDM 58 / MDM 74';
+              } else if (lowerClean.includes('mazowieck') || lowerClean.includes('działk') || lowerClean.includes('województw')) {
+                goal1 = 'Nawiąż do budowy w lokalizacji klienta';
+              } else if (lowerClean.includes('modyfikacj') || lowerClean.includes('ofert')) {
+                goal1 = 'Nawiąż do zapytania o ofertę i warunki wyceny';
               } else if (lowerClean.includes('płyt') || lowerClean.includes('fundament')) {
-                goalText = 'Nawiąż do modyfikacji płyty fundamentowej';
+                goal1 = 'Nawiąż do specyfikacji płyty fundamentowej';
               } else if (lowerClean.includes('rabat') || lowerClean.includes('cen')) {
-                goalText = 'Nawiąż do warunków cenowych i rabatu';
-              } else if (clean.length > 0 && clean.length <= 50) {
-                goalText = clean.startsWith('Nawiąż do') ? clean : `Nawiąż do: ${clean}`;
-              } else if (clean.length > 50) {
-                goalText = `Nawiąż do: ${clean.slice(0, 42)}...`;
+                goal1 = 'Nawiąż do warunków cenowych i rabatu';
+              } else if (clean.length > 0 && clean.length <= 48) {
+                goal1 = clean.startsWith('Nawiąż do') ? clean : `Nawiąż do: ${clean}`;
+              } else if (clean.length > 48) {
+                goal1 = `Nawiąż do: ${clean.slice(0, 42)}...`;
               }
 
+              // Cel 2: Merytoryka / Kalkulacja / Zadanie z CRM
+              let goal2 = 'Przedstaw kalkulację i odpowiedz na pytania techniczne';
+              if (calls[0]?.actionItems) {
+                goal2 = `Zadanie z CRM: ${calls[0].actionItems.slice(0, 42)}`;
+              } else if (lowerClean.includes('gwarancj') || lowerClean.includes('drewn')) {
+                goal2 = 'Przedstaw warunki gwarancji i parametry drewna C24/BSH';
+              }
+
+              // Cel 3: Domknięcie rozmowy (bez nielogicznego SMS w trakcie trwania połączenia!)
+              const goal3 = 'Ustal termin kolejnego kontaktu lub wizyty w domu pokazowym';
+
               setChecklist([
-                { id: 'cb1', text: goalText, checked: false },
-                { id: 'cb2', text: 'Przedstaw skorygowaną specyfikację i warunki cenowe', checked: false },
-                { id: 'cb3', text: 'Potwierdź akceptację i wyślij podsumowanie SMS', checked: false }
+                { id: 'cb1', text: goal1, checked: false },
+                { id: 'cb2', text: goal2, checked: false },
+                { id: 'cb3', text: goal3, checked: false }
               ]);
               const callbackCard: Battlecard = {
                 id: `bc_callback_${Date.now()}`,
@@ -1206,8 +1270,237 @@ export default function CopilotCockpitModal({
               </div>
             </div>
 
-            {/* DWA PANELE NA DESKTOPIE (GRID 12 KOLUMN) / JEDNA KOLUMNA NA TELEFONIE */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 flex-1 min-h-0">
+            {/* PRZEŁĄCZNIK ZAKŁADEK (WYŁĄCZNIE NA EKRANACH TELEFONÓW / MOBILE) */}
+            <div className="grid grid-cols-2 p-1 bg-surface-200/90 rounded-2xl border border-surface-300/80 shrink-0 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileTab('feed')}
+                className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+                  mobileTab === 'feed'
+                    ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100'
+                    : 'text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Podpowiedzi ({battlecards.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab('checklist')}
+                className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${
+                  mobileTab === 'checklist'
+                    ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100'
+                    : 'text-surface-600 hover:text-surface-900'
+                }`}
+              >
+                <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Cele ({checklist.filter(c => c.checked).length}/{checklist.length})</span>
+              </button>
+            </div>
+
+            {/* WIDOK DLA TELEFONÓW (MOBILE): PEŁNA WYSOKOŚĆ AKTYWNEJ ZAKŁADKI */}
+            <div className="flex md:hidden flex-col flex-1 min-h-0">
+              {mobileTab === 'feed' ? (
+                /* ZAKŁADKA 1 NA TELEFONIE: PODPOWIEDZI AI */
+                <div className="flex flex-col flex-1 min-h-0 bg-surface-50/90 border border-surface-200 rounded-2xl p-3 shadow-xs relative">
+                  <div className="flex items-center justify-between pb-2 border-b border-surface-200/80 mb-2 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <span className="font-bold text-xs uppercase tracking-wider text-surface-900">
+                        Podpowiedzi na żywo
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-surface-400 font-medium">Strumień AI</span>
+                  </div>
+
+                  <div 
+                    ref={feedContainerRef}
+                    onScroll={handleFeedScroll}
+                    className="flex-1 overflow-y-auto pr-1 divide-y divide-surface-200 scroll-smooth min-h-[46vh] max-h-[58vh]"
+                  >
+                    {battlecards.length === 0 ? (
+                      <div className="py-8 px-3 text-center space-y-2">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-semibold border border-emerald-200">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          EVA nasłuchuje w tle
+                        </div>
+                        <p className="text-xs text-surface-500 max-w-xs mx-auto leading-relaxed">
+                          Fakty, ceny i parametry pojawią się tutaj w czasie rzeczywistym w miarę pytań klienta.
+                        </p>
+                      </div>
+                    ) : (
+                      battlecards.map((card, idx) => {
+                        const isLatest = idx === battlecards.length - 1;
+                        return (
+                          <div key={card.id || `bc_m_${idx}`} className="text-left py-2.5 first:pt-1">
+                            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                              {card.timestamp && (
+                                <span className="text-[10px] font-mono text-surface-400 font-semibold shrink-0">
+                                  [{card.timestamp}]
+                                </span>
+                              )}
+                              <span className="font-bold text-xs text-surface-950 uppercase tracking-tight">
+                                {card.heading}
+                              </span>
+                              {isLatest && (
+                                <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                                  Najnowsze
+                                </span>
+                              )}
+                            </div>
+                            <div className="space-y-1.5 pl-1">
+                              {card.bullets.map((bullet, bIdx) => (
+                                <div key={bIdx} className="text-xs text-surface-900 leading-snug flex items-start gap-1.5 font-medium">
+                                  <span className="text-indigo-600 font-bold shrink-0 mt-0.5">•</span>
+                                  <div className="break-words flex-1">{renderFormattedBullet(bullet)}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div ref={feedEndRef} />
+                  </div>
+
+                  {hasNewCardsBelow && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (feedContainerRef.current) {
+                          feedContainerRef.current.scrollTo({
+                            top: feedContainerRef.current.scrollHeight,
+                            behavior: 'smooth'
+                          });
+                          isAtBottomRef.current = true;
+                          setHasNewCardsBelow(false);
+                        }
+                      }}
+                      className="absolute bottom-16 right-4 z-20 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full text-xs font-bold shadow-lg flex items-center gap-1.5 transition-all animate-bounce cursor-pointer border border-indigo-400"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                      Nowe podpowiedzi na dole
+                    </button>
+                  )}
+
+                  {/* Szybki dolny pasek akcji na telefonie */}
+                  <div className="pt-2 border-t border-surface-200/80 mt-2 flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMobileTab('checklist')}
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-surface-100 hover:bg-surface-200 text-surface-700 font-bold text-xs flex items-center justify-center gap-1.5 border border-surface-300/80 transition"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
+                      Cele ({checklist.filter(c => c.checked).length}/{checklist.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleEndCall}
+                      className="py-2.5 px-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-red-600/20 shrink-0 transition"
+                    >
+                      <PhoneOff className="w-3.5 h-3.5" />
+                      Zakończ
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ZAKŁADKA 2 NA TELEFONIE: CHECKLISTA CELÓW */
+                <div className="flex flex-col flex-1 min-h-0 justify-between gap-3 bg-white rounded-2xl border border-surface-200 p-3.5 shadow-xs">
+                  <div className="flex items-center justify-between text-xs font-bold text-surface-800 shrink-0">
+                    <span className="flex items-center gap-1.5">
+                      <CheckSquare className="w-4 h-4 text-indigo-600" />
+                      Cele rozmowy (Checklista):
+                    </span>
+                    <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full font-bold border border-indigo-200/50">
+                      {checklist.filter(c => c.checked).length} / {checklist.length} odhaczone
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-[38vh]">
+                    {checklist.length === 0 ? (
+                      <div className="py-6 px-3 text-center text-xs text-surface-400 italic bg-surface-50 rounded-xl border border-dashed border-surface-200">
+                        Brak zdefiniowanych celów rozmowy. Wpisz własny punkt poniżej.
+                      </div>
+                    ) : (
+                      checklist.map(item => (
+                        <div
+                          key={item.id}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl transition ${
+                            item.checked 
+                              ? 'bg-emerald-50 text-emerald-900 line-through opacity-80 border border-emerald-200/60' 
+                              : 'bg-surface-50 hover:bg-surface-100 text-surface-800 font-medium border border-surface-200/80'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleToggleChecklist(item.id)}
+                            className="flex-1 flex items-center gap-2 text-left text-xs sm:text-sm cursor-pointer"
+                          >
+                            {item.checked ? (
+                              <CheckSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Square className="w-4 h-4 text-surface-400 shrink-0" />
+                            )}
+                            <span className="break-words text-wrap leading-relaxed">{item.text}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteChecklistItem(item.id)}
+                            className="p-1 text-surface-400 hover:text-red-500 rounded-lg hover:bg-surface-200 transition cursor-pointer shrink-0 ml-1.5"
+                            title="Usuń cel z listy"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Dodawanie własnego punktu */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-surface-100 shrink-0">
+                    <input
+                      type="text"
+                      placeholder="+ Wpisz własny cel..."
+                      value={newChecklistText}
+                      onChange={e => setNewChecklistText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') handleAddChecklistItem();
+                      }}
+                      className="flex-1 bg-surface-50 border border-surface-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddChecklistItem}
+                      className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 cursor-pointer text-xs font-bold shrink-0 transition"
+                    >
+                      Dodaj
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-surface-200/80 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMobileTab('feed')}
+                      className="w-full py-2.5 px-3 rounded-xl bg-surface-100 hover:bg-surface-200 text-surface-700 font-bold text-xs flex items-center justify-center gap-1.5 border border-surface-300/80 transition"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      Wróć do podpowiedzi AI ({battlecards.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleEndCall}
+                      className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-red-600/20 transition"
+                    >
+                      <PhoneOff className="w-4 h-4" />
+                      Zakończ rozmowę i przejdź do podsumowania
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* DWA PANELE NA DESKTOPIE (GRID 12 KOLUMN) */}
+            <div className="hidden md:grid md:grid-cols-12 md:gap-6 flex-1 min-h-0">
               
               {/* LEWA KOLUMNA: CHECKLISTA CELÓW (PEŁNA WYSOKOŚĆ) + ZAKOŃCZENIE */}
               <div className="md:col-span-5 flex flex-col justify-between gap-4 min-h-0">
@@ -1370,7 +1663,7 @@ export default function CopilotCockpitModal({
                             {card.bullets.map((bullet, bIdx) => (
                               <div key={bIdx} className="text-xs sm:text-sm md:text-base text-surface-900 leading-snug flex items-start gap-2 font-medium">
                                 <span className="text-indigo-600 font-bold shrink-0 mt-0.5">•</span>
-                                <span className="break-words">{bullet}</span>
+                                <div className="break-words flex-1">{renderFormattedBullet(bullet)}</div>
                               </div>
                             ))}
                           </div>
