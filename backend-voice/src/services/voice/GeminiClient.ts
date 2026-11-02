@@ -48,6 +48,7 @@ export interface GeminiClientCallbacks {
   leadQuestion2?: string;
   leadQuestion3?: string;
   isPersonalExpert?: boolean;
+  shouldSaveTranscript?: boolean;
 }
 
 export class GeminiClient {
@@ -128,7 +129,8 @@ export class GeminiClient {
               leadQuestion1: this.callbacks.leadQuestion1,
               leadQuestion2: this.callbacks.leadQuestion2,
               leadQuestion3: this.callbacks.leadQuestion3,
-              isPersonalExpert: this.callbacks.isPersonalExpert
+              isPersonalExpert: this.callbacks.isPersonalExpert,
+              shouldSaveTranscript: this.callbacks.shouldSaveTranscript
             }) }]
         },
         tools: [{
@@ -216,7 +218,8 @@ export class GeminiClient {
     const warsawHour = parseInt(now.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', hour12: false }), 10);
     const exactGreeting = (warsawHour >= 6 && warsawHour < 18) ? 'Dzień dobry' : 'Dobry wieczór';
 
-    const greetingInstruction = `Użyj eleganckiego powitania "${exactGreeting}". Powitaj się dokładnie jeden raz.`;
+    const transcriptNotice = this.callbacks.shouldSaveTranscript ? ' Informuję, że rozmowa jest transkrybowana.' : '';
+    const greetingInstruction = `Użyj eleganckiego powitania "${exactGreeting}". Powitaj się dokładnie jeden raz.${transcriptNotice}`;
 
     const text = contextText 
       ? `Rozmówca połączył się. ${contextText}` 

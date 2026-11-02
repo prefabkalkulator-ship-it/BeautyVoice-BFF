@@ -27,7 +27,9 @@ export function isTenantEligibleForTranscripts(tenant: any): boolean {
     (planName === 'premium' || planName === 'beta_pilot' || planName === 'pilot' || Boolean(tenant?.betaNotes?.includes('Premium')));
 
   const isDemo = tenant?.name === 'DEMO' || tenant?.businessProfile === 'demo';
-  return isPersonalExpert || isB2BPremium || isDemo;
+  if (isDemo) return false;
+
+  return isPersonalExpert || isB2BPremium;
 }
 
 /**

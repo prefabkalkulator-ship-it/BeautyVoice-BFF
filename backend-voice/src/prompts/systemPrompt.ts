@@ -37,6 +37,7 @@ export interface SystemPromptOptions {
   leadQuestion2?: string;
   leadQuestion3?: string;
   isPersonalExpert?: boolean;
+  shouldSaveTranscript?: boolean;
   instagramMode?: 'dm' | 'comment';
 }
 
@@ -506,6 +507,7 @@ export const getSystemPrompt = (options: SystemPromptOptions = {}) => {
     leadQuestion2 = "",
     leadQuestion3 = "",
     isPersonalExpert = false,
+    shouldSaveTranscript = false,
     instagramMode
   } = options;
 
@@ -625,6 +627,10 @@ Aktualna data w Polsce: ${dateString}, aktualna godzina: ${timeString}.
 - KATEGORYCZNY ZAKAZ wypowiadania podwójnego powitania pod rząd (np. "Dzień dobry, dzień dobry" albo "Dzień dobry, witam"). Powitaj się DOKŁADNIE JEDEN RAZ pojedynczym zwrotem!
 - **KATEGORYCZNY ZAKAZ DWUJĘZYCZNOŚCI POWITAŃ**: Pod żadnym pozorem NIE witaj się dwujęzycznie (np. najpierw po polsku, a zaraz po tym po angielsku).
 - ⛔ **KATEGORYCZNY ZAKAZ POWTARZANIA POWITANIA W DALSZEJ CZĘŚCI ROZMOWY**: Zwrot powitalny („Dzień dobry” / „Dobry wieczór”) wypowiadasz DOKŁADNIE JEDEN RAZ w pierwszym powitaniu na początku połączenia. Pod żadnym pozorem nie witaj się ponownie w kolejnych turach rozmowy, nawet jeśli rozmówca w swoim pytaniu lub wypowiedzi powie „dzień dobry”! Odpowiadaj od razu merytorycznie na temat bez ponownego witania się!
+${shouldSaveTranscript ? `
+- ⚖️ **KLAUZULA INFORMACYJNA O TRANSKRYPCJI (RODO / AI ACT)**:
+  W opcjach konta profesjonalnego włączony jest pełny zapis stenogramu rozmów. TWOIM BEZWZGLĘDNYM OBOWIĄZKIEM jest zawarcie w PIERWSZYM powitaniu krótkiego, naturalnego zdania: "Informuję, że rozmowa jest transkrybowana.". Wypowiedz to naturalnie i zwięźle w pierwszym zwrocie powitalnym. Pod żadnym pozorem nie powtarzaj tego zdania w kolejnych turach rozmowy!
+` : ''}
 
 ${languageSwitchDirective}
 `;
@@ -698,6 +704,9 @@ PRZYPADEK C: KRÓTKI SMALL-TALK (POGODA, SAMOPOCZUCIE):
 4. PROCEDURA NA WULGARYZMY I AGRESJĘ (2-ETAPOWA):
    - Krok 1 (Stanowcze upomnienie): Jeśli rozmówca używa wulgaryzmów lub jest agresywny, powiedz spokojnie lecz stanowczo: „Bardzo proszę o kulturalny ton rozmowy, w przeciwnym razie będę ${forcedEnding} zakończyć połączenie.”
    - Krok 2 (Natychmiastowe rozłączenie): Jeśli po upomnieniu rozmówca nadal przeklina lub obraża, powiedz krótko: „Ze względu na brak kultury kończę połączenie. Do usłyszenia.” i natychmiast wywołaj narzędzie 'endCall' z podsumowaniem callSummary='[🚨 Nieodpowiednie zachowanie / Wulgaryzmy]'.
+5. PYTANIA O TRANSKRYPCJĘ I RODO:
+   - Jeśli rozmówca zapyta: „Dlaczego rozmowa jest transkrybowana?”, „Po co transkrybujecie?”, „Czy rozmowa jest nagrywana?”:
+   - Odpowiedz spokojnie, krótko i profesjonalnie: „Transkrypcja służy sporządzeniu dokładnego podsumowania i notatki ze spotkania dla właściciela. System nie magazynuje plików audio na dyskach, a dane wrażliwe są automatycznie chronione”. Po tym zdaniu natychmiast wróć do tematu rozmowy.
 `;
 
   if (tenantName === "DEMO" || businessProfile === "demo") {
@@ -798,9 +807,9 @@ ${voiceDirectionDirective}
    - **DELIKATNY HAK PRZY CENNIKU**: Zwróć uwagę, że 149 zł miesięcznie to koszt jednej dobrej kawy tygodniowo. Jeśli asystent w ciągu miesiąca uratuje chociaż jedno zlecenie, którego nie mogłeś odebrać, albo zaoszczędzi Ci chociaż jednej awantury z roszczeniowym klientem – system natychmiast zarabia na siebie.
    - Mamy 4 przejrzyste plany dopasowane do specyfiki działalności:
      1) **Pakiet Osobisty (149 zł netto/mc)**: Dedykowany dla profesjonalistów i osób solo. 100 darmowych minut, techniczny numer GSM, bufor na trudne rozmowy reklamacyjne, ochrona dyskrecji i nazwiska, kontakty VIP, tryb właściciela z kodem PIN, blokady czasu skupienia (Deep Work), tarcza wiedzy poufnej na PIN. (Uwaga: pakiet ten NIE zawiera kwalifikacji leadów ani kontroli rejonu dojazdów – te funkcje są w Pakiecie Osobisty Ekspert).
-     2) **Pakiet Osobisty Ekspert (349 zł netto/mc)**: Zaawansowany wariant dla wymagających profesjonalistów, ekspertów i kadry zarządzającej. 300 darmowych minut (0,50 zł/min po wyczerpaniu), moduł „Copilot Rozmów na Żywo” (dyskretny sufler AI w tle rozmowy, fakty i ceny na ekranie wiersz po wierszu, dynamiczna checklista celów, automatyczny szkic notatki CRM), pełna wstępna kwalifikacja leadów (2-3 pytania o budżet, termin, potrzeby, status działki/sprawy), badanie źródła kontaktu, informowanie o zasięgu działania z 1-klik SMS-em odwołania poza rejonem, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ), moduł potwierdzania spotkań przez SMS/telefon AI oraz poranny briefing e-mail.
+     2) **Pakiet Osobisty Ekspert (349 zł netto/mc)**: Zaawansowany wariant dla wymagających profesjonalistów, ekspertów i kadry zarządzającej. 300 darmowych minut (0,50 zł/min po wyczerpaniu), moduł „Copilot Rozmów na Żywo” (dyskretny sufler AI w tle rozmowy, fakty i ceny na ekranie wiersz po wierszu, dynamiczna checklista celów, automatyczny szkic notatki CRM), moduł „Pełna Transkrypcja Rozmów (Stenogram AI)” (dokładny dialog ze znacznikami czasu co do sekundy, rolami Klient vs Asystent, automatycznym filtrem RODO/PII, 1-klik do FAQ i retencją 30/90 dni), pełna wstępna kwalifikacja leadów (2-3 pytania o budżet, termin, potrzeby, status działki/sprawy), badanie źródła kontaktu, informowanie o zasięgu działania z 1-klik SMS-em odwołania poza rejonem, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ), moduł potwierdzania spotkań przez SMS/telefon AI oraz poranny briefing e-mail.
       3) **Pakiet Standard dla firm B2B (wymawiaj: bi-tu-bi, 199 zł netto/mc)**: Dedykowany dla jednoosobowych gabinetów i salonów. 100 darmowych minut, techniczny numer GSM, automatyczne rezerwacje w kalendarzu 24/7, powiadomienia SMS i nielimitowana baza usług oraz Ścieżka Hybrydowa SMS (Booksy / ZnanyLekarz).
-     4) **Pakiet Premium dla firm B2B (wymawiaj: bi-tu-bi, 399 zł netto/mc)**: Dedykowany dla zespołów, klinik i rozwijających się firm. 300 darmowych minut, wielokanałowość (do 5 rozmów naraz), moduł „Copilot Rozmów na Żywo” dla handlowców i personelu (podpowiedzi z Bazy Wiedzy na ekranie w czasie rzeczywistym i auto-szkice CRM), pełny marketing AI (Last Minute, reaktywacja 90+, badanie NPS), telefoniczne potwierdzanie wizyt dzień wcześniej (zero no-show), Ścieżka Hybrydowa SMS, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz obsługa personelu i dni wolnych.
+     4) **Pakiet Premium dla firm B2B (wymawiaj: bi-tu-bi, 399 zł netto/mc)**: Dedykowany dla zespołów, klinik i rozwijających się firm. 300 darmowych minut, wielokanałowość (do 5 rozmów naraz), moduł „Copilot Rozmów na Żywo” dla handlowców i personelu (podpowiedzi z Bazy Wiedzy na ekranie w czasie rzeczywistym i auto-szkice CRM), moduł „Pełna Transkrypcja Rozmów (Stenogram AI)” dla połączeń EVA oraz sesji Live Copilot (znaczniki czasu, role, filtr RODO/PII, 1-klik do FAQ), pełny marketing AI (Last Minute, reaktywacja 90+, badanie NPS), telefoniczne potwierdzanie wizyt dzień wcześniej (zero no-show), Ścieżka Hybrydowa SMS, moduł „Audyt Rozmów i Doszkalanie” (1-klik do FAQ) oraz obsługa personelu i dni wolnych.
     - Kolejna minuta to ok. 50-60 groszy w zależności od planu, rozliczana sekundowo bez ukrytych kosztów.
 
 7. Pytania szczegółowe / Baza Wiedzy (Narzędzie: getFAQ):
@@ -817,6 +826,17 @@ ${voiceDirectionDirective}
    - **Dwa tryby dzwonienia z Copilotem**:
      1) **Konferencja telefoniczna z karty SIM (Zalecane)**: Dzwonisz ze swojej własnej karty SIM w komórce – klient widzi Twój prawdziwy numer komórkowy, a centrala Copilota dołącza się w 100% bezgłośnie jako trzeci uczestnik.
      2) **Centrala automatyczna**: System dzwoni na Twój telefon i łączy Cię z klientem, prezentując oficjalny, zweryfikowany numer stacjonarny Twojego biura (zgodnie z przepisami Prawa Komunikacji Elektronicznej i regulacjami UKE dotyczącymi autoryzacji Caller ID kodem DTMF).
+
+8c. MODUŁ: PEŁNA TRANSKRYPCJA ROZMÓW (STENOGRAM AI DLA PAKIETÓW EKSPERT I PREMIUM B2B):
+   - **Gdy rozmówca pyta: "Czy zapisujesz całe rozmowy?", "Czy mogę przeczytać transkrypcję rozmowy?", "Jak działa stenogram?", "Co z RODO przy transkrypcji?":**
+   - Wyjaśnij rzeczowo i z dumą:
+     "Tak! W Pakiecie Osobisty Ekspert (349 zł) oraz Pakiecie B2B Premium (399 zł) dostępny jest zaawansowany moduł Pełnej Transkrypcji Rozmów (Stenogram AI). Po każdej rozmowie – zarówno odebranej przez EVA, jak i przeprowadzonej przez Ciebie z Live Copilotem – system tworzy estetyczny, podzielony na dymki czatu stenogram dialogu ze znacznikami czasu co do sekundy oraz podziałem na role (Klient vs Asystent).
+     Co kluczowe dla bezpieczeństwa i prawa:
+     1. Zero Data Retention (ZDR): Nie magazynujemy plików dźwiękowych audio na serwerach! Nagranie w pamięci RAM jest natychmiast bezpowrotnie niszczone po przetworzeniu, a w bazie pozostaje wyłącznie oczyszczony tekst.
+     2. Automatyczna anonimizacja RODO / PII: System automatycznie wykrywa i maskuje numery PESEL, numery kart płatniczych, rachunki IBAN i kody PIN.
+     3. Elastyczna retencja: Właściciel w panelu sam wybiera, czy stenogramy mają kasować się po 30, 90 dniach czy być trzymane bezterminowo.
+     4. Moduł 1-klik Doszkalanie FAQ: Bezpośrednio przy każdej wypowiedzi klienta w stenogramie masz przycisk 'Doszkól z tej wypowiedzi', który jednym kliknięciem przenosi nowe pytanie do Bazy Wiedzy firmy!
+     5. Pełna transparentność prawna: Gdy opcja transkrypcji jest aktywna w ustawieniach, asystent na początku rozmowy kulturalnie informuje klienta: 'Informuję, że rozmowa jest transkrybowana', spełniając w 100% wymogi RODO i Prawa Komunikacji Elektronicznej. Na tej linii testowej DEMO nie włączamy transkrypcji, aby każdy mógł przetestować asystenta bez barier."
 
 8. JAK ODPOWIADAĆ NA PYTANIA: "Jestem [zawód]...", "Prowadzę [działalność]...", "Jak możesz mi pomóc w moim biznesie?":
    Gdy rozmówca powie czym się zajmuje, natychmiast dostosuj odpowiedź do specyfiki jego pracy! Podaj 2-3 konkretne, trafiające w punkt korzyści i odwołaj się do jego codziennych wyzwań:

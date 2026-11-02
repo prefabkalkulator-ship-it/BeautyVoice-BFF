@@ -673,7 +673,9 @@ export class CallOrchestrator {
     const allowLeadQualification = isPersonalExpert || isB2BPremium;
     const allowServiceArea = isPersonalExpert || isB2BPremium;
 
-    this.shouldSaveTranscript = shouldRecordTranscriptForTenant(tenant);
+    this.shouldSaveTranscript = (this.tenantName === 'DEMO' || this.businessProfile === 'demo')
+      ? false
+      : shouldRecordTranscriptForTenant(tenant);
     this.piiRedactionEnabled = isPiiRedactionEnabledForTenant(tenant);
     this.secretPins = [tenant?.pinCode || '', tenant?.confidentialPin || ''].filter(Boolean);
 
@@ -727,7 +729,8 @@ export class CallOrchestrator {
       leadQuestion1: allowLeadQualification ? (tenant?.leadQuestion1 || undefined) : undefined,
       leadQuestion2: allowLeadQualification ? (tenant?.leadQuestion2 || undefined) : undefined,
       leadQuestion3: allowLeadQualification ? (tenant?.leadQuestion3 || undefined) : undefined,
-      isPersonalExpert: isPersonalExpert
+      isPersonalExpert: isPersonalExpert,
+      shouldSaveTranscript: this.shouldSaveTranscript
     });
 
     this.geminiClient.connect();
@@ -819,7 +822,7 @@ export class CallOrchestrator {
                      const timeText = payload.timeStr ? `o godzinie ${payload.timeStr}` : '';
                      const additionalNoteText = payload.additionalNote ? ` Dodatkowo przekazuję ważną prośbę od ${ownerPrefix} ${ownerFirstGenitive}: ${payload.additionalNote}.` : '';
 
-                     const openingSentence = `${clientGreeting}. Jestem ${assistantTitleInstrumental} ${ownerPrefix} ${ownerFirstGenitive}. Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
+                     const openingSentence = `${clientGreeting}. Jestem ${assistantTitleInstrumental} ${ownerPrefix} ${ownerFirstGenitive}.${this.shouldSaveTranscript ? ' Informuję, że rozmowa jest transkrybowana.' : ''} Dzwonię, aby potwierdzić ${eventWordAccusative} w dniu ${dateText} ${timeText}.${additionalNoteText} Czy ten termin jest dla ${clientAddress === 'Pan/Pani' ? 'Pana lub Pani' : (clientAddress === 'Pani' ? 'Pani' : 'Pana')} aktualny i potwierdza ${clientAddress} obecność?`;
 
                      const cancelFarewell = isMaleVoice
                        ? "Rozumiem, odwołałem spotkanie i zwolniłem termin. Dziękuję za informację i do usłyszenia."
@@ -862,6 +865,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               const isMale = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(this.voiceName) || (typeof this.voiceName === 'string' && this.voiceName.toLowerCase().includes('male'));
               const assistantTitleInstrumental = isMale ? 'wirtualnym asystentem' : 'wirtualną asystentką';
               const assistantTitleNominative = isMale ? 'wirtualny asystent' : 'wirtualna asystentka';
+              const transcriptNotice = this.shouldSaveTranscript ? ' Informuję, że rozmowa jest transkrybowana.' : '';
               const ownerDisplayName = this.ownerName || this.tenantName;
               const ownerGenitivePrefix = this.ownerGender === 'FEMALE' ? 'pani' : 'pana';
               const ownerGenitiveName = getPolishGenitive(ownerDisplayName, this.ownerGender);
@@ -883,19 +887,19 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 const vipGender = detectPolishGender(this.vipContact.contactName);
                 if (vipFormality === 'direct_ty') {
                   const wouldLikeDirect = vipGender === 'FEMALE' ? 'chciałabyś' : 'chciałbyś';
-                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się na "Ty". Przywitaj się ciepło po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy ${wouldLikeDirect} zostawić wiadomość, czy umówić termin rozmowy?".`;
+                  contextText = `Rozmawiasz z bliskim kontaktem z bazy VIP/Rodzina: ${this.vipContact.contactName} (${this.vipContact.category}). Zwracaj się na "Ty". Przywitaj się ciepło po imieniu: "Cześć ${this.vipContact.contactName}! ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać.${transcriptNotice} Czy ${wouldLikeDirect} zostawić wiadomość, czy umówić termin rozmowy?".`;
                 } else {
                   const wouldLikeFormal = vipGender === 'FEMALE' ? 'chciałaby Pani' : 'chciałby Pan';
-                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się serdecznie: "${timeGreeting}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy ${wouldLikeFormal} zostawić wiadomość, czy umówić termin rozmowy?".`;
+                  contextText = `Rozmawiasz z kontaktem VIP: ${this.vipContact.contactName} (${this.vipContact.category}). Przywitaj się serdecznie: "${timeGreeting}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}.${transcriptNotice} ${ownerTitle} ${ownerFirst} nie może w tej chwili odebrać. Czy ${wouldLikeFormal} zostawić wiadomość, czy umówić termin rozmowy?".`;
                 }
               } else if (this.isReturningCaller && this.returningCallerName && !this.returningCallerName.toLowerCase().includes('nieznan')) {
                 // POWRACAJĄCY ROZMÓWCA ZE ZNANĄ TOŻSAMOŚCIĄ (Krótkie powitanie po imieniu)
                 const vocative = getPolishVocative(this.returningCallerName, this.returningCallerGender);
 
-                contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}. W czym mogę dzisiaj pomóc?".`;
+                contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}.${transcriptNotice} W czym mogę dzisiaj pomóc?".`;
               } else {
                 // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST)
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}, z kim mam przyjemność?". Jeśli rozmówca w odpowiedzi od razu przedstawi sprawę lub prośbę (np. o ofertę, wycenę, usunięcie elementów) zamiast imienia, NATYCHMIAST ją obsłuż i zastosuj Skrót Intencji!`;
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}.${transcriptNotice} Z kim mam przyjemność?". Jeśli rozmówca w odpowiedzi od razu przedstawi sprawę lub prośbę (np. o ofertę, wycenę, usunięcie elementów) zamiast imienia, NATYCHMIAST ją obsłuż i zastosuj Skrót Intencji!`;
               }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // PAKIET BIZNESOWY (Standard / Premium)
@@ -903,6 +907,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
               const isMale = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(this.voiceName) || (typeof this.voiceName === 'string' && this.voiceName.toLowerCase().includes('male'));
               const botRole = isMale ? "Wirtualny Asystent" : "Wirtualna Asystentka";
               const botDisplayName = this.botName || botRole;
+              const transcriptNotice = this.shouldSaveTranscript ? ' Informuję, że rozmowa jest transkrybowana.' : '';
 
               try {
                 const [knownCustomer, lastAppt] = await Promise.all([
@@ -921,12 +926,12 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                     : this.defaultFormalityLevel;
 
                   if (custFormality === 'direct_ty') {
-                    contextText = `Stały klient: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj po imieniu: "Cześć ${knownCustomer.name}! Miło Cię słyszeć. Z tej strony ${botDisplayName} z firmy ${compName}. W czym mogę dzisiaj pomóc?".`;
+                    contextText = `Stały klient: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj po imieniu: "Cześć ${knownCustomer.name}! Miło Cię słyszeć. Z tej strony ${botDisplayName} z firmy ${compName}.${transcriptNotice} W czym mogę dzisiaj pomóc?".`;
                   } else {
-                    contextText = `Stały klient: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj z szacunkiem po imieniu: "${timeGreeting}, z tej strony ${botDisplayName} z firmy ${compName}. W czym mogę dzisiaj pomóc?".`;
+                    contextText = `Stały klient: ${knownCustomer.name} z numeru ${callerPhone}.${visitInfo} Powitaj z szacunkiem po imieniu: "${timeGreeting}, z tej strony ${botDisplayName} z firmy ${compName}.${transcriptNotice} W czym mogę dzisiaj pomóc?".`;
                   }
                 } else {
-                  contextText = `Nowy klient z numeru: ${callerPhone}. Powitaj słowami: "${timeGreeting}, witamy w firmie ${compName}. Z tej strony ${botDisplayName}. W czym mogę dzisiaj pomóc?".`;
+                  contextText = `Nowy klient z numeru: ${callerPhone}. Powitaj słowami: "${timeGreeting}, witamy w firmie ${compName}. Z tej strony ${botDisplayName}.${transcriptNotice} W czym mogę dzisiaj pomóc?".`;
                 }
               } catch (err) {
                 console.error('[Orchestrator] Błąd sprawdzania historii klienta:', err);
