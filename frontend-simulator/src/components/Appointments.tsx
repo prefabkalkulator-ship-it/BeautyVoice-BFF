@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import AppointmentsDaily from './AppointmentsDaily';
 import PageHelpButton from './common/PageHelpButton';
 import ConfirmationModal from './common/ConfirmationModal';
-import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag, Gift, CheckCircle, CheckCircle2, Star, PhoneCall, Copy, Check, Share2, Layers, ChevronUp, Sparkles, Lock } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Plus, ChevronLeft, ChevronRight, List, Grid, X, Tag, Gift, CheckCircle, CheckCircle2, Star, PhoneCall, Copy, Check, Share2, Layers, ChevronUp, Sparkles, Lock, BookOpen } from 'lucide-react';
 
 interface Appointment {
   id: string;
@@ -1819,6 +1819,24 @@ export default function Appointments() {
                         <Share2 className="w-3.5 h-3.5 text-gold-700" />
                         Udostępnij
                       </button>
+                      {(selectedAppt.callerPhone || selectedAppt.callSummary || selectedAppt.callDuration) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAppt(null);
+                            navigate('/dashboard/messages', {
+                              state: {
+                                openTranscriptPhone: selectedAppt.callerPhone || selectedAppt.customerPhone
+                              }
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 font-bold rounded-xl text-xs transition cursor-pointer"
+                          title="Przejdź do pełnego stenogramu tej rozmowy w rejestrze połączeń"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                          Transkrypcja rozmowy
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
