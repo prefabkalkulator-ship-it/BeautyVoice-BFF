@@ -146,6 +146,15 @@ export class GeminiClient {
               } 
             }
           }
+        },
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            disabled: false,
+            startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+            endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+            prefixPaddingMs: 300,
+            silenceDurationMs: 900
+          }
         }
       }
     };

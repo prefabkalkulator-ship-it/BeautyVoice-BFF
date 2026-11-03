@@ -254,27 +254,33 @@ export class CallOrchestrator {
                 ? (this.ownerName || this.tenantName) 
                 : (this.callerNameFromAi || undefined));
 
-          // Generowanie pełnej transkrypcji rozmowy (dla pakietów Osobisty Ekspert oraz Premium B2B)
+          // Generowanie pełnej transkrypcji rozmowy (gdy shouldSaveTranscript=true) lub awaryjnego podsumowania AI po przedwczesnym rozłączeniu (needFallback=true)
           let resolvedTranscript: string | null = null;
-          if (this.shouldSaveTranscript && this.callMulawChunks.length > 0 && durationSeconds >= 6) {
+          const needFallback = !resolvedSummary && this.callActionJournal.length === 0 && this.bookedAppointments.length === 0 && durationSeconds >= 15;
+          if ((this.shouldSaveTranscript || needFallback) && this.callMulawChunks.length > 0 && durationSeconds >= 6) {
             const fullMulaw = Buffer.concat(this.callMulawChunks);
             this.callMulawChunks = []; // Natychmiastowe zwolnienie pamięci RAM (ZDR)
             this.callMulawTotalBytes = 0;
 
-            const needFallback = !resolvedSummary && this.callActionJournal.length === 0 && this.bookedAppointments.length === 0;
             const transcriptResult = await generateCallTranscriptFromMulaw(fullMulaw, {
               botName: this.botName || 'EVA',
               piiRedactionEnabled: this.piiRedactionEnabled,
               extraSecrets: this.secretPins,
-              needFallbackSummary: needFallback
+              needFallbackSummary: needFallback,
+              summaryOnly: !this.shouldSaveTranscript
             });
 
-            if (transcriptResult.transcript) {
+            if (this.shouldSaveTranscript && transcriptResult.transcript) {
               resolvedTranscript = transcriptResult.transcript;
               console.log(`📄 [CallOrchestrator] Wygenerowano pełną transkrypcję rozmowy (${resolvedTranscript.split('\n').length} linii).`);
             }
             if (!resolvedSummary && transcriptResult.fallbackSummary) {
               resolvedSummary = await ensurePolishSummary(transcriptResult.fallbackSummary);
+              console.log(`📝 [CallOrchestrator] Wygenerowano awaryjne podsumowanie AI z audio po rozłączeniu: "${resolvedSummary}"`);
+            }
+            if (!resolvedCallerName && transcriptResult.fallbackCallerName) {
+              resolvedCallerName = normalizePolishNameToNominative(transcriptResult.fallbackCallerName) || transcriptResult.fallbackCallerName;
+              console.log(`👤 [CallOrchestrator] Odzyskano imię rozmówcy z nagrania po rozłączeniu: "${resolvedCallerName}"`);
             }
           } else {
             this.callMulawChunks = [];
@@ -471,10 +477,12 @@ export class CallOrchestrator {
       const isPostActionDone = (this.isMessageLeft || this.callActionJournal.length > 0) && !this.isAwaitingUserAfterAction;
       console.log(`⏱️ [Silence Watchdog] Minęło 10s ciszy (isPostActionDone: ${isPostActionDone}). Wysyłam pytanie sprawdzające.`);
       if (this.geminiClient && this.geminiClient.isLive()) {
+        const isMaleVoice = ['Puck', 'Charon', 'Fenrir', 'Orus'].includes(this.voiceName) || (typeof this.voiceName === 'string' && this.voiceName.toLowerCase().includes('male'));
+        const didNotHearVerb = isMaleVoice ? 'dosłyszałem' : 'dosłyszałam';
         if (isPostActionDone) {
           this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Rozmówca milczy od 10 sekund po zapisaniu sprawy. Upewnij się łagodnie po polsku: 'Czy ma Pan / Pani jeszcze jakieś pytania, czy na dzisiaj to wszystko?']");
         } else {
-          this.geminiClient.sendSystemPromptTurn("[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż po polsku i wykonaj odpowiednie narzędzie! Jeśli rozmówca po prostu milczy, upewnij się łagodnie po polsku: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]");
+          this.geminiClient.sendSystemPromptTurn(`[SYSTEM NOTIFICATION: Minęła chwila ciszy. Jeśli rozmówca przed momentem przekazał dyspozycję lub pytanie, NATYCHMIAST do nich nawiąż po polsku i wykonaj odpowiednie narzędzie! Jeśli natomiast przed chwilą zapytałeś 'Z kim mam przyjemność?' i nie usłyszałeś wyraźnie imienia, zapytaj uprzejmie po polsku: 'Przepraszam, nie ${didNotHearVerb} – z kim rozmawiam?'. W pozostałych sytuacjach upewnij się łagodnie: 'Halo, czy jesteśmy jeszcze połączeni? Jestem do dyspozycji.' – kategoryczny zakaz resetowania rozmowy i zakaz pytania 'w czym mogę pomóc?'.]`);
         }
       }
     }
@@ -899,7 +907,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
                 contextText = `Rozmawiasz z powracającym rozmówcą: ${this.returningCallerName} (${vocative}). Wypowiedz dokładnie powitanie: "${timeGreeting} ${vocative}, z tej strony ${assistantTitleNominative} ${ownerGenitivePrefix} ${ownerFirstGenitive}.${transcriptNotice} W czym mogę dzisiaj pomóc?".`;
               } else {
                 // Tura 1 Onboardingu dla nowego rozmówcy z zewnątrz (GUEST)
-                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}.${transcriptNotice} Z kim mam przyjemność?". Jeśli rozmówca w odpowiedzi od razu przedstawi sprawę lub prośbę (np. o ofertę, wycenę, usunięcie elementów) zamiast imienia, NATYCHMIAST ją obsłuż i zastosuj Skrót Intencji!`;
+                const didNotHearVerb = isMale ? 'dosłyszałem' : 'dosłyszałam';
+                contextText = `Dzwoni rozmówca z zewnątrz z numeru ${callerPhone}. Wypowiedz dokładnie pierwsze zdanie Tury 1: "${timeGreeting}, jestem ${assistantTitleInstrumental} ${ownerGenitivePrefix} ${ownerFirstGenitive}.${transcriptNotice} Z kim mam przyjemność?". ZASADY PO POWITANIU: 1) Jeśli rozmówca odpowie cicho, niewyraźnie lub po pauzie i nie usłyszysz wyraźnie imienia (a nie zadaje od razu pytania o ofertę), powtórz zapytanie co najmniej jeden raz: "Przepraszam, nie ${didNotHearVerb} – z kim rozmawiam?". 2) Jeśli rozmówca w odpowiedzi od razu przedstawi sprawę lub pytanie o ofertę zamiast imienia, NATYCHMIAST ją obsłuż i zastosuj Skrót Intencji! 3) Dopóki nie znasz płci rozmówcy, KATEGORYCZNY ZAKAZ domyślnego zwracania się per "Pan" (używaj formy "Państwo" lub bezosobowej), a w trakcie rozmowy zapytaj raz uprzejmie: "Jak mam się zwracać – Pan czy Pani?".`;
               }
             } else if (callerPhone !== 'unknown' && this.geminiClient && this.tenantId) {
               // PAKIET BIZNESOWY (Standard / Premium)
@@ -1602,8 +1611,8 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
 
     // 2. FULL-DUPLEX: Zawsze przesyłamy dźwięk dzwoniącego do Gemini Live API w trybie ciągłym,
     // co pozwala modelowi Gemini natychmiast wykrywać wejście w słowo (interrupted: true),
-    // podczas gdy lokalny Silero VAD (z progiem 0.50) służy jako lokalny akcelerator szybkiego uciszania Twilio.
-    if (this.shouldSaveTranscript && !this.agentSpeaking && this.callMulawTotalBytes < this.MAX_TRANSCRIPT_AUDIO_BYTES) {
+    // podczas gdy lokalny Silero VAD (z progiem 0.28) służy jako lokalny akcelerator szybkiego uciszania Twilio.
+    if (!this.agentSpeaking && this.callMulawTotalBytes < this.MAX_TRANSCRIPT_AUDIO_BYTES) {
       const callerMulawChunk = Buffer.from(payloadBase64, 'base64');
       this.callMulawChunks.push(callerMulawChunk);
       this.callMulawTotalBytes += callerMulawChunk.length;
@@ -1621,7 +1630,7 @@ NAJPIERW wypowiedz dokładnie pierwsze zdanie otwierające: "${openingSentence}"
       }
 
       const outMulawBuffer = AudioPipeline.encodeGemini24kHzToTwilioMulaw(audioBase64);
-      if (this.shouldSaveTranscript && this.callMulawTotalBytes < this.MAX_TRANSCRIPT_AUDIO_BYTES) {
+      if (this.callMulawTotalBytes < this.MAX_TRANSCRIPT_AUDIO_BYTES) {
         const botMulawChunk = Buffer.from(outMulawBuffer);
         this.callMulawChunks.push(botMulawChunk);
         this.callMulawTotalBytes += botMulawChunk.length;

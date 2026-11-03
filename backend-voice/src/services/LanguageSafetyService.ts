@@ -95,12 +95,13 @@ export async function generateCallTranscriptFromMulaw(
     piiRedactionEnabled?: boolean;
     extraSecrets?: string[];
     needFallbackSummary?: boolean;
+    summaryOnly?: boolean;
   }
-): Promise<{ transcript: string | null; fallbackSummary?: string | null }> {
+): Promise<{ transcript: string | null; fallbackSummary?: string | null; fallbackCallerName?: string | null }> {
   try {
     // Minimum 3 sekundy nagrania (8000 bajtów/s * 3s = 24000 bajtów)
     if (!mulawBuffer || mulawBuffer.length < 24000) {
-      return { transcript: null, fallbackSummary: null };
+      return { transcript: null, fallbackSummary: null, fallbackCallerName: null };
     }
 
     const pcmInt16 = mulaw.decode(mulawBuffer);
@@ -114,7 +115,18 @@ export async function generateCallTranscriptFromMulaw(
       ? 'OCHRONA RODO / PII: Jeśli w rozmowie padają numery PESEL, numery kart płatniczych, numery kont bankowych lub tajne kody PIN, zamaskuj je odpowiednio jako [PESEL UKRYTY], [KARTA UKRYTA] lub [PIN UKRYTY]. Numery telefonów kontaktowych pozostaw widoczne cyframi.'
       : 'Zapisuj numery telefonów i kwoty za pomocą cyfr.';
 
-    const prompt = `Jesteś precyzyjnym systemem transkrypcji rozmów telefonicznych B2B/CRM.
+    const prompt = options.summaryOnly
+      ? `Jesteś precyzyjnym analitykiem rozmów telefonicznych B2B/CRM.
+Odsłuchaj nagranie rozmowy pomiędzy asystentem głosowym (${botLabel}) a rozmówcą (Klient), który rozłączył się przed końcem rozmowy.
+Przygotuj konkretne, merytoryczne podsumowanie po polsku dla właściciela firmy: o co dokładnie pytał klient, jakich informacji szukał, czy podał swoje imię lub prosił o kontakt.
+Zastosuj odpowiedni prefiks na początku podsumowania: [💼 Oferta/Doradztwo], [📅 Rezerwacja], [📝 Wiadomość] lub [ℹ️ Ogólne].
+
+Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON:
+{
+  "summary": "Zwięzłe, konkretne polskie podsumowanie CRM z prefiksem intencji (2-3 zdania)",
+  "callerName": "Imię (lub imię i nazwisko) rozmówcy w mianowniku, jeśli przedstawił się w rozmowie, w przeciwnym razie null"
+}`
+      : `Jesteś precyzyjnym systemem transkrypcji rozmów telefonicznych B2B/CRM.
 Odsłuchaj całe nagranie rozmowy pomiędzy asystentem głosowym (${botLabel}) a rozmówcą (Klient) i przygotuj pełny, czytelny stenogram dialogu.
 
 ZASADY FORMATOWANIA TRANSKRYPCJI:
@@ -125,11 +137,11 @@ ZASADY FORMATOWANIA TRANSKRYPCJI:
 3. Jeśli cała rozmowa lub jej część toczyła się w języku obcym, zapisz wypowiedź i w nawiasie podaj polskie tłumaczenie.
 4. Pomijaj szumy tła, trzaski i niezrozumiałe chrząknięcia.
 5. ${piiInstruction}
-${options.needFallbackSummary ? '6. Ponieważ rozmówca rozłączył się przed końcem, wygeneruj również zwięzłe podsumowanie rozmowy w polu "summary" (po polsku, z odpowiednim prefiksem: [💼 Oferta/Doradztwo], [📅 Rezerwacja], [📝 Wiadomość] lub [ℹ️ Ogólne]).' : ''}
+${options.needFallbackSummary ? '6. Ponieważ rozmówca rozłączył się przed końcem, wygeneruj również zwięzłe podsumowanie rozmowy w polu "summary" (po polsku, z odpowiednim prefiksem: [💼 Oferta/Doradztwo], [📅 Rezerwacja], [📝 Wiadomość] lub [ℹ️ Ogólne]) oraz pole "callerName" (imię klienta jeśli padło lub null).' : ''}
 
 Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON:
 {
-  "transcript": "Pełny tekst dialogu wiersz po wierszu rozdzielony znakami nowej linii \\n"${options.needFallbackSummary ? ',\n  "summary": "Zwięzłe polskie podsumowanie CRM z prefiksem intencji"' : ''}
+  "transcript": "Pełny tekst dialogu wiersz po wierszu rozdzielony znakami nowej linii \\n"${options.needFallbackSummary ? ',\n  "summary": "Zwięzłe polskie podsumowanie CRM z prefiksem intencji",\n  "callerName": "Imię rozmówcy w mianowniku jeśli padło lub null"' : ''}
 }`;
 
     const response = await ai.models.generateContent({
@@ -157,7 +169,7 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON:
     const rawJson = response.text?.trim() || '{}';
     const parsed = JSON.parse(rawJson);
 
-    let transcript: string | null = typeof parsed.transcript === 'string' && parsed.transcript.trim().length > 5
+    let transcript: string | null = !options.summaryOnly && typeof parsed.transcript === 'string' && parsed.transcript.trim().length > 5
       ? parsed.transcript.trim()
       : null;
 
@@ -173,10 +185,14 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON:
       ? parsed.summary.trim()
       : null;
 
-    return { transcript, fallbackSummary };
+    const fallbackCallerName = typeof parsed.callerName === 'string' && parsed.callerName.trim().length >= 2 && parsed.callerName.trim().toLowerCase() !== 'null'
+      ? parsed.callerName.trim()
+      : null;
+
+    return { transcript, fallbackSummary, fallbackCallerName };
   } catch (err: any) {
-    console.error('⚠️ [TranscriptEngine] Błąd generowania transkrypcji z bufora audio:', err.message);
-    return { transcript: null, fallbackSummary: null };
+    console.error('⚠️ [TranscriptEngine] Błąd generowania transkrypcji/podsumowania z bufora audio:', err.message);
+    return { transcript: null, fallbackSummary: null, fallbackCallerName: null };
   }
 }
 
