@@ -297,16 +297,154 @@ export class AdminController {
   public async adjustMinutes(req: Request, res: Response) {
     try {
       const id = req.params.id as string;
-      const { additionalMinutes } = req.body;
+      const { additionalMinutes, targetPool = 'bonus' } = req.body;
       
       const sub = await prisma.subscription.findUnique({ where: { tenantId: id } });
       if (!sub) return res.status(404).json({ error: 'No subscription found' });
       
+      if (targetPool === 'monthly') {
+        const updated = await prisma.subscription.update({
+          where: { tenantId: id },
+          data: { minutesIncluded: Math.max(0, sub.minutesIncluded + Number(additionalMinutes || 0)) }
+        });
+        return res.status(200).json(updated);
+      }
+
+      const currentBonus = sub.bonusMinutes || 0;
       const updated = await prisma.subscription.update({
         where: { tenantId: id },
-        data: { minutesIncluded: sub.minutesIncluded + additionalMinutes }
+        data: { bonusMinutes: Math.max(0, currentBonus + Number(additionalMinutes || 0)) }
       });
       res.status(200).json(updated);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async grantFreePeriod(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const { addDays, untilDate, isLifetimeFree, planName } = req.body;
+
+      const tenant = await prisma.tenant.findUnique({
+        where: { id },
+        include: { subscription: true }
+      });
+      if (!tenant) return res.status(404).json({ error: 'Nie znaleziono konta tenanta' });
+
+      const sub = tenant.subscription;
+      const now = new Date();
+      let newPeriodEnd: Date | null = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : null;
+
+      if (typeof addDays === 'number' && addDays !== 0) {
+        const baseDate = newPeriodEnd && newPeriodEnd > now ? newPeriodEnd : now;
+        newPeriodEnd = new Date(baseDate.getTime() + addDays * 24 * 60 * 60 * 1000);
+      } else if (untilDate) {
+        const parsed = new Date(untilDate);
+        if (!isNaN(parsed.getTime())) {
+          parsed.setHours(23, 59, 59, 999);
+          newPeriodEnd = parsed;
+        }
+      }
+
+      const targetPlan = planName || sub?.planName || (tenant.businessProfile === 'personal' ? 'personal_expert' : 'premium');
+      const minutesIncluded = (targetPlan === 'personal' || targetPlan === 'standard') ? 100 : 300;
+      const lifetimeFlag = isLifetimeFree !== undefined ? Boolean(isLifetimeFree) : (sub?.isLifetimeFree || false);
+
+      // Jeśli klient ma aktywną subskrypcję w Stripe i przesuwamy darmowy okres w przyszłość, przesuń trial_end w Stripe
+      if (sub?.stripeSubscriptionId && newPeriodEnd && newPeriodEnd > now && process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_mock') {
+        try {
+          const Stripe = (await import('stripe')).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+          await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+            trial_end: Math.floor(newPeriodEnd.getTime() / 1000),
+            proration_behavior: 'none'
+          });
+          console.log(`🎁 [AdminController] Przesunięto trial_end w Stripe dla subskrypcji ${sub.stripeSubscriptionId} do ${newPeriodEnd.toISOString()}`);
+        } catch (stripeErr: any) {
+          console.warn('⚠️ [AdminController] Nie udało się zaktualizować trial_end w Stripe:', stripeErr.message);
+        }
+      }
+
+      const updatedSub = await prisma.subscription.upsert({
+        where: { tenantId: id },
+        create: {
+          tenantId: id,
+          planName: targetPlan,
+          status: 'trialing',
+          minutesIncluded,
+          minutesUsed: 0,
+          bonusMinutes: 0,
+          isLifetimeFree: lifetimeFlag,
+          currentPeriodEnd: newPeriodEnd,
+          expiryWarningSent: false
+        },
+        update: {
+          planName: targetPlan,
+          status: lifetimeFlag || (newPeriodEnd && newPeriodEnd > now) ? 'trialing' : (sub?.status === 'expired' ? 'active' : sub?.status),
+          minutesIncluded: planName ? minutesIncluded : sub?.minutesIncluded,
+          isLifetimeFree: lifetimeFlag,
+          currentPeriodEnd: newPeriodEnd,
+          expiryWarningSent: false,
+          pausedAt: null,
+          pausedUntil: null
+        }
+      });
+
+      if (planName) {
+        const isPersonalPlan = planName === 'personal' || planName === 'personal_expert';
+        const tenantUpdate: any = {};
+        if (isPersonalPlan && tenant.businessProfile !== 'personal') {
+          tenantUpdate.businessProfile = 'personal';
+        } else if (!isPersonalPlan && tenant.businessProfile === 'personal') {
+          tenantUpdate.businessProfile = 'solo';
+        }
+        if (planName === 'personal') tenantUpdate.betaNotes = '[Pakiet Osobisty]';
+        else if (planName === 'personal_expert') tenantUpdate.betaNotes = '[Pakiet Osobisty Ekspert]';
+        else if (planName === 'standard') tenantUpdate.betaNotes = '[Pakiet Standard B2B]';
+        else if (planName === 'premium') tenantUpdate.betaNotes = '[Pakiet Premium B2B]';
+
+        if (Object.keys(tenantUpdate).length > 0) {
+          await prisma.tenant.update({ where: { id }, data: tenantUpdate });
+        }
+      }
+
+      res.status(200).json(updatedSub);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async getPlatformConfig(_req: Request, res: Response) {
+    try {
+      const { getOrCreatePlatformConfig } = await import('./StripeController');
+      const config = await getOrCreatePlatformConfig();
+      res.json(config);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+
+  public async updatePlatformConfig(req: Request, res: Response) {
+    try {
+      const { promoEnabled, promoMode, promoDays, promoDefaultMinutes } = req.body;
+      const updated = await prisma.platformConfig.upsert({
+        where: { id: 'default' },
+        create: {
+          id: 'default',
+          promoEnabled: promoEnabled !== undefined ? Boolean(promoEnabled) : true,
+          promoMode: promoMode || 'no_card',
+          promoDays: promoDays !== undefined ? Number(promoDays) : 30,
+          promoDefaultMinutes: promoDefaultMinutes !== undefined ? Number(promoDefaultMinutes) : 300
+        },
+        update: {
+          ...(promoEnabled !== undefined ? { promoEnabled: Boolean(promoEnabled) } : {}),
+          ...(promoMode !== undefined ? { promoMode: String(promoMode) } : {}),
+          ...(promoDays !== undefined ? { promoDays: Number(promoDays) } : {}),
+          ...(promoDefaultMinutes !== undefined ? { promoDefaultMinutes: Number(promoDefaultMinutes) } : {})
+        }
+      });
+      res.json(updated);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -428,6 +566,11 @@ export class AdminController {
         ? pinCode.trim() 
         : (existingTenant.pinCode || Math.floor(1000 + Math.random() * 9000).toString());
       const minutes = minutesIncluded ? parseInt(minutesIncluded, 10) : 300;
+      const freeDaysRaw = req.body.freeDays !== undefined ? parseInt(req.body.freeDays, 10) : 30;
+      const isLifetimeFree = freeDaysRaw === -1 || Boolean(req.body.isLifetimeFree);
+      const periodEnd = isLifetimeFree
+        ? null
+        : new Date(Date.now() + (freeDaysRaw > 0 ? freeDaysRaw : 30) * 24 * 60 * 60 * 1000);
 
       const tenant = await prisma.tenant.update({
         where: { id },
@@ -441,21 +584,28 @@ export class AdminController {
       });
 
       const isPersonal = existingTenant.businessProfile === 'personal';
-      const targetPlan = isPersonal ? 'personal_expert' : 'premium';
+      const targetPlan = req.body.planName || (isPersonal ? 'personal_expert' : 'premium');
 
       await prisma.subscription.upsert({
         where: { tenantId: id },
         create: {
           tenantId: id,
           planName: targetPlan,
-          status: 'active',
+          status: 'trialing',
           minutesIncluded: minutes,
-          minutesUsed: 0
+          minutesUsed: 0,
+          bonusMinutes: 0,
+          isLifetimeFree,
+          currentPeriodEnd: periodEnd,
+          expiryWarningSent: false
         },
         update: {
           planName: targetPlan,
-          status: 'active',
-          minutesIncluded: minutes
+          status: 'trialing',
+          minutesIncluded: minutes,
+          isLifetimeFree,
+          currentPeriodEnd: periodEnd,
+          expiryWarningSent: false
         }
       });
 

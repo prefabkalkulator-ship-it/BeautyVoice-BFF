@@ -79,24 +79,34 @@ export class BetaController {
       });
 
       // Natychmiastowa aktywacja pakietu pilotażowego (Osobisty Ekspert lub Premium B2B) w subskrypcji
+      const { getOrCreatePlatformConfig } = await import('./StripeController');
+      const platformConfig = await getOrCreatePlatformConfig();
+
       const targetPlan = (requestedPlan === 'personal_expert' || normalizedProfile === 'personal')
         ? 'personal_expert'
         : 'premium';
-      const targetMinutes = 300;
+      const targetMinutes = platformConfig.promoDefaultMinutes || 300;
+      const promoDays = platformConfig.promoDays || 30;
+      const periodEnd = new Date(Date.now() + promoDays * 24 * 60 * 60 * 1000);
 
       const updatedSub = await prisma.subscription.upsert({
         where: { tenantId: tenant.id },
         update: {
           planName: targetPlan,
           status: 'trialing',
-          minutesIncluded: targetMinutes
+          minutesIncluded: targetMinutes,
+          currentPeriodEnd: periodEnd,
+          expiryWarningSent: false
         },
         create: {
           tenantId: tenant.id,
           planName: targetPlan,
           status: 'trialing',
           minutesIncluded: targetMinutes,
-          minutesUsed: 0
+          minutesUsed: 0,
+          bonusMinutes: 0,
+          currentPeriodEnd: periodEnd,
+          expiryWarningSent: false
         }
       });
 

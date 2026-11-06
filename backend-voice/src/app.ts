@@ -17,7 +17,14 @@ import {
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+  limit: '50mb',
+  verify: (req: any, _res, buf) => {
+    if (req.originalUrl && req.originalUrl.startsWith('/api/stripe/webhook')) {
+      req.rawBody = buf;
+    }
+  }
+}));
 app.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); res.setHeader('Surrogate-Control', 'no-store'); next(); });
 
 app.use((req, res, next) => {
@@ -1328,10 +1335,26 @@ app.post('/api/tenants/init', async (req, res) => {
   }
 });
 
-import { stripeController } from './controllers/StripeController';
+import { stripeController, getOrCreatePlatformConfig, PLAN_CATALOG, TOPUP_CATALOG } from './controllers/StripeController';
 
 app.post('/api/stripe/create-checkout-session', (req, res) => stripeController.createCheckoutSession(req, res));
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => stripeController.webhook(req, res));
+app.post('/api/stripe/portal', (req, res) => stripeController.createPortalSession(req, res));
+app.post('/api/stripe/webhook', (req, res) => stripeController.webhook(req, res));
+
+app.get('/api/platform-config', async (_req, res) => {
+  try {
+    const config = await getOrCreatePlatformConfig();
+    const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_mock');
+    res.json({
+      ...config,
+      stripeConfigured,
+      plans: PLAN_CATALOG,
+      topups: TOPUP_CATALOG
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Endpoint na potrzeby deweloperskie / mockowania płatności (Faza 8)
 app.post('/api/stripe/bypass', adminAuthMiddleware, async (req, res) => {
@@ -1728,6 +1751,24 @@ app.post('/api/subscription/change-plan', async (req, res) => {
 
     const isTargetPersonal = newPlanName === 'personal' || newPlanName === 'personal_expert' || newPlanName === 'personal_pro';
 
+    // Sprawdzamy, czy użytkownik ma aktywny darmowy okres od SuperAdmina / Pilotażu Beta
+    const now = new Date();
+    const hasActiveFreePeriod = Boolean(
+      sub?.isLifetimeFree ||
+      sub?.status === 'trialing' ||
+      (sub?.currentPeriodEnd && new Date(sub.currentPeriodEnd) > now && !sub?.stripeSubscriptionId) ||
+      (tenant.betaStatus === 'approved' && sub?.status !== 'expired' && !sub?.stripeSubscriptionId)
+    );
+    const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'sk_test_mock');
+
+    if (stripeConfigured && !hasActiveFreePeriod) {
+      return res.json({
+        requiresCheckout: true,
+        targetPlan: newPlanName,
+        tenantId: tenant.id
+      });
+    }
+
     const updatedSub = await prisma.subscription.upsert({
       where: { tenantId: tenant.id },
       create: {
@@ -1739,7 +1780,7 @@ app.post('/api/subscription/change-plan', async (req, res) => {
       update: {
         planName: newPlanName,
         minutesIncluded: newMinutesIncluded,
-        status: 'active'
+        status: sub?.status === 'trialing' ? 'trialing' : 'active'
       }
     });
 
@@ -1882,7 +1923,7 @@ app.post("/api/twilio-incoming", async (req, res) => {
     return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Wybrany numer nie jest obecnie przypisany do żadnego aktywnego salonu. Prosimy sprawdzić poprawność numeru.</Say><Hangup/></Response>`);
   }
 
-  if (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled'))) {
+  if (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled' || tenant.subscription.status === 'expired'))) {
     console.log(`🚫 [Twilio Incoming] Odrzucono połączenie od ${callerPhone} do ${calledNumber}. Salon: ${tenant.name} jest zawieszony (isSuspended: ${tenant.isSuspended}, sub: ${tenant.subscription?.status})`);
     return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Say language="pl-PL">Przepraszamy, asystent głosowy jest obecnie niedostępny z przyczyn technicznych. Prosimy spróbować później.</Say><Hangup/></Response>`);
   }
@@ -2860,6 +2901,9 @@ app.delete('/api/admin/beta-applications/:id', adminAuthMiddleware, (req, res) =
 app.delete('/api/admin/tenants/:id', adminAuthMiddleware, (req, res) => adminController.deleteTenant(req, res));
 app.delete('/api/admin/tenants/:tenantId/faq/:faqId', adminAuthMiddleware, (req, res) => adminController.deleteTenantFaqEntry(req, res));
 app.post('/api/admin/tenants/:id/audit', adminAuthMiddleware, (req, res) => adminController.auditTenantKnowledge(req, res));
+app.post('/api/admin/tenants/:id/grant-free-period', adminAuthMiddleware, (req, res) => adminController.grantFreePeriod(req, res));
+app.get('/api/admin/platform-config', adminAuthMiddleware, (req, res) => adminController.getPlatformConfig(req, res));
+app.put('/api/admin/platform-config', adminAuthMiddleware, (req, res) => adminController.updatePlatformConfig(req, res));
 app.get('/api/admin/stats', adminAuthMiddleware, (req, res) => adminController.getPlatformStats(req, res));
 
 // Trasa automatycznej weryfikacji numeru wychodzącego w Twilio (np. +48343433088)

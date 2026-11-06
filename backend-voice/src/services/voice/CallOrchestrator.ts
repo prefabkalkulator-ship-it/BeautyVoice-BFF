@@ -179,7 +179,7 @@ export class CallOrchestrator {
               });
             }
 
-            if (tenant && (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled')))) {
+            if (tenant && (tenant.isSuspended || (tenant.subscription && (tenant.subscription.status === 'paused' || tenant.subscription.status === 'canceled' || tenant.subscription.status === 'expired')))) {
               console.log(`🚫 [CallOrchestrator] Połączenie odrzucone dla tenanta ${tenant.name} - konto zablokowane (isSuspended: ${tenant.isSuspended}, sub: ${tenant.subscription?.status})`);
               this.terminateTwilioCall();
               return;
@@ -210,25 +210,53 @@ export class CallOrchestrator {
         const durationMs = Date.now() - this.callStartTime;
         const minutes = Math.ceil(durationMs / 60000);
         try {
-          
-          const updatedSub = await prisma.subscription.update({
+          const currentSub = await prisma.subscription.findUnique({
             where: { tenantId: this.tenantId },
-            data: { minutesUsed: { increment: minutes } },
             include: { tenant: true }
           });
-          console.log(`[Billing] Dodano ${minutes} min. dla ${this.tenantId}`);
-          
-          if (updatedSub.minutesUsed > updatedSub.minutesIncluded && (updatedSub.minutesUsed - minutes) <= updatedSub.minutesIncluded) {
-            // Właśnie przekroczono pakiet
-            if (updatedSub.tenant.fcmTokens && updatedSub.tenant.fcmTokens.length > 0) {
-              await PushService.sendNotification(
-                updatedSub.tenant.fcmTokens,
-                'Wykorzystano darmowe minuty! 🕒',
-                `Przekroczyłeś swój pakiet ${updatedSub.minutesIncluded} minut. Od teraz naliczana jest opłata groszowa zgodnie z Twoim planem (${updatedSub.planName}).`
-              );
+
+          if (currentSub) {
+            const remainingMonthly = Math.max(0, currentSub.minutesIncluded - currentSub.minutesUsed);
+            let newMinutesUsed = currentSub.minutesUsed;
+            let newBonusMinutes = currentSub.bonusMinutes || 0;
+
+            if (minutes <= remainingMonthly) {
+              newMinutesUsed += minutes;
+            } else {
+              const overflow = minutes - remainingMonthly;
+              newMinutesUsed += remainingMonthly;
+              if (newBonusMinutes >= overflow) {
+                newBonusMinutes -= overflow;
+              } else {
+                const stillUnpaid = overflow - newBonusMinutes;
+                newBonusMinutes = 0;
+                newMinutesUsed += stillUnpaid;
+              }
+            }
+
+            const updatedSub = await prisma.subscription.update({
+              where: { tenantId: this.tenantId },
+              data: {
+                minutesUsed: newMinutesUsed,
+                bonusMinutes: newBonusMinutes
+              },
+              include: { tenant: true }
+            });
+            console.log(`[Billing] Dodano ${minutes} min. dla ${this.tenantId} (Miesięczne: ${updatedSub.minutesUsed}/${updatedSub.minutesIncluded}, Bonus nieprzepadający: ${updatedSub.bonusMinutes})`);
+            
+            const totalAvailableBefore = currentSub.minutesIncluded + (currentSub.bonusMinutes || 0);
+            const totalUsedBefore = currentSub.minutesUsed;
+            if (updatedSub.minutesUsed >= updatedSub.minutesIncluded && updatedSub.bonusMinutes === 0 && totalUsedBefore < totalAvailableBefore) {
+              // Właśnie wyczerpano zarówno minuty pakietowe, jak i bonusowe
+              if (updatedSub.tenant.fcmTokens && updatedSub.tenant.fcmTokens.length > 0) {
+                await PushService.sendNotification(
+                  updatedSub.tenant.fcmTokens,
+                  'Wykorzystano pulę minut! 🕒',
+                  `Wykorzystałeś swój pakiet ${updatedSub.minutesIncluded} minut oraz minuty bonusowe. Doładuj nieprzepadające minuty BLIKiem w zakładce Subskrypcja.`
+                );
+              }
             }
           }
-
         } catch(e) { console.error('[Billing error]', e); }
 
         // Zapis do rejestru połączeń (CallLog)

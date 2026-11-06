@@ -98,6 +98,9 @@ model Subscription {
   planName             String   @default("free")
   minutesIncluded      Int      @default(100)
   minutesUsed          Int      @default(0)
+  bonusMinutes         Int      @default(0)
+  isLifetimeFree       Boolean  @default(false)
+  expiryWarningSent    Boolean  @default(false)
   aiGenerationsUsed    Int      @default(0)
   status               String   @default("active")
   pausedAt             DateTime?
@@ -342,5 +345,14 @@ model AnnualEvent {
   tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, month, day])
+}
+
+model PlatformConfig {
+  id                  String   @id @default("default")
+  promoEnabled        Boolean  @default(true)
+  promoMode           String   @default("no_card") // "stripe_trial" | "no_card"
+  promoDays           Int      @default(30)
+  promoDefaultMinutes Int      @default(300)
+  updatedAt           DateTime @updatedAt
 }
 

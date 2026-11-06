@@ -48,7 +48,24 @@ export function SuperAdminDashboard() {
   const [assignedNumberInput, setAssignedNumberInput] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [minutesInput, setMinutesInput] = useState(300);
+  const [approveFreeDaysInput, setApproveFreeDaysInput] = useState<number>(30);
+  const [approvePlanInput, setApprovePlanInput] = useState<string>('premium');
   const [isApproving, setIsApproving] = useState(false);
+
+  // Globalna konfiguracja promocji i płatności (PlatformConfig)
+  const [platformConfig, setPlatformConfig] = useState<{
+    promoEnabled: boolean;
+    promoMode: 'no_card' | 'stripe_trial';
+    promoDays: number;
+    promoDefaultMinutes: number;
+  }>({
+    promoEnabled: true,
+    promoMode: 'no_card',
+    promoDays: 30,
+    promoDefaultMinutes: 300
+  });
+  const [isSavingPromo, setIsSavingPromo] = useState(false);
+  const [customFreeUntilDate, setCustomFreeUntilDate] = useState<string>('');
 
   // Stan usuwania wniosku beta
   const [deletingApp, setDeletingApp] = useState<any | null>(null);
@@ -76,8 +93,47 @@ export function SuperAdminDashboard() {
       fetchTenants();
       fetchBetaApplications();
       fetchStats();
+      fetchPlatformConfig();
     }
   }, [isAuthenticated]);
+
+  const fetchPlatformConfig = async () => {
+    try {
+      const res = await adminFetch('/api/admin/platform-config');
+      if (res.ok) {
+        const data = await res.json();
+        setPlatformConfig({
+          promoEnabled: data.promoEnabled ?? true,
+          promoMode: data.promoMode || 'no_card',
+          promoDays: data.promoDays ?? 30,
+          promoDefaultMinutes: data.promoDefaultMinutes ?? 300
+        });
+      }
+    } catch (e) {
+      console.error('Błąd pobierania konfiguracji platformy:', e);
+    }
+  };
+
+  const handleSavePlatformConfig = async (updates: Partial<typeof platformConfig>) => {
+    const nextConfig = { ...platformConfig, ...updates };
+    setPlatformConfig(nextConfig);
+    setIsSavingPromo(true);
+    try {
+      const res = await adminFetch('/api/admin/platform-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextConfig)
+      });
+      if (!res.ok) {
+        alert('Nie udało się zapisać ustawień promocji');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Błąd połączenia przy zapisie promocji');
+    } finally {
+      setIsSavingPromo(false);
+    }
+  };
 
   const adminFetch = async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('adminToken');
@@ -365,7 +421,16 @@ export function SuperAdminDashboard() {
     const actionLabels: Record<string, string> = {
       approve: 'Zatwierdź profil jako bezpieczny (LOW RISK)',
       suspend: payload.suspend ? 'Zawieś całe konto (blokada AI i połączeń)' : 'Odblokuj konto użytkownika',
-      'adjust-minutes': `Zmień minuty (${payload.additionalMinutes > 0 ? '+' : ''}${payload.additionalMinutes} min)`,
+      'adjust-minutes': `Zmień nieprzepadające minuty bonusowe (${payload.additionalMinutes > 0 ? '+' : ''}${payload.additionalMinutes} min)`,
+      'grant-free-period': payload.isLifetimeFree !== undefined
+        ? (payload.isLifetimeFree ? 'Włącz bezterminowy dostęp VIP' : 'Wyłącz bezterminowy dostęp VIP')
+        : payload.addDays
+        ? `Dodaj +${payload.addDays} dni darmowego okresu subskrypcji`
+        : payload.untilDate
+        ? `Ustaw darmowy dostęp do dnia ${payload.untilDate}`
+        : payload.planName
+        ? `Zmień pakiet subskrypcji na ${payload.planName.toUpperCase()}`
+        : 'Aktualizuj darmowy okres subskrypcji',
       sms: 'Wyślij wiadomość SMS',
       'subscription/status': payload.status === 'active' ? 'Wznów subskrypcję' : 'Zawieś subskrypcję na 30 dni'
     };
@@ -398,7 +463,9 @@ export function SuperAdminDashboard() {
     setApprovingTenantId(tenant.id);
     setAssignedNumberInput(tenant.assignedPhoneNumber || '+48');
     setPinInput(tenant.pinCode || Math.floor(1000 + Math.random() * 9000).toString());
-    setMinutesInput(300);
+    setMinutesInput(platformConfig.promoDefaultMinutes || 300);
+    setApproveFreeDaysInput(platformConfig.promoDays || 30);
+    setApprovePlanInput(tenant.businessProfile === 'personal' ? 'personal_expert' : 'premium');
   };
 
   const submitApproveBeta = async (tenantId: string) => {
@@ -406,7 +473,7 @@ export function SuperAdminDashboard() {
       alert('Wprowadź prawidłowy wirtualny numer telefonu zakupiony w Zadarma (np. +48XXXXXXXXX)');
       return;
     }
-    if (!window.confirm(`Czy na pewno chcesz aktywować pakiet Premium dla firmy i przypisać numer ${assignedNumberInput}? Klient otrzyma powiadomienie SMS o aktywacji.`)) {
+    if (!window.confirm(`Czy na pewno chcesz aktywować pakiet (${approvePlanInput.toUpperCase()}) i przypisać numer ${assignedNumberInput}? Klient otrzyma powiadomienie SMS o aktywacji.`)) {
       return;
     }
 
@@ -418,7 +485,10 @@ export function SuperAdminDashboard() {
         body: JSON.stringify({
           assignedPhoneNumber: assignedNumberInput.trim(),
           pinCode: pinInput.trim(),
-          minutesIncluded: minutesInput
+          minutesIncluded: minutesInput,
+          freeDays: approveFreeDaysInput,
+          isLifetimeFree: approveFreeDaysInput === -1,
+          planName: approvePlanInput
         })
       });
 
@@ -786,6 +856,73 @@ export function SuperAdminDashboard() {
             </div>
           </div>
         </div>
+
+        {/* GLOBALNY PRZEŁĄCZNIK PROMOCJI I OKRESÓW PRÓBNYCH */}
+        <div className="max-w-7xl mx-auto mt-3 bg-gray-950 border border-amber-500/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">🎯</span>
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-2">
+                <span>Globalna Akcja Promocyjna dla Nowych Kont</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${platformConfig.promoEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-gray-800 text-gray-400'}`}>
+                  {platformConfig.promoEnabled ? `AKTYWNA (${platformConfig.promoDays} DNI GRATIS)` : 'WYŁĄCZONA'}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Steruj ofertą powitalną (np. „1 miesiąc za darmo”) oraz wymogiem podpięcia karty w Stripe.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <button
+              type="button"
+              disabled={isSavingPromo}
+              onClick={() => handleSavePlatformConfig({ promoEnabled: !platformConfig.promoEnabled })}
+              className={`px-3 py-1.5 rounded-lg font-bold border transition ${
+                platformConfig.promoEnabled
+                  ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30'
+                  : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              {platformConfig.promoEnabled ? '🟢 Promocja Włączona' : '⚪ Promocja Wyłączona'}
+            </button>
+
+            <select
+              value={platformConfig.promoMode}
+              disabled={isSavingPromo || !platformConfig.promoEnabled}
+              onChange={(e) => handleSavePlatformConfig({ promoMode: e.target.value as 'no_card' | 'stripe_trial' })}
+              className="bg-gray-900 border border-gray-700 text-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+            >
+              <option value="no_card">Tryb B: Darmowy okres BEZ karty (Pilotaż)</option>
+              <option value="stripe_trial">Tryb A: 0 zł w Stripe (Wymagana karta / Apple Pay)</option>
+            </select>
+
+            <select
+              value={platformConfig.promoDays}
+              disabled={isSavingPromo || !platformConfig.promoEnabled}
+              onChange={(e) => handleSavePlatformConfig({ promoDays: parseInt(e.target.value, 10) })}
+              className="bg-gray-900 border border-gray-700 text-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+            >
+              <option value={7}>Czas: 7 dni gratis</option>
+              <option value={14}>Czas: 14 dni gratis</option>
+              <option value={30}>Czas: 30 dni (1 mies.)</option>
+              <option value={60}>Czas: 60 dni (2 mies.)</option>
+              <option value={90}>Czas: 90 dni (3 mies.)</option>
+            </select>
+
+            <select
+              value={platformConfig.promoDefaultMinutes}
+              disabled={isSavingPromo || !platformConfig.promoEnabled}
+              onChange={(e) => handleSavePlatformConfig({ promoDefaultMinutes: parseInt(e.target.value, 10) })}
+              className="bg-gray-900 border border-gray-700 text-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+            >
+              <option value={100}>Pula: 100 minut</option>
+              <option value={300}>Pula: 300 minut</option>
+              <option value={500}>Pula: 500 minut</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* GŁÓWNA ZAWARTOŚĆ: TAB 1 - WNIOSKI PILOTAŻOWE BETA */}
@@ -972,6 +1109,40 @@ export function SuperAdminDashboard() {
                             onChange={e => setMinutesInput(parseInt(e.target.value, 10))}
                             className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-amber-500"
                           />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-300 mb-1">
+                            Pakiet docelowy
+                          </label>
+                          <select
+                            value={approvePlanInput}
+                            onChange={e => setApprovePlanInput(e.target.value)}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-amber-500"
+                          >
+                            <option value="personal_expert">👤 Osobisty Ekspert (349 zł)</option>
+                            <option value="premium">🏢 Premium B2B (399 zł)</option>
+                            <option value="personal">👤 Osobisty (149 zł)</option>
+                            <option value="standard">🏢 Standard B2B (199 zł)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-300 mb-1">
+                            Darmowy okres na start
+                          </label>
+                          <select
+                            value={approveFreeDaysInput}
+                            onChange={e => setApproveFreeDaysInput(parseInt(e.target.value, 10))}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-amber-500"
+                          >
+                            <option value={7}>7 dni gratis</option>
+                            <option value={14}>14 dni gratis</option>
+                            <option value={30}>30 dni (1 miesiąc gratis)</option>
+                            <option value={60}>60 dni (2 miesiące gratis)</option>
+                            <option value={90}>90 dni (3 miesiące gratis)</option>
+                            <option value={-1}>♾️ Bezterminowo (Tester VIP)</option>
+                          </select>
                         </div>
                       </div>
 
@@ -1342,28 +1513,149 @@ export function SuperAdminDashboard() {
 
                 {/* Zarządzanie Abonamentem */}
                 <div className="border-t border-gray-800 pt-5 mt-4">
-                  <h3 className="font-bold text-sm mb-3 text-white">⚙️ Zarządzanie Abonamentem</h3>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-gray-950 p-4 rounded-2xl border border-gray-800">
-                    <div className="text-xs">
-                      <div>Plan: <strong className="uppercase text-white">{selectedTenant.subscription?.planName || 'Brak'}</strong></div>
-                      <div className="mt-1">
-                        Status: <span className={`font-bold uppercase ${selectedTenant.subscription?.status === 'paused' ? 'text-amber-400' : selectedTenant.subscription?.status === 'active' ? 'text-emerald-400' : 'text-gray-400'}`}>
-                          {selectedTenant.subscription?.status || 'none'}
-                        </span>
+                  <h3 className="font-bold text-sm mb-3 text-white">⚙️ Zarządzanie Abonamentem, Minutami i Darmowym Okresem</h3>
+                  <div className="bg-gray-950 p-4 rounded-2xl border border-gray-800 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/80 pb-3">
+                      <div className="text-xs space-y-1">
+                        <div>
+                          Plan: <strong className="uppercase text-white">{selectedTenant.subscription?.planName || 'Brak'}</strong>
+                          {' | '}
+                          Status: <span className={`font-bold uppercase ${
+                            selectedTenant.subscription?.status === 'paused' ? 'text-amber-400' :
+                            selectedTenant.subscription?.status === 'expired' ? 'text-red-400' :
+                            selectedTenant.subscription?.status === 'trialing' ? 'text-purple-400' :
+                            selectedTenant.subscription?.status === 'active' ? 'text-emerald-400' : 'text-gray-400'
+                          }`}>
+                            {selectedTenant.subscription?.status || 'none'}
+                          </span>
+                        </div>
+                        <div className="text-gray-300">
+                          Minuty pakietowe: <strong>{selectedTenant.subscription?.minutesUsed || 0} / {selectedTenant.subscription?.minutesIncluded || 0} min</strong>
+                          {' | '}
+                          <span className="text-emerald-400 font-bold">
+                            🎁 Minuty bonusowe (nieprzepadające): {selectedTenant.subscription?.bonusMinutes || 0} min
+                          </span>
+                        </div>
+                        <div className="text-amber-300 font-medium">
+                          📅 Ważność okresu / darmowego dostępu:{' '}
+                          {selectedTenant.subscription?.isLifetimeFree ? (
+                            <strong className="text-emerald-400">♾️ BEZTERMINOWY DOSTĘP VIP</strong>
+                          ) : selectedTenant.subscription?.currentPeriodEnd ? (
+                            <strong>
+                              do {new Date(selectedTenant.subscription.currentPeriodEnd).toLocaleDateString('pl-PL')}
+                              {' '}({Math.ceil((new Date(selectedTenant.subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} dni)
+                            </strong>
+                          ) : (
+                            <span className="text-gray-400">Brak ustawionej daty końcowej</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Zmiana pakietu 1 kliknięciem */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[11px] text-gray-400 font-semibold">Zmień pakiet:</label>
+                        <select
+                          value={selectedTenant.subscription?.planName || 'standard'}
+                          onChange={(e) => handleAction(selectedTenant.id, 'grant-free-period', { planName: e.target.value })}
+                          className="bg-gray-900 border border-gray-700 text-white rounded-lg px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-amber-500"
+                        >
+                          <option value="personal">Osobisty (149 zł)</option>
+                          <option value="personal_expert">Osobisty Ekspert (349 zł)</option>
+                          <option value="standard">Standard B2B (199 zł)</option>
+                          <option value="premium">Premium B2B (399 zł)</option>
+                        </select>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
-                      <button 
-                        onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: 100 })}
-                        className="px-3 py-1.5 bg-blue-600/20 border border-blue-500/40 text-blue-300 rounded-lg hover:bg-blue-600/30 font-bold text-xs"
+
+                    {/* Rząd 1: Nieprzepadające minuty bonusowe */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-gray-300">
+                        🎁 Pula nieprzepadających minut (Bonus):
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button 
+                          onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: 100, targetPool: 'bonus' })}
+                          className="px-3 py-1.5 bg-blue-600/20 border border-blue-500/40 text-blue-300 rounded-lg hover:bg-blue-600/30 font-bold text-xs"
+                        >
+                          +100 Minut (Nieprzepadające)
+                        </button>
+                        <button 
+                          onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: 300, targetPool: 'bonus' })}
+                          className="px-3 py-1.5 bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 rounded-lg hover:bg-indigo-600/30 font-bold text-xs"
+                        >
+                          +300 Minut (Nieprzepadające)
+                        </button>
+                        <button 
+                          onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: -100, targetPool: 'bonus' })}
+                          className="px-3 py-1.5 bg-red-600/20 border border-red-500/40 text-red-300 rounded-lg hover:bg-red-600/30 font-bold text-xs"
+                        >
+                          -100 Minut Bonus
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rząd 2: Darmowe okresy subskrypcji dla testerów Beta / Klientów */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-800/60">
+                      <span className="text-xs font-semibold text-amber-300">
+                        ⏳ Przyznaj darmowy okres subskrypcji:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          onClick={() => handleAction(selectedTenant.id, 'grant-free-period', { addDays: 7, isLifetimeFree: false })}
+                          className="px-2.5 py-1.5 bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-600/30 font-bold text-xs"
+                        >
+                          +7 Dni Gratis
+                        </button>
+                        <button
+                          onClick={() => handleAction(selectedTenant.id, 'grant-free-period', { addDays: 14, isLifetimeFree: false })}
+                          className="px-2.5 py-1.5 bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-600/30 font-bold text-xs"
+                        >
+                          +14 Dni Gratis
+                        </button>
+                        <button
+                          onClick={() => handleAction(selectedTenant.id, 'grant-free-period', { addDays: 30, isLifetimeFree: false })}
+                          className="px-3 py-1.5 bg-amber-500/20 border border-amber-500/50 text-amber-300 rounded-lg hover:bg-amber-500/30 font-bold text-xs"
+                        >
+                          +1 Miesiąc Gratis (+30 dni)
+                        </button>
+                        <button
+                          onClick={() => handleAction(selectedTenant.id, 'grant-free-period', { addDays: 90, isLifetimeFree: false })}
+                          className="px-2.5 py-1.5 bg-purple-600/20 border border-purple-500/40 text-purple-300 rounded-lg hover:bg-purple-600/30 font-bold text-xs"
+                        >
+                          +3 Miesiące Gratis
+                        </button>
+                        <button
+                          onClick={() => handleAction(selectedTenant.id, 'grant-free-period', { isLifetimeFree: !selectedTenant.subscription?.isLifetimeFree })}
+                          className={`px-2.5 py-1.5 rounded-lg font-bold text-xs border ${
+                            selectedTenant.subscription?.isLifetimeFree
+                              ? 'bg-amber-500 text-gray-950 border-amber-400'
+                              : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                          }`}
+                        >
+                          {selectedTenant.subscription?.isLifetimeFree ? '♾️ VIP Aktywny (Wyłącz)' : '♾️ Ustaw VIP Bezterminowo'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rząd 3: Ustawienie konkretnej daty ważności z kalendarza */}
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-800/40 text-xs">
+                      <span className="text-gray-400">Albo ustaw darmowy okres do konkretnej daty:</span>
+                      <input
+                        type="date"
+                        value={customFreeUntilDate}
+                        onChange={(e) => setCustomFreeUntilDate(e.target.value)}
+                        className="bg-gray-900 border border-gray-700 text-white rounded-lg px-2.5 py-1 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={!customFreeUntilDate}
+                        onClick={() => {
+                          if (!customFreeUntilDate) return;
+                          handleAction(selectedTenant.id, 'grant-free-period', { untilDate: customFreeUntilDate, isLifetimeFree: false });
+                        }}
+                        className="px-3 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded-lg text-xs transition"
                       >
-                        +100 Minut
-                      </button>
-                      <button 
-                        onClick={() => handleAction(selectedTenant.id, 'adjust-minutes', { additionalMinutes: -100 })}
-                        className="px-3 py-1.5 bg-red-600/20 border border-red-500/40 text-red-300 rounded-lg hover:bg-red-600/30 font-bold text-xs"
-                      >
-                        -100 Minut
+                        Zapisz datę
                       </button>
                     </div>
                   </div>

@@ -46,6 +46,15 @@ export default function Subscription() {
   const [isChangePlanModalOpen, setIsChangePlanModalOpen] = useState(false);
   const [isChangingPlan, setIsChangingPlan] = useState(false);
   const [changePlanSuccess, setChangePlanSuccess] = useState('');
+  const [selectedCheckoutType, setSelectedCheckoutType] = useState<'subscription' | 'prepaid_month'>('subscription');
+  const [isProcessingStripe, setIsProcessingStripe] = useState(false);
+  const [platformConfig, setPlatformConfig] = useState<any>({
+    promoEnabled: true,
+    promoMode: 'no_card',
+    promoDays: 30,
+    promoDefaultMinutes: 300,
+    stripeConfigured: false
+  });
 
   const [isWipeModalOpen, setIsWipeModalOpen] = useState(false);
   const [wipePin, setWipePin] = useState('');
@@ -88,9 +97,38 @@ export default function Subscription() {
     }
   };
 
+  const fetchPlatformConfigPublic = async () => {
+    try {
+      const r = await fetch('/api/platform-config');
+      if (r.ok) {
+        const d = await r.json();
+        setPlatformConfig(d);
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
     fetchStatus();
+    fetchPlatformConfigPublic();
+
+    const params = new URLSearchParams(window.location.search);
+    const successType = params.get('success');
+    const canceled = params.get('canceled');
+    if (successType === 'topup') {
+      const mins = params.get('minutes') || '100';
+      setSuccessMessage(`🎉 Płatność zakończona sukcesem! Do Twojego konta dopisano +${mins} nieprzepadających minut bonusowych.`);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (successType === 'prepaid') {
+      setSuccessMessage('🎉 Opłacono 30 dni dostępu z góry (BLIK / Przelewy24)! Twój pakiet jest aktywny.');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (successType === 'subscription') {
+      setSuccessMessage('🎉 Subskrypcja została pomyślnie aktywowana w Stripe!');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (canceled === 'true') {
+      setError('Płatność została anulowana przed ukończeniem.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
@@ -213,11 +251,74 @@ export default function Subscription() {
     setIsLoading(false);
   };
 
+  const handleStripeCheckout = async (options: {
+    planName?: string;
+    checkoutType: 'subscription' | 'prepaid_month' | 'topup_minutes';
+    topupPackageId?: 'topup_100' | 'topup_300';
+  }) => {
+    setIsProcessingStripe(true);
+    setError('');
+    try {
+      const tid = tenant?.id || localStorage.getItem('tenantId') || '';
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: tid,
+          planName: options.planName || subDetails?.planName || 'standard',
+          checkoutType: options.checkoutType,
+          topupPackageId: options.topupPackageId
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się zainicjować płatności Stripe.');
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      setError(err.message || 'Błąd połączenia z bramką płatności Stripe.');
+    } finally {
+      setIsProcessingStripe(false);
+    }
+  };
+
+  const handleOpenStripePortal = async () => {
+    setIsProcessingStripe(true);
+    setError('');
+    try {
+      const tid = tenant?.id || localStorage.getItem('tenantId') || '';
+      const res = await fetch('/api/stripe/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: tid })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Nie udało się otworzyć portalu rozliczeniowego Stripe.');
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      setError(err.message || 'Błąd otwierania portalu faktur Stripe.');
+    } finally {
+      setIsProcessingStripe(false);
+    }
+  };
+
   const handleChangePlan = async (targetPlan: 'personal' | 'personal_expert' | 'standard' | 'premium') => {
     setIsChangingPlan(true);
     setError('');
     setChangePlanSuccess('');
     try {
+      // Jeśli użytkownik wybrał opcję "Opłać 1 miesiąc z góry (BLIK / Przelewy24)", od razu kierujemy do Stripe Checkout
+      if (selectedCheckoutType === 'prepaid_month' && platformConfig?.stripeConfigured) {
+        await handleStripeCheckout({ planName: targetPlan, checkoutType: 'prepaid_month' });
+        return;
+      }
+
       const tid = tenant?.id || localStorage.getItem('tenantId') || '';
       const phone = contactPhone || tenant?.phoneNumber || localStorage.getItem('tenantPhone') || '';
       const res = await fetch('/api/subscription/change-plan', {
@@ -236,6 +337,10 @@ export default function Subscription() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Nie udało się zmienić pakietu.');
+      }
+      if (data.requiresCheckout) {
+        await handleStripeCheckout({ planName: targetPlan, checkoutType: selectedCheckoutType });
+        return;
       }
       if (data.tenantId) {
         localStorage.setItem('tenantId', data.tenantId);
@@ -322,10 +427,41 @@ export default function Subscription() {
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-semibold uppercase tracking-wider mb-2">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Wybierz plan dla siebie lub firmy
                 </div>
-                <h3 className="text-xl sm:text-2xl font-serif text-surface-900">Zmień pakiet subskrypcji</h3>
+                <h3 className="text-xl sm:text-2xl font-serif text-surface-900">Zmień pakiet lub przedłuż subskrypcję</h3>
                 <p className="text-xs sm:text-sm text-surface-600 mt-1">
-                  Możesz w dowolnym momencie zmienić plan. Przejście na pakiet osobisty automatycznie dostosuje interfejs asystenta (Executive / VIP / Kalendarz roczny / Zasięg działania).
+                  Możesz w dowolnym momencie zmienić plan lub opłacić dostęp. Przejście na pakiet osobisty automatycznie dostosuje interfejs asystenta (Executive / VIP / Kalendarz roczny / Zasięg działania).
                 </p>
+
+                {/* Wybór metody płatności pod Polskę */}
+                <div className="mt-4 p-3 bg-surface-50 border border-surface-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <span className="text-xs font-bold text-surface-700">
+                    💳 Preferowany sposób rozliczenia (Stripe Polska):
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCheckoutType('subscription')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition border ${
+                        selectedCheckoutType === 'subscription'
+                          ? 'bg-surface-900 text-white border-surface-900 shadow-xs'
+                          : 'bg-white text-surface-600 border-surface-200 hover:bg-surface-100'
+                      }`}
+                    >
+                      🔄 Subskrypcja miesięczna (Apple Pay / Google Pay / Karta)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCheckoutType('prepaid_month')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition border ${
+                        selectedCheckoutType === 'prepaid_month'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-white text-surface-600 border-surface-200 hover:bg-surface-100'
+                      }`}
+                    >
+                      📱 Opłać 30 dni z góry bez karty (BLIK / Przelewy24)
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {changePlanSuccess && (
@@ -396,15 +532,19 @@ export default function Subscription() {
                   <button
                     type="button"
                     onClick={() => handleChangePlan('personal')}
-                    disabled={isChangingPlan || isPersonal}
+                    disabled={isChangingPlan || isProcessingStripe || (isPersonal && selectedCheckoutType !== 'prepaid_month')}
                     className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                      isPersonal 
+                      isPersonal && selectedCheckoutType !== 'prepaid_month'
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20'
                     }`}
                   >
-                    {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isPersonal ? 'Twój obecny pakiet' : 'Wybierz Osobisty'}
+                    {(isChangingPlan || isProcessingStripe) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {isPersonal && selectedCheckoutType !== 'prepaid_month'
+                      ? 'Twój obecny pakiet'
+                      : selectedCheckoutType === 'prepaid_month'
+                      ? 'Opłać 30 dni (BLIK / P24)'
+                      : 'Wybierz Osobisty'}
                   </button>
                 </div>
 
@@ -461,15 +601,19 @@ export default function Subscription() {
                   <button
                     type="button"
                     onClick={() => handleChangePlan('personal_expert')}
-                    disabled={isChangingPlan || isPersonalExpert}
+                    disabled={isChangingPlan || isProcessingStripe || (isPersonalExpert && selectedCheckoutType !== 'prepaid_month')}
                     className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                      isPersonalExpert 
+                      isPersonalExpert && selectedCheckoutType !== 'prepaid_month'
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-md shadow-purple-600/20'
                     }`}
                   >
-                    {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isPersonalExpert ? 'Twój obecny pakiet' : 'Wybierz Osobisty Ekspert'}
+                    {(isChangingPlan || isProcessingStripe) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {isPersonalExpert && selectedCheckoutType !== 'prepaid_month'
+                      ? 'Twój obecny pakiet'
+                      : selectedCheckoutType === 'prepaid_month'
+                      ? 'Opłać 30 dni (BLIK / P24)'
+                      : 'Wybierz Osobisty Ekspert'}
                   </button>
                 </div>
 
@@ -526,15 +670,19 @@ export default function Subscription() {
                   <button
                     type="button"
                     onClick={() => handleChangePlan('standard')}
-                    disabled={isChangingPlan || isStandard}
+                    disabled={isChangingPlan || isProcessingStripe || (isStandard && selectedCheckoutType !== 'prepaid_month')}
                     className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                      isStandard 
+                      isStandard && selectedCheckoutType !== 'prepaid_month'
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-surface-900 hover:bg-surface-800 text-white shadow-md'
                     }`}
                   >
-                    {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isStandard ? 'Twój obecny pakiet' : 'Wybierz Standard B2B'}
+                    {(isChangingPlan || isProcessingStripe) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {isStandard && selectedCheckoutType !== 'prepaid_month'
+                      ? 'Twój obecny pakiet'
+                      : selectedCheckoutType === 'prepaid_month'
+                      ? 'Opłać 30 dni (BLIK / P24)'
+                      : 'Wybierz Standard B2B'}
                   </button>
                 </div>
 
@@ -591,15 +739,19 @@ export default function Subscription() {
                   <button
                     type="button"
                     onClick={() => handleChangePlan('premium')}
-                    disabled={isChangingPlan || isPremium}
+                    disabled={isChangingPlan || isProcessingStripe || (isPremium && selectedCheckoutType !== 'prepaid_month')}
                     className={`w-full mt-5 py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
-                      isPremium 
+                      isPremium && selectedCheckoutType !== 'prepaid_month'
                         ? 'bg-surface-200 text-surface-500 cursor-not-allowed' 
                         : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-md shadow-amber-500/20'
                     }`}
                   >
-                    {isChangingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {isPremium ? 'Twój obecny pakiet' : 'Wybierz Premium B2B'}
+                    {(isChangingPlan || isProcessingStripe) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {isPremium && selectedCheckoutType !== 'prepaid_month'
+                      ? 'Twój obecny pakiet'
+                      : selectedCheckoutType === 'prepaid_month'
+                      ? 'Opłać 30 dni (BLIK / P24)'
+                      : 'Wybierz Premium B2B'}
                   </button>
                 </div>
               </div>
@@ -923,6 +1075,20 @@ export default function Subscription() {
         )}
 
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-surface-200">
+          {successMessage && (
+            <div className="mb-6 p-4 bg-emerald-50 text-emerald-800 rounded-2xl border border-emerald-200 text-sm flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-2xl border border-red-200 text-sm flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div className="mb-6">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-medium text-surface-900">
@@ -947,8 +1113,99 @@ export default function Subscription() {
               )}
             </div>
 
-            <p className="text-surface-600 mt-2">Status: <strong className="uppercase">{subStatus}</strong></p>
-            <p className="text-surface-600 mt-2">Wykorzystane minuty: <strong>{subDetails?.minutesUsed || 0} / {includedMinutes}</strong></p>
+            <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-surface-600">
+              <div>
+                Status: <strong className={`uppercase ${
+                  subStatus === 'expired' ? 'text-red-600' :
+                  subStatus === 'trialing' ? 'text-purple-700' :
+                  subStatus === 'active' ? 'text-emerald-700' : 'text-surface-900'
+                }`}>
+                  {subStatus === 'trialing' ? 'DARMOWY OKRES / PILOTAŻ' : subStatus === 'expired' ? 'WYGASŁ (WYMAGA OPŁACENIA)' : subStatus}
+                </strong>
+              </div>
+
+              {subDetails?.isLifetimeFree ? (
+                <div className="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">
+                  ♾️ Dostęp bezterminowy VIP
+                </div>
+              ) : subDetails?.currentPeriodEnd ? (
+                <div className="px-3 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-full text-xs font-semibold">
+                  📅 Ważny do: <strong>{new Date(subDetails.currentPeriodEnd).toLocaleDateString('pl-PL')}</strong>
+                  {' '}({Math.max(0, Math.ceil((new Date(subDetails.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} dni)
+                </div>
+              ) : null}
+            </div>
+
+            {/* DWIE PULE MINUT: MIESIĘCZNA + NIEPRZEPADAJĄCE MINUTY BONUSOWE */}
+            <div className="grid sm:grid-cols-2 gap-4 mt-5">
+              <div className="p-4 bg-surface-50 border border-surface-200 rounded-2xl">
+                <div className="flex items-center justify-between text-xs font-semibold text-surface-600 uppercase tracking-wider mb-1">
+                  <span>Minuty w pakiecie miesięcznym</span>
+                  <span className="text-surface-900 font-bold">{subDetails?.minutesUsed || 0} / {includedMinutes} min</span>
+                </div>
+                <div className="w-full h-2.5 bg-surface-200 rounded-full overflow-hidden my-2">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${Math.min(100, Math.round(((subDetails?.minutesUsed || 0) / Math.max(1, includedMinutes)) * 100))}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-surface-500">
+                  Odnawiają się automatycznie z początkiem każdego nowego miesiąca rozliczeniowego.
+                </p>
+              </div>
+
+              <div className="p-4 bg-indigo-50/50 border border-indigo-200 rounded-2xl flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                    🎁 Nieprzepadające minuty ekstra
+                  </span>
+                  <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-bold">
+                    Bezterminowe
+                  </span>
+                </div>
+                <div className="text-2xl font-bold text-indigo-950 my-1">
+                  {subDetails?.bonusMinutes || 0} min
+                </div>
+                <p className="text-[11px] text-indigo-700">
+                  Minuty z doładowań i bonusów <strong>nigdy nie przepadają na koniec miesiąca</strong>. Są zużywane dopiero po wyczerpaniu pakietu miesięcznego.
+                </p>
+              </div>
+            </div>
+
+            {/* SEKCJA DOŁADOWAŃ NIEPRZEPADAJĄCYCH MINUT (BLIK / Przelewy24 / Apple Pay) */}
+            <div className="mt-5 p-5 bg-gradient-to-r from-surface-50 via-indigo-50/30 to-surface-50 border border-surface-200 rounded-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="text-sm font-bold text-surface-900 flex items-center gap-1.5">
+                    ⚡ Dokup nieprzepadające minuty głosowe (BLIK / Przelewy24 / Apple Pay)
+                  </h4>
+                  <p className="text-xs text-surface-600 mt-0.5">
+                    Jednorazowa płatność w PLN (faktura VAT / NIP). Dokupione minuty przechodzą na kolejne miesiące bez terminu ważności.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    disabled={isProcessingStripe}
+                    onClick={() => handleStripeCheckout({ checkoutType: 'topup_minutes', topupPackageId: 'topup_100' })}
+                    className="px-4 py-2.5 bg-white hover:bg-indigo-50 text-indigo-900 border-2 border-indigo-200 hover:border-indigo-400 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <span>+100 minut</span>
+                    <span className="text-indigo-600 font-extrabold">(79 zł)</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isProcessingStripe}
+                    onClick={() => handleStripeCheckout({ checkoutType: 'topup_minutes', topupPackageId: 'topup_300' })}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>+300 minut</span>
+                    <span className="text-indigo-100 font-extrabold">(149 zł • 0,50 zł/min)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
             
             {tenant?.assignedPhoneNumber && (
               <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
@@ -972,14 +1229,38 @@ export default function Subscription() {
                 onClick={() => {
                   setError('');
                   setChangePlanSuccess('');
+                  setSelectedCheckoutType('subscription');
                   setIsChangePlanModalOpen(true);
                 }} 
-                disabled={isLoading} 
+                disabled={isLoading || isProcessingStripe} 
                 className="px-5 py-2.5 bg-surface-900 hover:bg-surface-800 text-white rounded-xl shadow-sm transition disabled:opacity-50 font-medium text-sm flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                Zmień pakiet
+                Zmień pakiet / Subskrypcja
               </button>
+
+              <button
+                type="button"
+                disabled={isLoading || isProcessingStripe}
+                onClick={() => handleStripeCheckout({
+                  planName: subDetails?.planName || 'standard',
+                  checkoutType: 'prepaid_month'
+                })}
+                className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl transition disabled:opacity-50 font-semibold text-xs flex items-center gap-1.5"
+              >
+                📱 Opłać 30 dni z góry (BLIK / Przelewy24)
+              </button>
+
+              {subDetails?.stripeCustomerId && (
+                <button
+                  type="button"
+                  disabled={isLoading || isProcessingStripe}
+                  onClick={handleOpenStripePortal}
+                  className="px-4 py-2.5 bg-white hover:bg-surface-50 text-surface-700 border border-surface-200 rounded-xl transition disabled:opacity-50 font-semibold text-xs flex items-center gap-1.5"
+                >
+                  💳 Faktury VAT i zarządzanie kartą
+                </button>
+              )}
 
               {subStatus === 'active' && (
                 <button onClick={handlePause} disabled={isLoading} className="px-5 py-2.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl hover:bg-amber-100 transition disabled:opacity-50 font-medium text-sm">
