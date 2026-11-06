@@ -645,21 +645,59 @@ export default function Guide() {
     {
       id: 'personal-subscription-rules',
       category: 'subscription',
-      question: 'Ile kosztuje Pakiet Osobisty i jak naliczane są minuty?',
-      summary: '149 zł / miesiąc z pulą 100 darmowych minut. Dodatkowe minuty w stawce 0,60 zł/min. Pełna przejrzystość bez ukrytych opłat.',
+      question: 'Ile kosztuje Pakiet Osobisty, jak naliczane są minuty i czym różnią się dwie pule minut?',
+      summary: '149 zł / miesiąc (100 min) lub 349 zł / miesiąc w wersji Ekspert (300 min). Dwie pule minut: miesięczna abonamentowa oraz nieprzepadające pakiety minut ekstra (+100 lub +300 min).',
       actionPath: '/dashboard/subscription',
       actionLabel: 'Sprawdź Subskrypcję',
       answer: (
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
-            Pakiet Osobisty został stworzony z myślą o osobach ceniących czas, prywatność i elegancję obsługi:
+            Pakiet Osobisty został stworzony z myślą o osobach ceniących czas, prywatność i pełną kontrolę nad kosztami:
           </p>
           <ul className="list-disc pl-5 space-y-1.5">
-            <li><strong>Abonament:</strong> <strong>149 zł / miesiąc</strong>.</li>
-            <li><strong>Darmowe minuty w pakiecie:</strong> <strong>100 minut</strong> w każdym okresie rozliczeniowym (zużywane tylko podczas faktycznej rozmowy telefonicznej).</li>
-            <li><strong>Minuty ponad pakiet:</strong> Tylko <strong>0,60 zł / min</strong> naliczane sekundowo.</li>
+            <li><strong>Abonament:</strong> <strong>149 zł / miesiąc</strong> (Pakiet Osobisty – 100 min) lub <strong>349 zł / miesiąc</strong> (Pakiet Osobisty Ekspert – 300 min).</li>
+            <li><strong>Pula 1 – Minuty Abonamentowe (odnawiane co miesiąc):</strong> 100 lub 300 minut wliczonych w opłatę miesięczną, zużywanych zawsze w pierwszej kolejności.</li>
+            <li><strong>Pula 2 – Nieprzepadające Minuty Ekstra (Wieczyste):</strong> Doładowania jednorazowe (<strong>+100 min za 79 zł</strong> lub <strong>+300 min za 149 zł</strong>) oraz bonusy od administratora. <strong>Nigdy nie przepadają na koniec miesiąca</strong> i przechodzą na kolejne okresy rozliczeniowe!</li>
+            <li><strong>Kolejność zużycia:</strong> System najpierw pobiera minuty z puli miesięcznej, a dopiero po jej wyczerpaniu automatycznie sięga do Twojego zapasu Nieprzepadających Minut Ekstra.</li>
             <li><strong>Brak długich umów:</strong> Możesz w każdej chwili zawiesić konto na 30 dni (np. na czas wakacji) lub anulować subskrypcję z poziomu panelu.</li>
           </ul>
+        </div>
+      )
+    },
+    {
+      id: 'personal-payment-methods-and-topups',
+      category: 'subscription',
+      question: 'Jakie metody płatności są dostępne (BLIK, Przelewy24, Apple Pay, Google Pay) i jak pobrać fakturę B2B z NIP?',
+      summary: 'Szybkie płatności BLIK i Przelewy24 (opcja Pre-Paid na 30 dni bez podpinania karty), subskrypcje kartą / Apple Pay / Google Pay, doładowania nieprzepadających minut oraz automatyczne faktury B2B z polskim NIP.',
+      actionPath: '/dashboard/subscription',
+      actionLabel: 'Otwórz Płatności i Faktury',
+      answer: (
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
+          <p>
+            W zakładce <strong>Subskrypcja i Płatności</strong> sam decydujesz, czy wolisz wygodną subskrypcję automatyczną, czy jednorazowe opłacenie miesiąca z góry (Pre-Paid) polskimi metodami płatności:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs space-y-1.5">
+              <strong className="text-indigo-950 block">🔄 Subskrypcja cykliczna (Auto-odnowienie co miesiąc)</strong>
+              <p className="text-surface-700">
+                Płatność kartą płatniczą (Visa, Mastercard), <strong>Apple Pay</strong> lub <strong>Google Pay</strong>. Abonament i pula minut odnawiają się automatycznie co miesiąc bez ryzyka przerwy w działaniu asystenta.
+              </p>
+            </div>
+            <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 text-xs space-y-1.5">
+              <strong className="text-emerald-950 block">🇵🇱 Płatność jednorazowa na 30 dni (BLIK / Przelewy24)</strong>
+              <p className="text-surface-700">
+                Nie chcesz podpinać karty do cyklicznych obciążeń? Wybierz <strong>Opłać 30 dni z góry (Pre-Paid)</strong> i zapłać kodem <strong>BLIK</strong> lub szybkim przelewem bankowym <strong>Przelewy24</strong>. Na 3 dni przed końcem okresu otrzymasz przypomnienie SMS i Push.
+              </p>
+            </div>
+          </div>
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-1.5">
+            <strong className="text-surface-900 block">🧾 Faktury B2B z NIP, Kody Rabatowe i Portal Klienta Stripe:</strong>
+            <ul className="list-disc pl-4 space-y-1 text-surface-600">
+              <li><strong>Faktura na firmę (NIP):</strong> Na ekranie płatności zaznacz opcję <em>„Kupuję jako firma”</em> i podaj nazwę firmy oraz polski NIP – dane pojawią się automatycznie na fakturze.</li>
+              <li><strong>Kody promocyjne:</strong> Posiadasz kod rabatowy (np. od partnera lub z promocji)? Wpisz go bezpośrednio w polu kodu promocyjnego przed zatwierdzeniem płatności.</li>
+              <li><strong>Portal Rozliczeniowy 24/7:</strong> Klikając przycisk <em>„Faktury, Karta i Zarządzanie Subskrypcją”</em> w zakładce Subskrypcja, w każdej chwili pobierzesz faktury PDF dla księgowości lub zmienisz metodę płatności.</li>
+            </ul>
+          </div>
         </div>
       )
     },
@@ -667,7 +705,7 @@ export default function Guide() {
       id: 'personal-expert-package',
       category: 'subscription',
       question: 'Czym różni się Pakiet Osobisty (149 zł) od Pakietu Osobisty Ekspert (349 zł)?',
-      summary: 'Pakiet Osobisty Ekspert oferuje 300 darmowych minut (0,50 zł/min), inteligentną kwalifikację sprawy i budżetu, kontrolę rejonu dojazdów z 1-klik SMS-em odwołania, audyt rozmów do FAQ oraz moduł potwierdzania spotkań.',
+      summary: 'Pakiet Osobisty Ekspert oferuje 300 darmowych minut (0,50 zł/min), pełną transkrypcję rozmów AI (stenogramy z ochroną RODO/PII), Live Call Copilot, inteligentną kwalifikację sprawy i budżetu, kontrolę rejonu dojazdów oraz audyt rozmów do FAQ.',
       actionPath: '/dashboard/subscription',
       actionLabel: 'Porównaj Pakiety',
       answer: (
@@ -681,7 +719,7 @@ export default function Guide() {
                 Pakiet Osobisty – 149 zł / mc
               </div>
               <ul className="text-xs text-surface-600 space-y-1.5 mt-2">
-                <li>• <strong>100 darmowych minut</strong> na rozmowy (0,60 zł/min po wyczerpaniu).</li>
+                <li>• <strong>100 darmowych minut</strong> na rozmowy (0,60 zł/min po wyczerpaniu + obsługa nieprzepadających pakietów minut ekstra).</li>
                 <li>• <strong>Dyskrecja i Privacy Shield:</strong> powitanie na Pan/Pani Jan, ochrona nazwiska i prywatności.</li>
                 <li>• <strong>Kontakty z Dostępem Priorytetowym:</strong> strefy prywatne, nocne i Złote Okienka.</li>
                 <li>• <strong>Czas Skupienia (Deep Work / Lekcje):</strong> ochrona godzin pracy w skupieniu.</li>
@@ -702,6 +740,7 @@ export default function Guide() {
               </p>
               <ul className="text-xs text-gold-900 space-y-1.5">
                 <li>• <strong>Aż 300 darmowych minut</strong> (preferencyjna stawka <strong>0,50 zł/min</strong>).</li>
+                <li>• <strong>📝 Pełna Transkrypcja Rozmów AI (Stenogramy RODO):</strong> zapis całego dialogu słowo w słowo (Asystent + Klient oraz Live Copilot), wyszukiwarka słów, eksport do `.txt`, automatyczna informacja RODO w powitaniu i anonimizacja danych wrażliwych (PESEL, karty, hasła).</li>
                 <li>• <strong>⚡ Live Call Copilot (Cichy Sufler w Czasie Rzeczywistym):</strong> asystent na żywo podczas rozmów handlowych. Podpowiada ceny, wiedzę i argumenty linijka po linijce, prowadzi checklistę celów i generuje notatkę AI do CRM.</li>
                 <li>• <strong>💼 Inteligentna Kwalifikacja Sprawy i Budżetu:</strong> asystent wypytuje o profil sprawy, zakres prac, budżet i informuje o opłatach (np. bezpłatna analiza dokumentów vs 200 zł za wizję w terenie).</li>
                 <li>• <strong>📍 Kontrola Rejonu Obsługi:</strong> żelazne pilnowanie zasięgu dojazdów (np. Częstochowa + 100 km) z przyciskiem <strong>„Odwołaj (SMS)”</strong> w historii rozmów.</li>
@@ -908,9 +947,9 @@ export default function Guide() {
           <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-2">
             <strong className="text-surface-900 block">🖥️ Co widzisz w Czarnym Kokpicie Bojowym w trakcie rozmowy?</strong>
             <ul className="list-disc pl-4 space-y-1.5 text-surface-600">
-              <li><strong>Czysty tekst linijka po linijce:</strong> Fakty, cenniki, terminy i odpowiedzi na trudne pytania bez rozpraszających kafelków i bez zbędnej wody.</li>
+              <li><strong>Czysty tekst linijka po linijce (zoptymalizowany pod ekran smartfona):</strong> Fakty, cenniki, terminy i odpowiedzi na trudne pytania w powiększonym, wygodnym oknie z automatycznym przewijaniem na dole.</li>
               <li><strong>Interaktywna checklista celów:</strong> Cele rozmowy są podpowiadane automatycznie. Możesz odhaczać je na żywo lub natychmiast usuwać krzyżykiem ✕ cele zbędne.</li>
-              <li><strong>Automatyczny szkic notatki AI:</strong> Po zakończeniu rozmowy EVA natychmiast generuje zwięzłe podsumowanie ustaleń gotowe do edycji i 1-kliknięciowego zapisu do CRM.</li>
+              <li><strong>Automatyczny szkic notatki AI + Pełny Stenogram do CRM:</strong> Po zakończeniu rozmowy EVA natychmiast generuje zwięzłe podsumowanie ustaleń do edycji oraz – przy włączonej opcji transkrypcji – zapisuje pełny stenogram dialogu w Rejestrze Połączeń i karcie klienta.</li>
             </ul>
           </div>
 
@@ -919,6 +958,49 @@ export default function Guide() {
             <div>
               <strong>Wskazówka techniczna (VoLTE / Wi-Fi Calling):</strong> Jeśli dzwonisz ze smartfona udostępniającego internet (hotspot), upewnij się, że masz włączoną w telefonie usługę <strong>VoLTE</strong> lub <strong>Wi-Fi Calling</strong>. W starszych trybach GSM telefon potrafi zawiesić transmisję danych komórkowych na czas trwania rozmowy głosowej.
             </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'personal-call-transcription',
+      category: 'expert',
+      question: 'Jak działa Pełna Transkrypcja Rozmów AI (Stenogramy, RODO, Anonimizacja PII i Retencja)?',
+      summary: 'Zapis pełnego dialogu słowo w słowo dla rozmów asystenta oraz Live Copilota. Podgląd w Historii Połączeń i Kalendarzu, wyszukiwarka słów, pobieranie pliku .txt, anonimizacja danych wrażliwych i automatyczny komunikat RODO w powitaniu.',
+      actionPath: '/dashboard/settings',
+      actionLabel: 'Konfiguruj Transkrypcję i RODO',
+      answer: (
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
+          <p>
+            W pakiecie <strong>Osobisty Ekspert (349 zł/mc)</strong> (oraz <strong>B2B Premium 399 zł/mc</strong>) możesz włączyć funkcję <strong>Pełnej Transkrypcji Rozmów (Stenogramów AI)</strong>. Oprócz zwięzłego podsumowania sprawy otrzymujesz dokładny zapis dialogu (kwestie Asystenta/Handlowca oraz Klienta) z oznaczeniem czasu.
+          </p>
+
+          <div className="grid sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs space-y-1.5">
+              <strong className="text-indigo-950 block">📂 Gdzie otworzyć stenogram rozmowy?</strong>
+              <ul className="list-disc pl-4 space-y-1 text-surface-700">
+                <li><strong>Wiadomości i Połączenia:</strong> Przy każdej rozmowie posiadającej zapisany dialog widnieje przycisk <strong>„Pełna transkrypcja”</strong>.</li>
+                <li><strong>Kalendarz wizyt i spotkań:</strong> W szczegółach rezerwacji umówionej telefonicznie przez asystenta kliknij <strong>„Pełna transkrypcja rozmowy”</strong>, aby przed spotkaniem przypomnieć sobie każde słowo klienta.</li>
+              </ul>
+            </div>
+
+            <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 text-xs space-y-1.5">
+              <strong className="text-emerald-950 block">🛠️ Narzędzia w oknie transkrypcji:</strong>
+              <ul className="list-disc pl-4 space-y-1 text-surface-700">
+                <li><strong>Wyszukiwarka słów (Search):</strong> Błyskawiczne podświetlanie fraz, kwot lub nazw miejscowości w długich rozmowach.</li>
+                <li><strong>Kopiuj i Pobierz .TXT:</strong> Jednym kliknięciem skopiujesz dialog do schowka lub pobierzesz sformatowany plik tekstowy do dokumentacji sprawy.</li>
+                <li><strong>Usuń transkrypcję (RODO):</strong> Natychmiastowe i nieodwracalne wyczyszczenie stenogramu przy zachowaniu samej notatki podsumowującej.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-1.5">
+            <strong className="text-surface-900 block">🛡️ Bezpieczeństwo RODO, Powitanie i Automatyczna Anonimizacja (PII Redaction):</strong>
+            <ul className="list-disc pl-4 space-y-1 text-surface-600">
+              <li><strong>Automatyczny komunikat w powitaniu:</strong> Gdy w <em>Ustawieniach Asystenta</em> zaznaczysz pole <em>„Zapisuj pełny stenogram rozmów (EVA & Live Copilot)”</em>, asystent (lub asystentka – zależnie od wybranego głosu męskiego/żeńskiego) automatycznie dołączy na starcie rozmowy uprzejmą klauzulę: <em>„Informuję, że rozmowa jest transkrybowana”</em>.</li>
+              <li><strong>Maskowanie danych wrażliwych (PII):</strong> Przed zapisem w bazie system automatycznie wykrywa i maskuje numery PESEL, numery kart płatniczych, kody CVV oraz podyktowane hasła/kody PIN.</li>
+              <li><strong>Automatyczna retencja danych:</strong> W Ustawieniach Asystenta sam wybierasz okres przechowywania stenogramów (<strong>7, 30, 90 dni lub bezterminowo</strong>), po którym system automatycznie czyści stare zapisy zgodnie z zasadą minimalizacji danych RODO.</li>
+            </ul>
           </div>
         </div>
       )
@@ -1100,9 +1182,9 @@ export default function Guide() {
           <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-2">
             <strong className="text-surface-900 block">🖥️ Funkcje Czarnego Kokpitu Bojowego w trakcie rozmowy:</strong>
             <ul className="list-disc pl-4 space-y-1.5 text-surface-600">
-              <li><strong>Czysty tekst linijka po linijce:</strong> Telegraficzne fakty z Bazy Wiedzy, rabaty, specyfikacje i argumenty bez zbędnych kafelków rozpraszających uwagę.</li>
+              <li><strong>Czysty tekst linijka po linijce (zoptymalizowany pod ekran smartfona i laptopa):</strong> Telegraficzne fakty z Bazy Wiedzy, rabaty, specyfikacje i argumenty w powiększonym oknie z automatycznym przewijaniem na dole.</li>
               <li><strong>Dynamiczna checklista celów rozmowy:</strong> Propozycje celów generowane na starcie. Handlowiec może odhaczać punkty lub usuwać zbędne cele jednym kliknięciem krzyżyka ✕.</li>
-              <li><strong>Automatyczny szkic notatki AI do CRM:</strong> Po odłożeniu słuchawki EVA generuje gotowy szkic ustaleń (kto, co ustalił, jakie pytania padły) do natychmiastowej edycji i zatwierdzenia.</li>
+              <li><strong>Automatyczny szkic notatki AI + Pełny Stenogram do CRM:</strong> Po odłożeniu słuchawki EVA generuje gotowy szkic ustaleń do zatwierdzenia oraz – przy włączonym zapisie stenogramów – dołącza pełną transkrypcję dialogu w Historii Połączeń i karcie klienta.</li>
             </ul>
           </div>
 
@@ -1111,6 +1193,49 @@ export default function Guide() {
             <div>
               <strong>Zalecenie dotyczące VoLTE / Wi-Fi Calling:</strong> W przypadku korzystania z trybu Konferencji SIM zalecamy włączenie funkcji <strong>VoLTE</strong> lub <strong>Wi-Fi Calling</strong> w ustawieniach telefonu. Zapobiega to przełączaniu się telefonu w tryb 2G/3G, w którym operatorzy mogą wstrzymywać przesyłanie danych internetowych podczas trwania rozmowy głosowej.
             </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'business-call-transcription',
+      category: 'forwarding',
+      question: 'Jak działa Pełna Transkrypcja Rozmów AI dla Firm (Stenogramy, RODO i Anonimizacja PII)?',
+      summary: 'Zapis pełnego dialogu słowo w słowo dla rozmów recepcji AI oraz sesji Live Copilota. Podgląd w Historii Połączeń i Kalendarzu, wyszukiwarka słów, eksport do .txt, automatyczny komunikat RODO i maskowanie danych wrażliwych.',
+      actionPath: '/dashboard/settings',
+      actionLabel: 'Konfiguruj Transkrypcję i RODO',
+      answer: (
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
+          <p>
+            W pakiecie <strong>B2B Premium (399 zł/mc)</strong> (oraz <strong>Osobisty Ekspert 349 zł/mc</strong>) możesz włączyć w <em>Ustawieniach Asystenta</em> funkcję <strong>Pełnej Transkrypcji Rozmów (Stenogramów AI)</strong>. System zapisuje dokładny przebieg rozmowy (wypowiedzi Asystenta/Handlowca oraz Klienta) wraz ze znacznikami czasu.
+          </p>
+
+          <div className="grid sm:grid-cols-2 gap-3 pt-1">
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs space-y-1.5">
+              <strong className="text-indigo-950 block">📂 Gdzie otworzyć stenogram rozmowy?</strong>
+              <ul className="list-disc pl-4 space-y-1 text-surface-700">
+                <li><strong>Wiadomości i Połączenia:</strong> Przy każdej rozmowie z zapisanym dialogiem widnieje przycisk <strong>„Pełna transkrypcja”</strong>.</li>
+                <li><strong>Kalendarz wizyt i rezerwacji:</strong> W oknie szczegółów wizyty umówionej telefonicznie kliknij <strong>„Pełna transkrypcja rozmowy”</strong>, aby zespół znał pełny kontekst ustaleń z klientem.</li>
+              </ul>
+            </div>
+
+            <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 text-xs space-y-1.5">
+              <strong className="text-emerald-950 block">🛠️ Funkcje modala transkrypcji:</strong>
+              <ul className="list-disc pl-4 space-y-1 text-surface-700">
+                <li><strong>Wyszukiwarka słów (Search):</strong> Natychmiastowe podświetlanie szukanych słów kluczowych, cen lub nazw usług w dialogu.</li>
+                <li><strong>Kopiuj i Pobierz .TXT:</strong> Eksport rozmowy do schowka lub pobranie gotowego pliku tekstowego `.txt`.</li>
+                <li><strong>Usuń transkrypcję (RODO):</strong> Jednokliknięciowe, trwałe usunięcie stenogramu na żądanie klienta przy zachowaniu samej notatki podsumowującej.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-1.5">
+            <strong className="text-surface-900 block">🛡️ Zgodność z RODO, Powitanie i Automatyczna Anonimizacja (PII):</strong>
+            <ul className="list-disc pl-4 space-y-1 text-surface-600">
+              <li><strong>Automatyczny komunikat w powitaniu:</strong> Gdy opcja <em>„Zapisuj pełny stenogram rozmów (EVA & Live Copilot)”</em> jest zaznaczona, asystent (lub asystentka – zależnie od wybranego głosu) automatycznie informuje na wstępie rozmowy: <em>„Informuję, że rozmowa jest transkrybowana”</em>.</li>
+              <li><strong>Maskowanie danych wrażliwych (PII Redaction):</strong> Numery PESEL, numery kart płatniczych, kody CVV oraz hasła/kody PIN są automatycznie zamieniane na bezpieczne znaczniki przed zapisem w bazie.</li>
+              <li><strong>Polityka retencji danych:</strong> W Ustawieniach Asystenta możesz określić czas przechowywania stenogramów (<strong>7, 30, 90 dni lub bezterminowo</strong>).</li>
+            </ul>
           </div>
         </div>
       )
@@ -1300,21 +1425,59 @@ export default function Guide() {
     {
       id: 'minutes-usage',
       category: 'subscription',
-      question: 'Jak naliczane są darmowe minuty w abonamencie firmowym?',
-      summary: 'Pakiet Standard to 100 min/mc, a pakiet Premium to 300 min/mc rozmów z asystentem.',
+      question: 'Jak naliczane są darmowe minuty w abonamencie firmowym i czym różnią się dwie pule minut?',
+      summary: 'Pakiet Standard to 100 min/mc, a pakiet Premium to 300 min/mc. Oprócz puli miesięcznej masz do dyspozycji Nieprzepadające Minuty Ekstra (+100 lub +300 min), które nigdy nie wygasają na koniec miesiąca.',
       actionPath: '/dashboard/subscription',
       actionLabel: 'Moja Subskrypcja',
       answer: (
         <div className="space-y-3 text-sm text-surface-700 leading-relaxed">
           <p>
-            Minuty w pakiecie darmowym (100 minut w Standard, 300 minut w Premium) są zużywane tylko podczas 
-            faktycznego trwania połączenia telefonicznego klienta z asystentem.
+            Minuty w abonamencie (100 minut w Standard, 300 minut w Premium) są zużywane wyłącznie podczas 
+            faktycznego trwania połączenia telefonicznego klienta z asystentem lub sesji Live Copilota.
           </p>
           <ul className="list-disc pl-5 space-y-1.5">
-            <li>Średnia rozmowa umawiająca termin trwa ok. <strong>1 - 1.5 minuty</strong>. Pakiet 300 minut pozwala obsłużyć 200–300 połączeń miesięcznie bez dodatkowych opłat.</li>
-            <li>W zakładce <strong>Subskrypcja</strong> zawsze widzisz bieżący stan zużycia minut w formacie <code className="font-mono font-bold">minuty_użyte / minuty_w_pakiecie</code>.</li>
-            <li>W dowolnym momencie możesz <strong>Zawiesić konto na 30 dni</strong> (np. podczas przestoju lub dłuższego urlopu) bez utraty zgromadzonych danych.</li>
+            <li><strong>Pula 1 – Minuty Abonamentowe (miesięczne):</strong> Odnawiają się co miesiąc i są zużywane zawsze w pierwszej kolejności. Średnia rozmowa umawiająca termin trwa ok. <strong>1 – 1.5 minuty</strong> (pakiet 300 minut obsługuje 200–300 połączeń miesięcznie).</li>
+            <li><strong>Pula 2 – Nieprzepadające Minuty Ekstra (Wieczyste):</strong> Doładowania jednorazowe (<strong>+100 min za 79 zł</strong> lub <strong>+300 min za 149 zł</strong>) oraz pakiety bonusowe. <strong>Nigdy nie przepadają na koniec miesiąca</strong> i stanowią bezpieczny bufor na gorące sezony sprzedażowe.</li>
+            <li><strong>Kolejność pobierania:</strong> System najpierw wykorzystuje minuty z bieżącego abonamentu, a dopiero po ich wyczerpaniu automatycznie pobiera sekundy z puli Nieprzepadających Minut Ekstra.</li>
+            <li>W dowolnym momencie możesz <strong>Zawiesić konto na 30 dni</strong> (np. podczas przestoju lub urlopu) bez utraty zgromadzonych danych i nieprzepadających minut.</li>
           </ul>
+        </div>
+      )
+    },
+    {
+      id: 'business-payment-methods-and-topups',
+      category: 'subscription',
+      question: 'Jakie metody płatności dla firm są obsługiwane (BLIK, Przelewy24, Apple Pay, Google Pay, Faktury VAT z NIP)?',
+      summary: 'Wybór między subskrypcją cykliczną (Karta, Apple Pay, Google Pay) a płatnością jednorazową Pre-Paid na 30 dni (BLIK, Przelewy24). Automatyczne faktury B2B z polskim NIP w Portalu Klienta Stripe.',
+      actionPath: '/dashboard/subscription',
+      actionLabel: 'Płatności i Faktury B2B',
+      answer: (
+        <div className="space-y-3.5 text-sm text-surface-700 leading-relaxed">
+          <p>
+            System rozliczeń EVA jest w pełni dostosowany do polskich realiów biznesowych i księgowych:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs space-y-1.5">
+              <strong className="text-indigo-950 block">🔄 Subskrypcja cykliczna (Auto-odnowienie co miesiąc)</strong>
+              <p className="text-surface-700">
+                Wygodna płatność kartą firmową (Visa, Mastercard), <strong>Apple Pay</strong> lub <strong>Google Pay</strong>. Zapewnia 100% ciągłości działania recepcji AI bez konieczności ręcznego opłacania co miesiąc.
+              </p>
+            </div>
+            <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200 text-xs space-y-1.5">
+              <strong className="text-emerald-950 block">🇵🇱 Płatność jednorazowa na 30 dni (BLIK / Przelewy24)</strong>
+              <p className="text-surface-700">
+                Wolisz opłacać dostęp z góry bez podpinania karty? Wybierz <strong>Opłać 30 dni z góry (Pre-Paid)</strong> i zapłać kodem <strong>BLIK</strong> lub przelewem online <strong>Przelewy24</strong>. Na 3 dni przed wygaśnięciem otrzymasz powiadomienie SMS i Push.
+              </p>
+            </div>
+          </div>
+          <div className="p-3.5 bg-surface-50 rounded-2xl border border-surface-200 text-xs space-y-1.5">
+            <strong className="text-surface-900 block">🧾 Faktury B2B z NIP, Kody Promocyjne i Portal Klienta:</strong>
+            <ul className="list-disc pl-4 space-y-1 text-surface-600">
+              <li><strong>Automatyczny NIP na fakturze:</strong> Podczas płatności zaznacz pole <em>„Kupuję jako firma”</em> i wpisz NIP oraz nazwę firmy.</li>
+              <li><strong>Kody rabatowe:</strong> W formularzu płatności możesz wpisać kod promocyjny obniżający cenę pakietu.</li>
+              <li><strong>Portal Klienta Stripe 24/7:</strong> Przycisk <em>„Faktury, Karta i Zarządzanie Subskrypcją”</em> w zakładce Subskrypcja pozwala w każdej chwili pobrać wszystkie faktury PDF dla biura rachunkowego.</li>
+            </ul>
+          </div>
         </div>
       )
     },
@@ -1322,7 +1485,7 @@ export default function Guide() {
       id: 'business-packages-comparison',
       category: 'subscription',
       question: 'Czym różni się Pakiet B2B Standard (199 zł) od Pakietu B2B Premium (399 zł)?',
-      summary: 'Pakiet B2B Standard (199 zł) zapewnia pełną recepcję AI dla zespołu (100 min). Pakiet B2B Premium (399 zł) dodaje 300 min, moduł Live Call Copilot z prezentacją numeru stacjonarnego firmy, notatki AI do CRM i zaawansowaną analitykę.',
+      summary: 'Pakiet B2B Standard (199 zł) zapewnia pełną recepcję AI dla zespołu (100 min). Pakiet B2B Premium (399 zł) dodaje 300 min, pełną transkrypcję rozmów AI (stenogramy z RODO/PII), moduł Live Call Copilot z prezentacją numeru stacjonarnego firmy oraz notatki AI do CRM.',
       actionPath: '/dashboard/subscription',
       actionLabel: 'Porównaj Pakiety Firmowe',
       answer: (
@@ -1336,7 +1499,7 @@ export default function Guide() {
                 Pakiet B2B Standard – 199 zł / mc
               </div>
               <ul className="text-xs text-surface-600 space-y-1.5 mt-2">
-                <li>• <strong>100 minut</strong> w cenie na rozmowy asystenta z klientami.</li>
+                <li>• <strong>100 minut</strong> w cenie na rozmowy asystenta z klientami (+ obsługa nieprzepadających pakietów minut ekstra).</li>
                 <li>• <strong>Inteligentna recepcja AI:</strong> umawianie wizyt, odpowiedzi na pytania o ofertę i cennik 24/7.</li>
                 <li>• <strong>Wieloosobowy grafik zespołu:</strong> zarządzanie pracownikami, usługami i dniami wolnymi.</li>
                 <li>• <strong>Potwierdzenia i przypomnienia SMS:</strong> linki z dojazdem, anulacje i ochrona przed no-show.</li>
@@ -1355,7 +1518,8 @@ export default function Guide() {
                 Wszystko co w Standardzie, plus zaawansowane narzędzia wsparcia sprzedaży:
               </p>
               <ul className="text-xs text-gold-900 space-y-1.5">
-                <li>• <strong>300 minut w pakiecie</strong> na rozmowy przychodzące i wychodzące.</li>
+                <li>• <strong>300 minut w pakiecie</strong> na rozmowy przychodzące i wychodzące (stawka 0,50 zł/min ponad pakiet).</li>
+                <li>• <strong>📝 Pełna Transkrypcja Rozmów AI (Stenogramy RODO):</strong> pełny zapis dialogów słowo w słowo z wyszukiwarką, eksportem `.txt`, automatycznym powitaniem RODO i anonimizacją danych wrażliwych (PESEL, karty, hasła).</li>
                 <li>• <strong>⚡ Pełny moduł Live Call Copilot:</strong> cichy sufler na żywo podczas rozmów handlowców z klientami (podpowiedzi wiersz po wierszu).</li>
                 <li>• <strong>☎️ Prezentacja Numeru Stacjonarnego Firmy:</strong> autoryzowany Caller ID centrali (weryfikacja kodem DTMF).</li>
                 <li>• <strong>📋 Dynamiczna Checklista Celów i Notatki AI do CRM:</strong> automatyczny szkic podsumowania każdej rozmowy handlowej.</li>
